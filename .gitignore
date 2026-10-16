@@ -1,0 +1,12 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+
+# Environment variables and local data
+.env
+data/raw/
+
+# Model files and local artifacts
+*.gguf
+.DS_Store

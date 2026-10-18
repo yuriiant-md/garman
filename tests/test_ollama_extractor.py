@@ -66,10 +66,18 @@ def test_request_sends_system_prompt_text_schema_and_both_sampling_values():
     call = client.calls[0]
 
     assert call["model"] == "lapa-v0.1.2-q4km"
-    assert call["messages"][0] == {"role": "system", "content": PROMPT.text}
+    assert call["messages"][0]["role"] == "system"
+    assert call["messages"][0]["content"].startswith(PROMPT.text)
     assert "пш 3кл 500т" in call["messages"][1]["content"]
     assert call["format"] == DEAL_FORMAT
     assert call["options"] == {"temperature": 0.0, "top_p": 1.0, "num_ctx": 16384}
+
+
+def test_system_message_carries_the_schema_text_the_grammar_alone_does_not_convey():
+    # The grammar only forbids tokens; field meanings reach the model through the prompt.
+    _, client = extract(answer("{}"))
+
+    assert json.dumps(DEAL_FORMAT, ensure_ascii=False) in client.calls[0]["messages"][0]["content"]
 
 
 def test_format_requires_every_key_so_an_empty_object_is_not_a_valid_answer():

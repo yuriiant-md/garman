@@ -8,6 +8,7 @@ No retries: a local model that ran out of time once will run out again. A timeou
 `error` result; a missing model or a stopped Ollama server stops the run instead.
 """
 
+import json
 import time
 from dataclasses import dataclass
 
@@ -35,6 +36,14 @@ def require_every_key(node: object) -> object:
 
 
 DEAL_FORMAT = require_every_key(Deal.model_json_schema())
+# The grammar only forbids tokens; what each field means reaches the model through the prompt.
+# Without it Lapa nulled whole objects it could have filled. Claude sees the same schema as its
+# tool definition.
+SCHEMA_TEXT = json.dumps(DEAL_FORMAT, ensure_ascii=False)
+
+
+def system_text(prompt: Prompt) -> str:
+    return f"{prompt.text}\n\nJSON-схема відповіді:\n{SCHEMA_TEXT}"
 
 
 @dataclass(frozen=True)
@@ -62,7 +71,7 @@ class OllamaExtractor:
             response = self._client.chat(
                 model=self.config.model,
                 messages=[
-                    {"role": "system", "content": prompt.text},
+                    {"role": "system", "content": system_text(prompt)},
                     {"role": "user", "content": user_message(text)},
                 ],
                 format=DEAL_FORMAT,

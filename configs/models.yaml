@@ -8,3 +8,10 @@ anthropic:
   max_tokens: 4096
   price_input_per_mtok: 1.0
   price_output_per_mtok: 5.0
+ollama:
+  # Lapa 12B: Gemma 3 with a Ukrainian tokenizer, Q4_K_M GGUF imported into Ollama.
+  model: lapa-v0.1.2-q4km
+  timeout_s: 120       # per request; no retries: a local model that timed out once will again
+  num_ctx: 16384       # Ollama silently cuts input beyond the window; golden contracts are long
+  price_input_per_mtok: 0.0   # local model: no token price (electricity is not counted)
+  price_output_per_mtok: 0.0

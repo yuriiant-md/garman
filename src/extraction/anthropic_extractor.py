@@ -11,6 +11,7 @@ from dataclasses import dataclass
 
 import anthropic
 
+from src.extraction.messages import user_message
 from src.extraction.prompts import Prompt
 from src.extraction.result import ExtractionResult, ExtractionStatus
 from src.extraction.sampling import Sampling
@@ -43,10 +44,6 @@ def sampling_params(sampling: Sampling) -> dict[str, float]:
     if sampling.top_p is not None:
         return {"top_p": sampling.top_p}
     return {}
-
-
-def user_message(text: str) -> str:
-    return f"Текст угоди:\n<text>\n{text}\n</text>"
 
 
 def is_retryable(status_code: int) -> bool:

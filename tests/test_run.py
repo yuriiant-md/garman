@@ -8,6 +8,7 @@ from src.extraction.result import ExtractionResult, ExtractionStatus
 from src.extraction.run import (
     cost_usd,
     load_anthropic_config,
+    load_ollama_config,
     load_prices,
     main,
     result_path,
@@ -155,6 +156,44 @@ def test_project_configs_load_the_provider_and_both_samplings():
     assert load_prices(ROOT / "configs" / "models.yaml") == (1.0, 5.0)
     assert load_sampling("precise").temperature == 0
     assert load_sampling("varied").temperature > 0
+
+
+def test_project_configs_load_the_local_model_without_token_prices():
+    config = load_ollama_config(ROOT / "configs" / "models.yaml")
+
+    assert config.model == "lapa-v0.1.2-q4km"
+    assert config.timeout_s > 0 and config.num_ctx >= 8192
+    assert load_prices(ROOT / "configs" / "models.yaml", section="ollama") == (0.0, 0.0)
+
+
+def test_main_with_local_model_needs_no_api_key(tmp_path, monkeypatch, capsys):
+    make_texts(tmp_path / "texts")
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setattr("src.extraction.run.ROOT", tmp_path)  # main prints paths relative to ROOT
+    monkeypatch.setattr("src.extraction.run.RESULTS_DIR", tmp_path / "results")
+    monkeypatch.setattr("src.extraction.run.build_extractor", lambda model: (StubExtractor(), "stub"))
+
+    code = main(["--model", "lapa", "--texts-dir", str(tmp_path / "texts")])
+
+    assert code == 0
+    assert (tmp_path / "results" / "stub__v1__precise.jsonl").exists()
+    assert "ANTHROPIC_API_KEY" not in capsys.readouterr().err
+
+
+def test_main_reports_an_unreachable_ollama_without_traceback(tmp_path, monkeypatch, capsys):
+    make_texts(tmp_path / "texts")
+    monkeypatch.setattr("src.extraction.run.RESULTS_DIR", tmp_path / "results")
+
+    class Unreachable(StubExtractor):
+        def extract(self, text: str, prompt: Prompt, sampling: Sampling) -> ExtractionResult:
+            raise ConnectionError("Failed to connect to Ollama")
+
+    monkeypatch.setattr("src.extraction.run.build_extractor", lambda model: (Unreachable(), "lapa"))
+
+    code = main(["--model", "lapa", "--texts-dir", str(tmp_path / "texts")])
+
+    assert code == 1
+    assert "ollama serve" in capsys.readouterr().err
 
 
 def test_main_without_api_key_stops_before_writing_results(tmp_path, monkeypatch, capsys):

@@ -1,6 +1,7 @@
-"""Run the Claude extractor over the stage-1 texts and save one JSON line per document.
+"""Run an extractor over the stage-1 texts and save one JSON line per document.
 
     uv run --env-file .env python -m src.extraction.run --split dev
+    uv run python -m src.extraction.run --model lapa   # local model through Ollama, no API key
 """
 
 import argparse
@@ -13,9 +14,11 @@ from pathlib import Path
 from typing import Protocol
 
 import anthropic
+import ollama
 import yaml
 
 from src.extraction.anthropic_extractor import AnthropicConfig, AnthropicExtractor
+from src.extraction.ollama_extractor import OllamaConfig, OllamaExtractor
 from src.extraction.prompts import Prompt, load_prompt
 from src.extraction.result import ExtractionResult, ExtractionStatus
 from src.extraction.sampling import Sampling, load_sampling
@@ -31,6 +34,7 @@ TOKENS_PER_PRICE_UNIT = 1_000_000  # prices in configs/models.yaml are per 1M to
 COST_BATCH_DOCS = 1000
 API_KEY_VARIABLE = "ANTHROPIC_API_KEY"
 PARTIAL_SUFFIX = ".partial"
+MODEL_SECTIONS = {"claude": "anthropic", "lapa": "ollama"}  # --model -> section of models.yaml
 
 
 class Extractor(Protocol):
@@ -104,13 +108,30 @@ def load_anthropic_config(path: Path = MODELS_PATH) -> AnthropicConfig:
     )
 
 
-def load_prices(path: Path = MODELS_PATH) -> tuple[float, float]:
-    values = yaml.safe_load(path.read_text(encoding="utf-8"))["anthropic"]
+def load_ollama_config(path: Path = MODELS_PATH) -> OllamaConfig:
+    values = yaml.safe_load(path.read_text(encoding="utf-8"))["ollama"]
+    return OllamaConfig(
+        model=values["model"], timeout_s=float(values["timeout_s"]), num_ctx=int(values["num_ctx"])
+    )
+
+
+def load_prices(path: Path = MODELS_PATH, section: str = "anthropic") -> tuple[float, float]:
+    values = yaml.safe_load(path.read_text(encoding="utf-8"))[section]
     return float(values["price_input_per_mtok"]), float(values["price_output_per_mtok"])
 
 
+def build_extractor(model: str) -> tuple[Extractor, str]:
+    """The extractor for a --model choice and the model id that names its results file."""
+    if model == "lapa":
+        local = load_ollama_config()
+        return OllamaExtractor(local), local.model
+    provider = load_anthropic_config()
+    return AnthropicExtractor(provider), provider.model
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Extract Deal JSON from stage-1 texts with Claude.")
+    parser = argparse.ArgumentParser(description="Extract Deal JSON from stage-1 texts.")
+    parser.add_argument("--model", choices=tuple(MODEL_SECTIONS), default="claude")
     parser.add_argument("--split", choices=SPLITS, default="dev")
     parser.add_argument("--texts-dir", type=Path, default=TEXTS_DIR)
     parser.add_argument("--prompt", type=Path, default=DEFAULT_PROMPT)
@@ -124,7 +145,7 @@ def main(argv: list[str] | None = None) -> int:
     if not paths:
         print(f"No {args.split} texts in {args.texts_dir}; see data/README.md.", file=sys.stderr)
         return 2
-    if not os.environ.get(API_KEY_VARIABLE):
+    if args.model == "claude" and not os.environ.get(API_KEY_VARIABLE):
         print(f"{API_KEY_VARIABLE} is not set: put it in .env and run with "
               "`uv run --env-file .env python -m src.extraction.run`.", file=sys.stderr)
         return 2
@@ -134,17 +155,24 @@ def main(argv: list[str] | None = None) -> int:
         print(error.args[0], file=sys.stderr)
         return 2
     prompt = load_prompt(args.prompt)
-    config = load_anthropic_config()
-    output = result_path(RESULTS_DIR, config.model, prompt.version, sampling.name)
+    extractor, model_id = build_extractor(args.model)
+    output = result_path(RESULTS_DIR, model_id, prompt.version, sampling.name)
     try:
-        records = run_extraction(AnthropicExtractor(config), paths, prompt, sampling, output)
+        records = run_extraction(extractor, paths, prompt, sampling, output)
     except anthropic.APIStatusError as error:
         print(f"Stopped: API error {error.status_code}: {error.message}", file=sys.stderr)
         return 1
     except anthropic.AnthropicError as error:
         print(f"Stopped: {error}", file=sys.stderr)
         return 1
-    summary = summarize(records, *load_prices())
+    except ConnectionError as error:
+        print(f"Stopped: Ollama is not reachable ({error}); start it with `ollama serve`.",
+              file=sys.stderr)
+        return 1
+    except ollama.ResponseError as error:
+        print(f"Stopped: Ollama error {error.status_code}: {error.error}", file=sys.stderr)
+        return 1
+    summary = summarize(records, *load_prices(section=MODEL_SECTIONS[args.model]))
     print(f"Saved {len(records)} results to {output.relative_to(ROOT)}")
     print(json.dumps(summary, indent=2))
     return 0

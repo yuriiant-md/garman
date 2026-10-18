@@ -1,0 +1,50 @@
+{
+  "id": "synthetic_008",
+  "split": "dev",
+  "model": "claude-opus-5-5 (written in-session)",
+  "seed": 42,
+  "candidate": 8,
+  "generation_attempts": 1,
+  "dirtiness": {
+    "length": "short",
+    "language": "uk_ru",
+    "typos": "none",
+    "abbreviations": false
+  },
+  "deal": {
+    "crop": "wheat",
+    "quantity_t": 100.0,
+    "tolerance": {
+      "pct": 3.0,
+      "option": "seller"
+    },
+    "price": {
+      "amount_per_t": 9250.0,
+      "currency": "UAH",
+      "vat_included": false
+    },
+    "basis": null,
+    "delivery": {
+      "place": "Одеса",
+      "date_from": "2026-11-22",
+      "date_to": "2026-11-25",
+      "period_raw": null
+    },
+    "payment": {
+      "days": 7,
+      "days_type": "calendar",
+      "trigger": "after_documents",
+      "vat_after_registration": null
+    },
+    "penalties": null,
+    "quality": {
+      "grade": "4",
+      "protein_min": 10.5,
+      "moisture_max": 13.5,
+      "foreign_matter_max": 2.0,
+      "lab": "seller"
+    },
+    "buyer": "ТОВ \"Зерно Поле 08\""
+  },
+  "text_path": "data/texts/synthetic_008.txt"
+}

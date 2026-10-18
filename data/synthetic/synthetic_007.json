@@ -1,0 +1,50 @@
+{
+  "id": "synthetic_007",
+  "split": "dev",
+  "model": "claude-opus-5-5 (written in-session)",
+  "seed": 42,
+  "candidate": 7,
+  "generation_attempts": 1,
+  "dirtiness": {
+    "length": "short",
+    "language": "uk_ru",
+    "typos": "few",
+    "abbreviations": false
+  },
+  "deal": {
+    "crop": null,
+    "quantity_t": 2500.0,
+    "tolerance": {
+      "pct": 3.0,
+      "option": "buyer"
+    },
+    "price": {
+      "amount_per_t": 8850.0,
+      "currency": "UAH",
+      "vat_included": false
+    },
+    "basis": "CPT",
+    "delivery": {
+      "place": "Одеса",
+      "date_from": "2026-11-11",
+      "date_to": "2026-11-18",
+      "period_raw": null
+    },
+    "payment": {
+      "days": 5,
+      "days_type": "calendar",
+      "trigger": "prepayment",
+      "vat_after_registration": null
+    },
+    "penalties": null,
+    "quality": {
+      "grade": "2",
+      "protein_min": 12.5,
+      "moisture_max": 13.5,
+      "foreign_matter_max": 1.0,
+      "lab": "independent"
+    },
+    "buyer": "ТОВ \"Зерно Поле 07\""
+  },
+  "text_path": "data/texts/synthetic_007.txt"
+}

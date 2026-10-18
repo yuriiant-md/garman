@@ -1,0 +1,58 @@
+{
+  "id": "synthetic_016",
+  "split": "dev",
+  "model": "claude-opus-5-5 (written in-session)",
+  "seed": 42,
+  "candidate": 16,
+  "generation_attempts": 1,
+  "dirtiness": {
+    "length": "line",
+    "language": "uk_ru",
+    "typos": "few",
+    "abbreviations": true
+  },
+  "deal": {
+    "crop": "wheat",
+    "quantity_t": 1000.0,
+    "tolerance": {
+      "pct": 3.0,
+      "option": "seller"
+    },
+    "price": {
+      "amount_per_t": 9400.0,
+      "currency": "UAH",
+      "vat_included": true
+    },
+    "basis": "CPT",
+    "delivery": {
+      "place": "Полтава",
+      "date_from": "2026-11-26",
+      "date_to": "2026-11-28",
+      "period_raw": null
+    },
+    "payment": {
+      "days": 14,
+      "days_type": "calendar",
+      "trigger": "after_documents",
+      "vat_after_registration": null
+    },
+    "penalties": [
+      {
+        "payer": "seller",
+        "trigger": "under_delivery",
+        "amount": 5.0,
+        "unit": "one_time_pct",
+        "cap_pct": null
+      }
+    ],
+    "quality": {
+      "grade": "фураж",
+      "protein_min": null,
+      "moisture_max": 13.5,
+      "foreign_matter_max": 1.0,
+      "lab": "buyer"
+    },
+    "buyer": "ТОВ \"Зерно Поле 16\""
+  },
+  "text_path": "data/texts/synthetic_016.txt"
+}

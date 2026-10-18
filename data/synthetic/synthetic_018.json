@@ -1,0 +1,37 @@
+{
+  "id": "synthetic_018",
+  "split": "dev",
+  "model": "claude-opus-5-5 (written in-session)",
+  "seed": 42,
+  "candidate": 18,
+  "generation_attempts": 1,
+  "dirtiness": {
+    "length": "long",
+    "language": "uk_ru",
+    "typos": "many",
+    "abbreviations": true
+  },
+  "deal": {
+    "crop": "wheat",
+    "quantity_t": 500.0,
+    "tolerance": null,
+    "price": null,
+    "basis": "DAP",
+    "delivery": {
+      "place": "Полтава",
+      "date_from": null,
+      "date_to": null,
+      "period_raw": "протягом 20 днів після підписання договору"
+    },
+    "payment": {
+      "days": 3,
+      "days_type": "calendar",
+      "trigger": "after_delivery",
+      "vat_after_registration": null
+    },
+    "penalties": null,
+    "quality": null,
+    "buyer": "ТОВ \"Зерно Поле 18\""
+  },
+  "text_path": "data/texts/synthetic_018.txt"
+}

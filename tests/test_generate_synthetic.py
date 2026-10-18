@@ -1,3 +1,4 @@
+import functools
 import itertools
 import json
 import random
@@ -220,12 +221,16 @@ def test_overwrite_removes_stale_outputs_before_generating(tmp_path: Path) -> No
 
 
 def test_main_reports_ollama_timeout_without_traceback(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
     def time_out(*_args: object) -> str:
         raise httpx.ReadTimeout("timed out")
 
     monkeypatch.setattr(generate_synthetic, "ollama_generate", time_out)
+    # Keep the run away from the repository's data/, which may already hold a dev set.
+    monkeypatch.setattr(
+        generate_synthetic, "generate_dataset", functools.partial(generate_dataset, root=tmp_path)
+    )
 
     assert main(["--model", "llama3.1:8b", "--count", "1", "--examples", "0"]) == 1
     assert "Generation failed: timed out" in capsys.readouterr().err

@@ -1,0 +1,47 @@
+{
+  "id": "synthetic_019",
+  "split": "dev",
+  "model": "claude-opus-5-5 (written in-session)",
+  "seed": 42,
+  "candidate": 19,
+  "generation_attempts": 1,
+  "dirtiness": {
+    "length": "short",
+    "language": "uk",
+    "typos": "none",
+    "abbreviations": false
+  },
+  "deal": {
+    "crop": null,
+    "quantity_t": 250.0,
+    "tolerance": {
+      "pct": 10.0,
+      "option": "buyer"
+    },
+    "price": {
+      "amount_per_t": 9600.0,
+      "currency": "UAH",
+      "vat_included": false
+    },
+    "basis": null,
+    "delivery": {
+      "place": "Миколаїв",
+      "date_from": "2026-11-05",
+      "date_to": "2026-11-12",
+      "period_raw": null
+    },
+    "payment": null,
+    "penalties": [
+      {
+        "payer": "seller",
+        "trigger": "under_delivery",
+        "amount": 20.0,
+        "unit": "one_time_pct",
+        "cap_pct": null
+      }
+    ],
+    "quality": null,
+    "buyer": "ТОВ \"Зерно Поле 19\""
+  },
+  "text_path": "data/texts/synthetic_019.txt"
+}

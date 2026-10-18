@@ -1,0 +1,39 @@
+{
+  "id": "synthetic_013",
+  "split": "dev",
+  "model": "claude-opus-5-5 (written in-session)",
+  "seed": 42,
+  "candidate": 13,
+  "generation_attempts": 1,
+  "dirtiness": {
+    "length": "short",
+    "language": "uk_ru",
+    "typos": "none",
+    "abbreviations": true
+  },
+  "deal": {
+    "crop": "wheat",
+    "quantity_t": 2500.0,
+    "tolerance": {
+      "pct": 3.0,
+      "option": "seller"
+    },
+    "price": {
+      "amount_per_t": 8850.0,
+      "currency": "UAH",
+      "vat_included": false
+    },
+    "basis": "FCA",
+    "delivery": {
+      "place": "Одеса",
+      "date_from": "2026-12-04",
+      "date_to": "2026-12-11",
+      "period_raw": null
+    },
+    "payment": null,
+    "penalties": null,
+    "quality": null,
+    "buyer": "ТОВ \"Зерно Поле 13\""
+  },
+  "text_path": "data/texts/synthetic_013.txt"
+}

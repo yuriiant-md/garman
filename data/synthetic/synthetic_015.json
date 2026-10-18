@@ -1,0 +1,36 @@
+{
+  "id": "synthetic_015",
+  "split": "dev",
+  "model": "claude-opus-5-5 (written in-session)",
+  "seed": 42,
+  "candidate": 15,
+  "generation_attempts": 1,
+  "dirtiness": {
+    "length": "line",
+    "language": "uk",
+    "typos": "few",
+    "abbreviations": true
+  },
+  "deal": {
+    "crop": "wheat",
+    "quantity_t": 1000.0,
+    "tolerance": null,
+    "price": {
+      "amount_per_t": 9650.0,
+      "currency": "UAH",
+      "vat_included": true
+    },
+    "basis": "EXW",
+    "delivery": {
+      "place": "Миколаїв",
+      "date_from": "2026-11-24",
+      "date_to": "2026-11-30",
+      "period_raw": null
+    },
+    "payment": null,
+    "penalties": null,
+    "quality": null,
+    "buyer": "ТОВ \"Зерно Поле 15\""
+  },
+  "text_path": "data/texts/synthetic_015.txt"
+}

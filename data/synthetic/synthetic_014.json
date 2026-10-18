@@ -1,0 +1,65 @@
+{
+  "id": "synthetic_014",
+  "split": "dev",
+  "model": "claude-opus-5-5 (written in-session)",
+  "seed": 42,
+  "candidate": 14,
+  "generation_attempts": 1,
+  "dirtiness": {
+    "length": "letter",
+    "language": "uk_en",
+    "typos": "few",
+    "abbreviations": true
+  },
+  "deal": {
+    "crop": "wheat",
+    "quantity_t": 250.0,
+    "tolerance": {
+      "pct": 3.0,
+      "option": "seller"
+    },
+    "price": {
+      "amount_per_t": 8400.0,
+      "currency": "UAH",
+      "vat_included": false
+    },
+    "basis": "DAP",
+    "delivery": {
+      "place": "Полтава",
+      "date_from": null,
+      "date_to": null,
+      "period_raw": "протягом 30 днів з дати договору"
+    },
+    "payment": {
+      "days": 7,
+      "days_type": "banking",
+      "trigger": "after_delivery",
+      "vat_after_registration": null
+    },
+    "penalties": [
+      {
+        "payer": "seller",
+        "trigger": "late_delivery",
+        "amount": 0.2,
+        "unit": "pct_per_day",
+        "cap_pct": 5.0
+      },
+      {
+        "payer": "seller",
+        "trigger": "under_delivery",
+        "amount": 10.0,
+        "unit": "one_time_pct",
+        "cap_pct": null
+      }
+    ],
+    "quality": {
+      "grade": "3",
+      "protein_min": 11.0,
+      "moisture_max": 13.5,
+      "foreign_matter_max": 2.0,
+      "lab": "independent"
+    },
+    "buyer": "ТОВ \"Зерно Поле 14\""
+  },
+  "text_path": "data/texts/synthetic_014.txt"
+}

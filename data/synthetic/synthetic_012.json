@@ -1,0 +1,44 @@
+{
+  "id": "synthetic_012",
+  "split": "dev",
+  "model": "claude-opus-5-5 (written in-session)",
+  "seed": 42,
+  "candidate": 12,
+  "generation_attempts": 1,
+  "dirtiness": {
+    "length": "long",
+    "language": "uk_ru",
+    "typos": "many",
+    "abbreviations": false
+  },
+  "deal": {
+    "crop": "wheat",
+    "quantity_t": 500.0,
+    "tolerance": {
+      "pct": 5.0,
+      "option": "seller"
+    },
+    "price": {
+      "amount_per_t": 8800.0,
+      "currency": "UAH",
+      "vat_included": false
+    },
+    "basis": "FCA",
+    "delivery": {
+      "place": "Полтава",
+      "date_from": null,
+      "date_to": null,
+      "period_raw": "протягом 30 днів з дати договору"
+    },
+    "payment": {
+      "days": 3,
+      "days_type": "calendar",
+      "trigger": "after_delivery",
+      "vat_after_registration": true
+    },
+    "penalties": null,
+    "quality": null,
+    "buyer": "ТОВ \"Зерно Поле 12\""
+  },
+  "text_path": "data/texts/synthetic_012.txt"
+}

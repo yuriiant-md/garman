@@ -1,0 +1,44 @@
+{
+  "id": "synthetic_004",
+  "split": "dev",
+  "model": "claude-opus-5-5 (written in-session)",
+  "seed": 42,
+  "candidate": 4,
+  "generation_attempts": 1,
+  "dirtiness": {
+    "length": "short",
+    "language": "uk_ru",
+    "typos": "none",
+    "abbreviations": false
+  },
+  "deal": {
+    "crop": "wheat",
+    "quantity_t": 250.0,
+    "tolerance": {
+      "pct": 5.0,
+      "option": "buyer"
+    },
+    "price": {
+      "amount_per_t": 8600.0,
+      "currency": "UAH",
+      "vat_included": false
+    },
+    "basis": "CPT",
+    "delivery": {
+      "place": "Одеса",
+      "date_from": null,
+      "date_to": null,
+      "period_raw": "протягом 30 днів з дати договору"
+    },
+    "payment": {
+      "days": 5,
+      "days_type": "banking",
+      "trigger": "after_delivery",
+      "vat_after_registration": null
+    },
+    "penalties": null,
+    "quality": null,
+    "buyer": "ТОВ \"Зерно Поле 04\""
+  },
+  "text_path": "data/texts/synthetic_004.txt"
+}

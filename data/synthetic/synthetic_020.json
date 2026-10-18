@@ -1,0 +1,53 @@
+{
+  "id": "synthetic_020",
+  "split": "dev",
+  "model": "claude-opus-5-5 (written in-session)",
+  "seed": 42,
+  "candidate": 20,
+  "generation_attempts": 1,
+  "dirtiness": {
+    "length": "short",
+    "language": "uk",
+    "typos": "few",
+    "abbreviations": false
+  },
+  "deal": {
+    "crop": null,
+    "quantity_t": 100.0,
+    "tolerance": {
+      "pct": 10.0,
+      "option": "buyer"
+    },
+    "price": {
+      "amount_per_t": 9550.0,
+      "currency": "UAH",
+      "vat_included": true
+    },
+    "basis": null,
+    "delivery": {
+      "place": "Черкаси",
+      "date_from": "2026-11-14",
+      "date_to": "2026-11-21",
+      "period_raw": null
+    },
+    "payment": null,
+    "penalties": [
+      {
+        "payer": "seller",
+        "trigger": "late_delivery",
+        "amount": 20.0,
+        "unit": "one_time_pct",
+        "cap_pct": null
+      }
+    ],
+    "quality": {
+      "grade": "фураж",
+      "protein_min": null,
+      "moisture_max": 13.5,
+      "foreign_matter_max": 1.0,
+      "lab": "independent"
+    },
+    "buyer": "ТОВ \"Зерно Поле 20\""
+  },
+  "text_path": "data/texts/synthetic_020.txt"
+}

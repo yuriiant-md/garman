@@ -1,0 +1,36 @@
+{
+  "id": "synthetic_017",
+  "split": "dev",
+  "model": "claude-opus-5-5 (written in-session)",
+  "seed": 42,
+  "candidate": 17,
+  "generation_attempts": 1,
+  "dirtiness": {
+    "length": "long",
+    "language": "uk",
+    "typos": "few",
+    "abbreviations": true
+  },
+  "deal": {
+    "crop": "wheat",
+    "quantity_t": 250.0,
+    "tolerance": null,
+    "price": {
+      "amount_per_t": 8300.0,
+      "currency": "UAH",
+      "vat_included": false
+    },
+    "basis": "EXW",
+    "delivery": {
+      "place": "Полтава",
+      "date_from": "2026-12-14",
+      "date_to": "2026-12-16",
+      "period_raw": null
+    },
+    "payment": null,
+    "penalties": null,
+    "quality": null,
+    "buyer": "ТОВ \"Зерно Поле 17\""
+  },
+  "text_path": "data/texts/synthetic_017.txt"
+}

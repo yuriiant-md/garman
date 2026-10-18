@@ -1,0 +1,9 @@
+# Sampling configurations for stage 1.
+# Claude accepts temperature or top_p, never both: when both are set, only temperature is sent
+# and the result logs top_p as null. Ollama receives both values.
+precise:
+  temperature: 0.0
+  top_p: 1.0
+varied:
+  temperature: 0.7
+  top_p: 0.9

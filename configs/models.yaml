@@ -1,0 +1,10 @@
+# Models compared in stage 1. Prices are USD per 1M tokens.
+anthropic:
+  # The only Claude model with both structured outputs and sampling parameters;
+  # newer models reject non-default temperature/top_p.
+  model: claude-haiku-4-5
+  timeout_s: 30        # per request; the SDK retries timeouts too
+  max_retries: 3       # SDK retries 408/409/429/5xx and connection errors with exponential backoff
+  max_tokens: 4096
+  price_input_per_mtok: 1.0
+  price_output_per_mtok: 5.0

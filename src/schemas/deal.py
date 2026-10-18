@@ -86,14 +86,20 @@ def normalize_grade(value: str) -> str:
 
 
 class Tolerance(BaseModel):
-    pct: float | None = Field(default=None, ge=0, le=100)
-    option: Party | None = None
+    pct: float | None = Field(
+        default=None, ge=0, le=100, description="Allowed quantity deviation, percent."
+    )
+    option: Party | None = Field(
+        default=None, description="Party that chooses the tolerance (buyer's or seller's option)."
+    )
 
 
 class Price(BaseModel):
-    amount_per_t: float | None = Field(default=None, gt=0)
+    amount_per_t: float | None = Field(default=None, gt=0, description="Price per tonne.")
     currency: Currency | None = None
-    vat_included: bool | None = None
+    vat_included: bool | None = Field(
+        default=None, description="True if the price includes VAT, false if it excludes VAT."
+    )
 
     @model_validator(mode="after")
     def require_currency_for_amount(self) -> "Price":
@@ -103,10 +109,16 @@ class Price(BaseModel):
 
 
 class Delivery(BaseModel):
-    place: str | None = None
-    date_from: date | None = None
-    date_to: date | None = None
-    period_raw: str | None = None
+    place: str | None = Field(default=None, description="Delivery point: elevator, port or town.")
+    date_from: date | None = Field(default=None, description="First day of the delivery period.")
+    date_to: date | None = Field(default=None, description="Last day of the delivery period.")
+    period_raw: str | None = Field(
+        default=None,
+        description=(
+            "Relative delivery period copied verbatim, e.g. 'within 10 days after payment'; "
+            "date_from and date_to stay null then."
+        ),
+    )
 
     @model_validator(mode="after")
     def validate_date_range(self) -> "Delivery":
@@ -120,26 +132,49 @@ class Delivery(BaseModel):
 
 
 class Payment(BaseModel):
-    days: int | None = None
-    days_type: DaysType | None = None
-    trigger: PaymentTrigger | None = None
-    vat_after_registration: bool | None = None
+    days: int | None = Field(default=None, description="Number of days to pay.")
+    days_type: DaysType | None = Field(default=None, description="Calendar or banking days.")
+    trigger: PaymentTrigger | None = Field(
+        default=None, description="Event the payment term is counted from."
+    )
+    vat_after_registration: bool | None = Field(
+        default=None,
+        description="True if the VAT part is paid only after the tax invoice is registered.",
+    )
 
 
 class Penalty(BaseModel):
-    payer: Party | None = None
-    trigger: PenaltyTrigger | None = None
-    amount: float | None = Field(default=None, gt=0)
-    unit: PenaltyUnit | None = None
-    cap_pct: float | None = Field(default=None, ge=0, le=100)
+    payer: Party | None = Field(default=None, description="Party that pays the penalty.")
+    trigger: PenaltyTrigger | None = Field(
+        default=None, description="Breach that triggers the penalty."
+    )
+    amount: float | None = Field(default=None, gt=0, description="Penalty size in the given unit.")
+    unit: PenaltyUnit | None = Field(
+        default=None,
+        description=(
+            "pct_per_day: percent of the sum per day; nbu_rate_multiple: multiple of the "
+            "NBU discount rate; one_time_pct: one-time percent of the sum."
+        ),
+    )
+    cap_pct: float | None = Field(
+        default=None, ge=0, le=100, description="Maximum total penalty, percent of the sum."
+    )
 
 
 class Quality(BaseModel):
-    grade: str | None = None
-    protein_min: float | None = Field(default=None, ge=0, le=100)
-    moisture_max: float | None = Field(default=None, ge=0, le=100)
-    foreign_matter_max: float | None = Field(default=None, ge=0, le=100)
-    lab: Lab | None = None
+    grade: str | None = Field(
+        default=None, description="Wheat class as written: '2', '3', '4' or 'фураж'."
+    )
+    protein_min: float | None = Field(
+        default=None, ge=0, le=100, description="Minimum protein, percent."
+    )
+    moisture_max: float | None = Field(
+        default=None, ge=0, le=100, description="Maximum moisture, percent."
+    )
+    foreign_matter_max: float | None = Field(
+        default=None, ge=0, le=100, description="Maximum foreign matter, percent."
+    )
+    lab: Lab | None = Field(default=None, description="Whose laboratory determines quality.")
 
     @field_validator("grade")
     @classmethod
@@ -151,12 +186,14 @@ class Quality(BaseModel):
 
 class Deal(BaseModel):
     crop: Crop | None = None
-    quantity_t: float | None = Field(default=None, gt=0)
+    quantity_t: float | None = Field(default=None, gt=0, description="Quantity in tonnes.")
     tolerance: Tolerance | None = None
     price: Price | None = None
-    basis: Basis | None = None
+    basis: Basis | None = Field(default=None, description="Incoterms delivery basis.")
     delivery: Delivery | None = None
     payment: Payment | None = None
-    penalties: list[Penalty] | None = None
+    penalties: list[Penalty] | None = Field(
+        default=None, description="Every penalty stated in the text."
+    )
     quality: Quality | None = None
-    buyer: str | None = None
+    buyer: str | None = Field(default=None, description="Buyer company name, not a person.")

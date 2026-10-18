@@ -1,10 +1,14 @@
 from datetime import date
+from enum import StrEnum
 
 import pytest
 from pydantic import ValidationError
 
 from src.schemas.deal import (
+    Basis,
+    Crop,
     Currency,
+    DaysType,
     Deal,
     Delivery,
     Lab,
@@ -111,3 +115,29 @@ def test_deal_rejects_invalid_values(data: dict[str, object]) -> None:
 def test_delivery_rejects_reversed_date_range() -> None:
     with pytest.raises(ValidationError, match="date_from must be on or before date_to"):
         Delivery(date_from="2026-10-25", date_to="2026-10-20")
+
+
+@pytest.mark.parametrize(
+    "enum_type",
+    [Crop, Party, Currency, Basis, DaysType, PaymentTrigger, PenaltyTrigger, PenaltyUnit, Lab],
+)
+def test_every_enum_accepts_other(enum_type: type[StrEnum]) -> None:
+    assert enum_type("other").value == "other"
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("3", "3"),
+        ("3 клас", "3"),
+        ("3кл", "3"),
+        ("3-го класу", "3"),
+        ("III клас", "3"),
+        ("клас 2", "2"),
+        ("фуражна", "фураж"),
+        ("Фураж", "фураж"),
+        ("екстра", "екстра"),
+    ],
+)
+def test_quality_normalizes_grade_to_vocabulary(raw: str, expected: str) -> None:
+    assert Quality(grade=raw).grade == expected

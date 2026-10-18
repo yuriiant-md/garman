@@ -1,7 +1,11 @@
+import re
 from datetime import date
 from enum import StrEnum
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+FEED_GRADE = "фураж"
+ROMAN_GRADES = {"i": "1", "ii": "2", "iii": "3", "iv": "4", "v": "5", "vi": "6"}
 
 
 class Crop(StrEnum):
@@ -17,12 +21,14 @@ class Crop(StrEnum):
 class Party(StrEnum):
     BUYER = "buyer"
     SELLER = "seller"
+    OTHER = "other"
 
 
 class Currency(StrEnum):
     UAH = "UAH"
     USD = "USD"
     EUR = "EUR"
+    OTHER = "other"
 
 
 class Basis(StrEnum):
@@ -37,6 +43,7 @@ class Basis(StrEnum):
 class DaysType(StrEnum):
     CALENDAR = "calendar"
     BANKING = "banking"
+    OTHER = "other"
 
 
 class PaymentTrigger(StrEnum):
@@ -57,12 +64,25 @@ class PenaltyUnit(StrEnum):
     PCT_PER_DAY = "pct_per_day"
     NBU_RATE_MULTIPLE = "nbu_rate_multiple"
     ONE_TIME_PCT = "one_time_pct"
+    OTHER = "other"
 
 
 class Lab(StrEnum):
     BUYER = "buyer"
     SELLER = "seller"
     INDEPENDENT = "independent"
+    OTHER = "other"
+
+
+def normalize_grade(value: str) -> str:
+    """Reduce "3 клас", "III", "фуражна" to the grade vocabulary: "1"…"6" or "фураж"."""
+    text = re.sub(r"клас\w*|кл\.?", " ", value.casefold()).strip(" .-")
+    if text.startswith(FEED_GRADE):
+        return FEED_GRADE
+    ordinal = re.fullmatch(r"(\d)\s*-?\s*(?:го|ий|ій|й)?", text)
+    if ordinal:
+        return ordinal.group(1)
+    return ROMAN_GRADES.get(text, text)
 
 
 class Tolerance(BaseModel):
@@ -120,6 +140,13 @@ class Quality(BaseModel):
     moisture_max: float | None = Field(default=None, ge=0, le=100)
     foreign_matter_max: float | None = Field(default=None, ge=0, le=100)
     lab: Lab | None = None
+
+    @field_validator("grade")
+    @classmethod
+    def canonical_grade(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return normalize_grade(value) or None
 
 
 class Deal(BaseModel):

@@ -24,6 +24,14 @@ cp .env.example .env
 
 Команда `make run` буде запускати повний прогін етапу 1 після реалізації extraction pipeline.
 
+Підготовка golden set із договорів Prozorro (докладно — у `data/README.md`):
+
+```bash
+uv run python -m scripts.fetch_prozorro    # кандидати в data/raw/prozorro_candidates/
+uv run python -m scripts.pdf_to_text       # data/raw/prozorro/*.pdf → data/texts/prozorro_NNN.txt
+uv run python -m scripts.check_golden      # перевірка ручної розмітки data/golden/*.json
+```
+
 ## Структура
 
 - `src/schemas/` — Pydantic-схеми угод та інших сутностей.

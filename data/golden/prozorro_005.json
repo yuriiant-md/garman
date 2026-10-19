@@ -5,8 +5,9 @@
   "tender_id": "UA-2021-08-04-006985-b",
   "text_path": "data/texts/prozorro_005.txt",
   "annotation": {
-    "by": "claude-opus-5-5 (draft, 2026-10-19)",
-    "reviewed_by_author": false
+    "by": "author",
+    "draft": "claude-opus-5-5",
+    "reviewed_by_author": true
   },
   "deal": {
     "crop": "barley",

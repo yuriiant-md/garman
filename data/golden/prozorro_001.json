@@ -5,8 +5,9 @@
   "tender_id": "UA-2016-11-02-000170-c",
   "text_path": "data/texts/prozorro_001.txt",
   "annotation": {
-    "by": "claude-opus-5-5 (draft, 2026-10-19)",
-    "reviewed_by_author": false
+    "by": "author",
+    "draft": "claude-opus-5-5",
+    "reviewed_by_author": true
   },
   "deal": {
     "crop": "corn",

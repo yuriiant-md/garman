@@ -5,8 +5,9 @@
   "tender_id": "UA-2022-02-03-013932-b",
   "text_path": "data/texts/prozorro_006.txt",
   "annotation": {
-    "by": "claude-opus-5-5 (draft, 2026-10-19)",
-    "reviewed_by_author": false
+    "by": "author",
+    "draft": "claude-opus-5-5",
+    "reviewed_by_author": true
   },
   "deal": {
     "crop": "other",

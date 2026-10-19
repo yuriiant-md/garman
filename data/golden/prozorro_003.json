@@ -1,0 +1,88 @@
+{
+  "id": "prozorro_003",
+  "split": "test",
+  "source": "prozorro",
+  "tender_id": "UA-2019-02-25-000143-b",
+  "text_path": "data/texts/prozorro_003.txt",
+  "annotation": {
+    "by": "claude-opus-5-5 (draft, 2026-10-19)",
+    "reviewed_by_author": false
+  },
+  "deal": {
+    "crop": "barley",
+    "quantity_t": 6.0,
+    "tolerance": null,
+    "price": {
+      "amount_per_t": 8000.0,
+      "currency": "UAH",
+      "vat_included": false
+    },
+    "basis": "other",
+    "delivery": {
+      "place": "м. Синельникове, вул. Медова (Карла Маркса), будинок 44",
+      "date_from": null,
+      "date_to": null,
+      "period_raw": "на протязі 5-ти робочих днів після отримання замовлення Покупця"
+    },
+    "payment": {
+      "days": 10,
+      "days_type": "banking",
+      "trigger": "after_delivery",
+      "vat_after_registration": null
+    },
+    "penalties": [
+      {
+        "payer": "seller",
+        "trigger": "late_delivery",
+        "amount": 0.1,
+        "unit": "pct_per_day",
+        "cap_pct": null
+      },
+      {
+        "payer": "seller",
+        "trigger": "other",
+        "amount": 0.1,
+        "unit": "pct_per_day",
+        "cap_pct": null
+      },
+      {
+        "payer": "seller",
+        "trigger": "other",
+        "amount": 20.0,
+        "unit": "one_time_pct",
+        "cap_pct": null
+      },
+      {
+        "payer": "buyer",
+        "trigger": "late_payment",
+        "amount": 2.0,
+        "unit": "nbu_rate_multiple",
+        "cap_pct": null
+      },
+      {
+        "payer": "seller",
+        "trigger": "other",
+        "amount": 20.0,
+        "unit": "one_time_pct",
+        "cap_pct": null
+      }
+    ],
+    "quality": null,
+    "buyer": "Комунальне підприємство «Декоративні культури» Дніпропетровської обласної ради»"
+  },
+  "evidence": {
+    "crop": "п. 1.1",
+    "quantity_t": "п. 1.1 (6 тн)",
+    "price": "п. 1.1 (без ПДВ)",
+    "basis": "п. 2.2 (доставка за рахунок Продавця)",
+    "delivery.place": "п. 1.2",
+    "delivery.period_raw": "п. 1.3",
+    "payment": "п. 2.3",
+    "penalties[0]": "п. 7.3",
+    "penalties[1]": "п. 7.4 (прострочення заміни)",
+    "penalties[2]": "п. 7.5 (відмова від заміни)",
+    "penalties[3]": "п. 7.6",
+    "penalties[4]": "п. 7.7 (податкова накладна)",
+    "buyer": "преамбула"
+  }
+}

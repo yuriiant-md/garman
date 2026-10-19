@@ -1,0 +1,79 @@
+{
+  "id": "prozorro_002",
+  "split": "test",
+  "source": "prozorro",
+  "tender_id": "UA-2018-10-04-001910-c",
+  "text_path": "data/texts/prozorro_002.txt",
+  "annotation": {
+    "by": "claude-opus-5-5 (draft, 2026-10-19)",
+    "reviewed_by_author": false
+  },
+  "deal": {
+    "crop": "barley",
+    "quantity_t": 6.0,
+    "tolerance": null,
+    "price": {
+      "amount_per_t": 7520.0,
+      "currency": "UAH",
+      "vat_included": false
+    },
+    "basis": "EXW",
+    "delivery": {
+      "place": "склад Продавця",
+      "date_from": null,
+      "date_to": null,
+      "period_raw": null
+    },
+    "payment": {
+      "days": null,
+      "days_type": null,
+      "trigger": "other",
+      "vat_after_registration": null
+    },
+    "penalties": [
+      {
+        "payer": "buyer",
+        "trigger": "late_payment",
+        "amount": 25.0,
+        "unit": "one_time_pct",
+        "cap_pct": null
+      },
+      {
+        "payer": "buyer",
+        "trigger": "late_payment",
+        "amount": 2.0,
+        "unit": "nbu_rate_multiple",
+        "cap_pct": null
+      },
+      {
+        "payer": "buyer",
+        "trigger": "late_payment",
+        "amount": 15.0,
+        "unit": "other",
+        "cap_pct": null
+      },
+      {
+        "payer": "seller",
+        "trigger": "late_delivery",
+        "amount": 25.0,
+        "unit": "one_time_pct",
+        "cap_pct": null
+      }
+    ],
+    "quality": null,
+    "buyer": "Дослідна станція Помології ім.Л.П. Симиренка інституту садівництва НААН"
+  },
+  "evidence": {
+    "crop": "додаток №1",
+    "quantity_t": "додаток №1 (6 000 кг)",
+    "price": "додаток №1 (7,52 грн/кг без ПДВ)",
+    "basis": "п. 4.1 («ЕХ\\¥» = EXW)",
+    "delivery.place": "п. 4.1",
+    "payment.trigger": "п. 8.2 (до 05.10.2018)",
+    "penalties[0]": "п. 9.2 (штраф)",
+    "penalties[1]": "п. 9.2 (пеня)",
+    "penalties[2]": "п. 9.3 (15% річних)",
+    "penalties[3]": "п. 9.5",
+    "buyer": "преамбула"
+  }
+}

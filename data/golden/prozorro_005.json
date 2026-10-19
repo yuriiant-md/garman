@@ -1,0 +1,79 @@
+{
+  "id": "prozorro_005",
+  "split": "test",
+  "source": "prozorro",
+  "tender_id": "UA-2021-08-04-006985-b",
+  "text_path": "data/texts/prozorro_005.txt",
+  "annotation": {
+    "by": "claude-opus-5-5 (draft, 2026-10-19)",
+    "reviewed_by_author": false
+  },
+  "deal": {
+    "crop": "barley",
+    "quantity_t": 10.0,
+    "tolerance": null,
+    "price": {
+      "amount_per_t": 5490.0,
+      "currency": "UAH",
+      "vat_included": false
+    },
+    "basis": "other",
+    "delivery": {
+      "place": "вул. Шиферна, З, м. Кривий Ріг, Дніпропетровська обл.",
+      "date_from": null,
+      "date_to": null,
+      "period_raw": "протягом ЗО (тридцяти) робочих днів з дня підписання цього Договору"
+    },
+    "payment": {
+      "days": 30,
+      "days_type": "banking",
+      "trigger": "after_delivery",
+      "vat_after_registration": null
+    },
+    "penalties": [
+      {
+        "payer": "seller",
+        "trigger": "late_delivery",
+        "amount": 0.1,
+        "unit": "pct_per_day",
+        "cap_pct": null
+      },
+      {
+        "payer": "seller",
+        "trigger": "late_delivery",
+        "amount": 7.0,
+        "unit": "one_time_pct",
+        "cap_pct": null
+      },
+      {
+        "payer": "seller",
+        "trigger": "other",
+        "amount": 20.0,
+        "unit": "one_time_pct",
+        "cap_pct": null
+      }
+    ],
+    "quality": {
+      "grade": "3",
+      "protein_min": null,
+      "moisture_max": null,
+      "foreign_matter_max": null,
+      "lab": null
+    },
+    "buyer": "Державна установа «Криворізька виправна колонія (№80)»"
+  },
+  "evidence": {
+    "crop": "п. 1.1",
+    "quantity_t": "специфікація (10000 кг)",
+    "price": "специфікація (5,49 грн/кг), п. 2.1 (без ПДВ)",
+    "basis": "п. 3.2",
+    "delivery.place": "п. 3.2",
+    "delivery.period_raw": "п. 3.1",
+    "payment": "п. 2.2",
+    "penalties[0]": "п. 6.2 (пеня)",
+    "penalties[1]": "п. 6.2 (штраф понад 30 днів)",
+    "penalties[2]": "п. 6.3",
+    "quality.grade": "п. 1.1 («Зй клас»)",
+    "buyer": "преамбула"
+  }
+}

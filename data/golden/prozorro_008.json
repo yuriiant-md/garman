@@ -1,0 +1,87 @@
+{
+  "id": "prozorro_008",
+  "split": "test",
+  "source": "prozorro",
+  "tender_id": "UA-2023-03-17-001404-a",
+  "text_path": "data/texts/prozorro_008.txt",
+  "annotation": {
+    "by": "claude-opus-5-5 (draft, 2026-10-19)",
+    "reviewed_by_author": false
+  },
+  "deal": {
+    "crop": "corn",
+    "quantity_t": 45.0,
+    "tolerance": null,
+    "price": {
+      "amount_per_t": 6500.0,
+      "currency": "UAH",
+      "vat_included": false
+    },
+    "basis": "other",
+    "delivery": {
+      "place": "39000, Україна, Полтавська область, м.Глобине, вул.Лялі Убийвовк,149",
+      "date_from": null,
+      "date_to": "2023-12-31",
+      "period_raw": null
+    },
+    "payment": {
+      "days": 30,
+      "days_type": "calendar",
+      "trigger": "after_delivery",
+      "vat_after_registration": null
+    },
+    "penalties": [
+      {
+        "payer": "buyer",
+        "trigger": "late_payment",
+        "amount": 1.0,
+        "unit": "nbu_rate_multiple",
+        "cap_pct": null
+      },
+      {
+        "payer": "seller",
+        "trigger": "late_delivery",
+        "amount": 25.0,
+        "unit": "other",
+        "cap_pct": null
+      },
+      {
+        "payer": "seller",
+        "trigger": "other",
+        "amount": 10.0,
+        "unit": "one_time_pct",
+        "cap_pct": null
+      },
+      {
+        "payer": "seller",
+        "trigger": "other",
+        "amount": 100.0,
+        "unit": "one_time_pct",
+        "cap_pct": null
+      }
+    ],
+    "quality": {
+      "grade": "фураж",
+      "protein_min": null,
+      "moisture_max": null,
+      "foreign_matter_max": null,
+      "lab": null
+    },
+    "buyer": "Відділ культури, спорту, сім’ї та молоді виконавчого комітету Глобинської міської ради"
+  },
+  "evidence": {
+    "crop": "п. 1.1",
+    "quantity_t": "специфікація (45000 кг)",
+    "price": "специфікація (6,50 грн/кг без ПДВ)",
+    "basis": "п. 5.2 («ПЭР-Україна» — OCR: DAP чи DDP, тому other)",
+    "delivery.place": "п. 5.2",
+    "delivery.date_to": "п. 5.3",
+    "payment": "п. 4.1",
+    "penalties[0]": "п. 7.2",
+    "penalties[1]": "п. 7.3 («за кожну годину»)",
+    "penalties[2]": "п. 7.4",
+    "penalties[3]": "п. 7.6",
+    "quality.grade": "п. 1.1",
+    "buyer": "преамбула"
+  }
+}

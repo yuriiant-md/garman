@@ -1,0 +1,51 @@
+{
+  "id": "prozorro_006",
+  "split": "test",
+  "source": "prozorro",
+  "tender_id": "UA-2022-02-03-013932-b",
+  "text_path": "data/texts/prozorro_006.txt",
+  "annotation": {
+    "by": "claude-opus-5-5 (draft, 2026-10-19)",
+    "reviewed_by_author": false
+  },
+  "deal": {
+    "crop": "other",
+    "quantity_t": null,
+    "tolerance": null,
+    "price": null,
+    "basis": "other",
+    "delivery": {
+      "place": "складів ТОВ «Кортева Агрісаєнс Україна»",
+      "date_from": null,
+      "date_to": null,
+      "period_raw": null
+    },
+    "payment": null,
+    "penalties": [
+      {
+        "payer": "seller",
+        "trigger": "late_delivery",
+        "amount": 2.0,
+        "unit": "nbu_rate_multiple",
+        "cap_pct": 10.0
+      },
+      {
+        "payer": "buyer",
+        "trigger": "late_payment",
+        "amount": 2.0,
+        "unit": "nbu_rate_multiple",
+        "cap_pct": 10.0
+      }
+    ],
+    "quality": null,
+    "buyer": "ІЛЛІНЕЦЬКИЙ АГРАРНИЙ ФАХОВИЙ КОЛЕДЖ"
+  },
+  "evidence": {
+    "crop": "п. 1.1 (кукурудза та/або соняшник)",
+    "basis": "п. 3.1 (самовивіз)",
+    "delivery.place": "п. 3.1",
+    "penalties[0]": "п. 5.1",
+    "penalties[1]": "п. 5.2",
+    "buyer": "преамбула"
+  }
+}

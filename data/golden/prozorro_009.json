@@ -1,0 +1,57 @@
+{
+  "id": "prozorro_009",
+  "split": "test",
+  "source": "prozorro",
+  "tender_id": "UA-2023-07-28-004900-a",
+  "text_path": "data/texts/prozorro_009.txt",
+  "annotation": {
+    "by": "claude-opus-5-5 (draft, 2026-10-19)",
+    "reviewed_by_author": false
+  },
+  "deal": {
+    "crop": "barley",
+    "quantity_t": 20.0,
+    "tolerance": null,
+    "price": {
+      "amount_per_t": 4000.0,
+      "currency": "UAH",
+      "vat_included": false
+    },
+    "basis": "other",
+    "delivery": null,
+    "payment": {
+      "days": 20,
+      "days_type": "banking",
+      "trigger": "after_delivery",
+      "vat_after_registration": null
+    },
+    "penalties": [
+      {
+        "payer": "seller",
+        "trigger": "late_delivery",
+        "amount": 2.0,
+        "unit": "nbu_rate_multiple",
+        "cap_pct": null
+      },
+      {
+        "payer": "seller",
+        "trigger": "other",
+        "amount": 10.0,
+        "unit": "one_time_pct",
+        "cap_pct": null
+      }
+    ],
+    "quality": null,
+    "buyer": "Інститут свинарстваі агропромислового виробництва Національної академії аграрних наук України"
+  },
+  "evidence": {
+    "crop": "п. 1.1",
+    "quantity_t": "п. 1.1",
+    "price": "специфікація (без ПДВ)",
+    "basis": "п. 3.2 (ціна включає доставку до Замовника)",
+    "payment": "п. 4.1",
+    "penalties[0]": "п. 7.2",
+    "penalties[1]": "п. 7.3",
+    "buyer": "преамбула"
+  }
+}

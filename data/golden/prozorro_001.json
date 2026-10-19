@@ -1,0 +1,72 @@
+{
+  "id": "prozorro_001",
+  "split": "test",
+  "source": "prozorro",
+  "tender_id": "UA-2016-11-02-000170-c",
+  "text_path": "data/texts/prozorro_001.txt",
+  "annotation": {
+    "by": "claude-opus-5-5 (draft, 2026-10-19)",
+    "reviewed_by_author": false
+  },
+  "deal": {
+    "crop": "corn",
+    "quantity_t": 15.0,
+    "tolerance": null,
+    "price": {
+      "amount_per_t": 4100.0,
+      "currency": "UAH",
+      "vat_included": true
+    },
+    "basis": "other",
+    "delivery": {
+      "place": "вул. Прикордонників 65, с. Попільня , Попільнянський р-н, Житомирська обл.",
+      "date_from": null,
+      "date_to": null,
+      "period_raw": null
+    },
+    "payment": {
+      "days": null,
+      "days_type": null,
+      "trigger": "prepayment",
+      "vat_after_registration": null
+    },
+    "penalties": [
+      {
+        "payer": "buyer",
+        "trigger": "late_payment",
+        "amount": 2.0,
+        "unit": "nbu_rate_multiple",
+        "cap_pct": null
+      },
+      {
+        "payer": "buyer",
+        "trigger": "late_payment",
+        "amount": 0.1,
+        "unit": "one_time_pct",
+        "cap_pct": null
+      }
+    ],
+    "quality": {
+      "grade": null,
+      "protein_min": null,
+      "moisture_max": 14.0,
+      "foreign_matter_max": 2.0,
+      "lab": "independent"
+    },
+    "buyer": "Державне підприємство «Лугинське лісове господарство»"
+  },
+  "evidence": {
+    "crop": "дод. угода №1, п. 1",
+    "quantity_t": "дод. угода №1, п. 1",
+    "price": "дод. угода №1, п. 1 («за 1 тн з ПДВ»)",
+    "basis": "дод. угода №1, п. 2",
+    "delivery.place": "дод. угода №1, п. 2",
+    "payment.trigger": "дод. угода №1, п. 4",
+    "penalties[0]": "п. 8.2 (пеня)",
+    "penalties[1]": "п. 8.2 (штраф)",
+    "quality.moisture_max": "дод. угода №1, п. 3",
+    "quality.foreign_matter_max": "дод. угода №1, п. 3 (смітна домішка)",
+    "quality.lab": "п. 4.4 б) (ДІСХ)",
+    "buyer": "преамбула"
+  }
+}

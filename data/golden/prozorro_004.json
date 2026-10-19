@@ -1,0 +1,71 @@
+{
+  "id": "prozorro_004",
+  "split": "test",
+  "source": "prozorro",
+  "tender_id": "UA-2021-02-25-002086-b",
+  "text_path": "data/texts/prozorro_004.txt",
+  "annotation": {
+    "by": "claude-opus-5-5 (draft, 2026-10-19)",
+    "reviewed_by_author": false
+  },
+  "deal": {
+    "crop": "corn",
+    "quantity_t": null,
+    "tolerance": null,
+    "price": {
+      "amount_per_t": null,
+      "currency": "UAH",
+      "vat_included": null
+    },
+    "basis": null,
+    "delivery": {
+      "place": "36014 м. Полтава, вул. Шведська. 86",
+      "date_from": null,
+      "date_to": "2021-04-15",
+      "period_raw": null
+    },
+    "payment": {
+      "days": 10,
+      "days_type": "calendar",
+      "trigger": "after_documents",
+      "vat_after_registration": null
+    },
+    "penalties": [
+      {
+        "payer": "seller",
+        "trigger": "late_delivery",
+        "amount": 1.0,
+        "unit": "nbu_rate_multiple",
+        "cap_pct": null
+      },
+      {
+        "payer": "buyer",
+        "trigger": "late_payment",
+        "amount": 1.0,
+        "unit": "nbu_rate_multiple",
+        "cap_pct": null
+      },
+      {
+        "payer": "buyer",
+        "trigger": "late_payment",
+        "amount": 10.0,
+        "unit": "one_time_pct",
+        "cap_pct": null
+      }
+    ],
+    "quality": null,
+    "buyer": "Полтавська державна сшьсько! осподарська дослщна стангря iMCHi М. I. Вавилова 1нсгитуту свинарства i агропромислового виробництва НацюнальноУ академн' аграриях наук Укра'ши"
+  },
+  "evidence": {
+    "crop": "п. 1.1",
+    "quantity_t": "п. 1.2 (15 п.о. — не тонни)",
+    "price": "п. 1.2 (ціна за п.о., грн)",
+    "delivery.place": "п. 4.3",
+    "delivery.date_to": "п. 4.2",
+    "payment": "п. 3.5 (від підписання накладних)",
+    "penalties[0]": "п. 6.2",
+    "penalties[1]": "п. 6.4",
+    "penalties[2]": "п. 6.5",
+    "buyer": "преамбула"
+  }
+}

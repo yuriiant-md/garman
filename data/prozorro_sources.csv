@@ -1,0 +1,11 @@
+id,tender_id,tender_url,pages,chars,masked
+prozorro_001,UA-2016-11-02-000170-c,https://prozorro.gov.ua/tender/UA-2016-11-02-000170-c,3,12474,EMAIL:1 ІПН:3 ПІБ:4 РАХУНОК:6 ТЕЛЕФОН:4
+prozorro_002,UA-2018-10-04-001910-c,https://prozorro.gov.ua/tender/UA-2018-10-04-001910-c,4,9631,EMAIL:1 ІПН:2 ПІБ:4 РАХУНОК:2 ТЕЛЕФОН:2
+prozorro_003,UA-2019-02-25-000143-b,https://prozorro.gov.ua/tender/UA-2019-02-25-000143-b,6,22418,ПІБ:2
+prozorro_004,UA-2021-02-25-002086-b,https://prozorro.gov.ua/tender/UA-2021-02-25-002086-b,6,18134,IBAN:2 ІПН:2 ПІБ:6
+prozorro_005,UA-2021-08-04-006985-b,https://prozorro.gov.ua/tender/UA-2021-08-04-006985-b,4,7864,IBAN:3 АДРЕСА:1 ПІБ:5 РНОКПП:1 ТЕЛЕФОН:2
+prozorro_006,UA-2022-02-03-013932-b,https://prozorro.gov.ua/tender/UA-2022-02-03-013932-b,3,13827,IBAN:2 ІПН:2 ПІБ:3
+prozorro_007,UA-2022-12-23-007600-a,https://prozorro.gov.ua/tender/UA-2022-12-23-007600-a,7,24493,IBAN:4 ІПН:1 ПІБ:4 ТЕЛЕФОН:3
+prozorro_008,UA-2023-03-17-001404-a,https://prozorro.gov.ua/tender/UA-2023-03-17-001404-a,5,14596,IBAN:4 АДРЕСА:2 ПІБ:11 РНОКПП:2 ТЕЛЕФОН:2
+prozorro_009,UA-2023-07-28-004900-a,https://prozorro.gov.ua/tender/UA-2023-07-28-004900-a,6,14814,EMAIL:1 IBAN:2 АДРЕСА:1 ПІБ:5 РАХУНОК:1 РНОКПП:1
+prozorro_010,UA-2024-03-06-009978-a,https://prozorro.gov.ua/tender/UA-2024-03-06-009978-a,4,8164,IBAN:3 АДРЕСА:1 ПІБ:14 РНОКПП:2 ТЕЛЕФОН:1

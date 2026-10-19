@@ -1,0 +1,104 @@
+{
+  "id": "prozorro_007",
+  "split": "test",
+  "source": "prozorro",
+  "tender_id": "UA-2022-12-23-007600-a",
+  "text_path": "data/texts/prozorro_007.txt",
+  "annotation": {
+    "by": "claude-opus-5-5 (draft, 2026-10-19)",
+    "reviewed_by_author": false
+  },
+  "deal": {
+    "crop": "corn",
+    "quantity_t": 40.0,
+    "tolerance": null,
+    "price": {
+      "amount_per_t": 4868.42,
+      "currency": "UAH",
+      "vat_included": false
+    },
+    "basis": "other",
+    "delivery": {
+      "place": "22712 вул. Миру, 93м, с. Романово - Хутір Вінницький р-н, Вінницька область",
+      "date_from": null,
+      "date_to": "2022-12-31",
+      "period_raw": null
+    },
+    "payment": {
+      "days": 30,
+      "days_type": "calendar",
+      "trigger": "after_delivery",
+      "vat_after_registration": null
+    },
+    "penalties": [
+      {
+        "payer": "seller",
+        "trigger": "late_delivery",
+        "amount": 0.1,
+        "unit": "pct_per_day",
+        "cap_pct": null
+      },
+      {
+        "payer": "seller",
+        "trigger": "late_delivery",
+        "amount": 7.0,
+        "unit": "one_time_pct",
+        "cap_pct": null
+      },
+      {
+        "payer": "seller",
+        "trigger": "other",
+        "amount": 20.0,
+        "unit": "one_time_pct",
+        "cap_pct": null
+      },
+      {
+        "payer": "seller",
+        "trigger": "other",
+        "amount": 15.0,
+        "unit": "one_time_pct",
+        "cap_pct": null
+      },
+      {
+        "payer": "seller",
+        "trigger": "other",
+        "amount": 20.0,
+        "unit": "one_time_pct",
+        "cap_pct": null
+      },
+      {
+        "payer": "buyer",
+        "trigger": "late_payment",
+        "amount": 2.0,
+        "unit": "nbu_rate_multiple",
+        "cap_pct": null
+      }
+    ],
+    "quality": {
+      "grade": "3",
+      "protein_min": null,
+      "moisture_max": null,
+      "foreign_matter_max": null,
+      "lab": "independent"
+    },
+    "buyer": "ІЛЛШЕЦЬКИИ АГРАРНИЙ ФАХОВИИ КОЛЕДЖ"
+  },
+  "evidence": {
+    "crop": "п. 1.1",
+    "quantity_t": "специфікація",
+    "price": "специфікація (без ПДВ)",
+    "basis": "п. 3.3 (ціна включає транспортування до місця поставки)",
+    "delivery.place": "п. 5.2",
+    "delivery.date_to": "п. 5.1",
+    "payment": "п. 4.1",
+    "penalties[0]": "п. 7.3.1 (пеня)",
+    "penalties[1]": "п. 7.3.1 (штраф)",
+    "penalties[2]": "п. 7.3.2",
+    "penalties[3]": "п. 7.3.3 (підняття ціни)",
+    "penalties[4]": "п. 7.3.5 (відмова від постачання)",
+    "penalties[5]": "п. 7.3.6",
+    "quality.grade": "п. 1.1",
+    "quality.lab": "п. 2.3, 6.2.3",
+    "buyer": "преамбула"
+  }
+}

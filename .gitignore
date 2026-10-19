@@ -3,9 +3,22 @@
 __pycache__/
 *.py[cod]
 
+# Test and lint caches
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
 # Environment variables and local data
 .env
+CLAUDE.md
 data/raw/
+
+# Model outputs and run results
+results/
+
+# Claude Code local state (worktrees, settings)
+.claude/
 
 # Model files and local artifacts
 *.gguf

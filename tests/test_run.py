@@ -6,7 +6,6 @@ import pytest
 from src.extraction.prompts import Prompt
 from src.extraction.result import ExtractionResult, ExtractionStatus
 from src.extraction.run import (
-    cost_usd,
     load_anthropic_config,
     load_ollama_config,
     load_prices,
@@ -115,10 +114,6 @@ def test_failed_rerun_keeps_the_previous_results(tmp_path):
         run_extraction(FailingExtractor(), paths, PROMPT, PRECISE, output)
 
     assert output.read_text(encoding="utf-8") == previous
-
-
-def test_cost_counts_input_and_output_tokens_at_their_own_prices():
-    assert cost_usd(1_000_000, 200_000, price_input=1.0, price_output=5.0) == pytest.approx(2.0)
 
 
 def test_summary_counts_statuses_tokens_median_latency_and_cost():

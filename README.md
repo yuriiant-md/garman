@@ -24,6 +24,16 @@ cp .env.example .env
 
 Команда `make run` буде запускати повний прогін етапу 1 після реалізації extraction pipeline.
 
+Поки що прогін і метрики запускаються окремо:
+
+```bash
+uv run --env-file .env python -m src.extraction.run --split dev   # Claude → results/stage1/*.jsonl
+uv run python -m src.extraction.run --model lapa --split dev      # Lapa через Ollama
+uv run python -m src.extraction.metrics                           # таблиця модель × промпт × семплінг
+```
+
+Метрики рахуються за правилами з `docs/PLAN.md`: точність заповнених полів із 95% бутстреп-інтервалом, частка вигаданих значень, загальна точність, валідні й failed відповіді, latency p50/p95 і вартість на 1000 документів. Рядки порівнюються після нормалізації (регістр, лапки, апострофи, правова форма: ТОВ, ТзОВ, ПрАТ, АТ, ДП, ПП, ФГ) і зі схожістю ≥ 0.85, бо в golden Prozorro збережено OCR-шум.
+
 Підготовка golden set із договорів Prozorro (докладно — у `data/README.md`):
 
 ```bash

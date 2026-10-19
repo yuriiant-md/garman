@@ -18,6 +18,7 @@ import ollama
 import yaml
 
 from src.extraction.anthropic_extractor import AnthropicConfig, AnthropicExtractor
+from src.extraction.metrics import cost_per_1000_docs, cost_usd
 from src.extraction.ollama_extractor import OllamaConfig, OllamaExtractor
 from src.extraction.prompts import Prompt, load_prompt
 from src.extraction.result import ExtractionResult, ExtractionStatus
@@ -30,8 +31,6 @@ MODELS_PATH = ROOT / "configs" / "models.yaml"
 DEFAULT_PROMPT = ROOT / "prompts" / "extract_v1.md"
 DEV_PREFIX = "synthetic_"  # dev = synthetic texts; everything else (golden set) is test
 SPLITS = ("dev", "test", "all")
-TOKENS_PER_PRICE_UNIT = 1_000_000  # prices in configs/models.yaml are per 1M tokens
-COST_BATCH_DOCS = 1000
 API_KEY_VARIABLE = "ANTHROPIC_API_KEY"
 PARTIAL_SUFFIX = ".partial"
 MODEL_SECTIONS = {"claude": "anthropic", "lapa": "ollama"}  # --model -> section of models.yaml
@@ -74,27 +73,19 @@ def run_extraction(
     return records
 
 
-def cost_usd(input_tokens: int, output_tokens: int, price_input: float, price_output: float) -> float:
-    return (input_tokens * price_input + output_tokens * price_output) / TOKENS_PER_PRICE_UNIT
-
-
 def summarize(
     records: list[dict[str, object]], price_input: float, price_output: float
 ) -> dict[str, object]:
-    """Cost per 1000 documents counts only answered documents: an `error` result has no token
-    usage, so including it would make the per-document cost look lower than it is."""
     counts = Counter(record["status"] for record in records)
     input_tokens = sum(record["input_tokens"] for record in records)
     output_tokens = sum(record["output_tokens"] for record in records)
-    cost = cost_usd(input_tokens, output_tokens, price_input, price_output)
-    answered = len(records) - counts.get(ExtractionStatus.ERROR.value, 0)
     return {
         "statuses": {status.value: counts.get(status.value, 0) for status in ExtractionStatus},
         "median_latency_s": statistics.median(record["latency_s"] for record in records),
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
-        "cost_usd": cost,
-        "cost_per_1000_docs_usd": cost / answered * COST_BATCH_DOCS if answered else None,
+        "cost_usd": cost_usd(input_tokens, output_tokens, price_input, price_output),
+        "cost_per_1000_docs_usd": cost_per_1000_docs(records, price_input, price_output),
     }
 
 

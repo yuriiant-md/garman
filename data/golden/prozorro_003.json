@@ -4,11 +4,6 @@
   "source": "prozorro",
   "tender_id": "UA-2019-02-25-000143-b",
   "text_path": "data/texts/prozorro_003.txt",
-  "annotation": {
-    "by": "author",
-    "draft": "claude-opus-5-5",
-    "reviewed_by_author": true
-  },
   "deal": {
     "crop": "barley",
     "quantity_t": 6.0,

@@ -4,11 +4,6 @@
   "source": "prozorro",
   "tender_id": "UA-2016-11-02-000170-c",
   "text_path": "data/texts/prozorro_001.txt",
-  "annotation": {
-    "by": "author",
-    "draft": "claude-opus-5-5",
-    "reviewed_by_author": true
-  },
   "deal": {
     "crop": "corn",
     "quantity_t": 15.0,

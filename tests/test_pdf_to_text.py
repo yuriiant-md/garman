@@ -305,3 +305,22 @@ def test_review_lists_suspicious_words_left_next_to_masked_names(tmp_path, monke
     convert_all(raw, tmp_path / "texts", tmp_path / "sources.csv", review)
 
     assert "CHECK: 'IOpia'" in review.read_text()
+
+
+def test_masks_extra_address_even_when_split_across_lines():
+    text = "ФОП [ПІБ]\nсмт. Іванівка, вул.\nСадова 7А, тел"
+
+    result, found = mask_pii(text, extra_addresses=("смт. Іванівка, вул. Садова 7А",))
+
+    assert result == "ФОП [ПІБ]\n[АДРЕСА], тел"
+    assert ("АДРЕСА", "смт. Іванівка, вул.\nСадова 7А") in found
+
+
+def test_convert_all_reads_extra_addresses_file(tmp_path, monkeypatch):
+    monkeypatch.setattr(pdf_to_text, "extract_text", lambda path: ("вул. Садова 7А\n", 1))
+    raw, texts = make_raw_dir(tmp_path), tmp_path / "texts"
+    (raw / "extra_addresses.txt").write_text("# адреси ФОП\nвул. Садова 7А\n")
+
+    convert_all(raw, texts, tmp_path / "sources.csv", raw / "review.txt")
+
+    assert (texts / "prozorro_001.txt").read_text() == "[АДРЕСА]\n"

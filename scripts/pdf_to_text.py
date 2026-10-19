@@ -21,6 +21,7 @@ TEXTS_DIR = ROOT / "data" / "texts"
 SOURCES_PATH = ROOT / "data" / "prozorro_sources.csv"
 REVIEW_NAME = "mask_review.txt"
 EXTRA_NAMES_NAME = "extra_names.txt"
+EXTRA_ADDRESSES_NAME = "extra_addresses.txt"
 FILE_PREFIX = "prozorro_"
 TENDER_URL = "https://prozorro.gov.ua/tender/{tender_id}"
 
@@ -116,8 +117,13 @@ def clean_text(text: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", lines).strip("\n") + "\n"
 
 
-def mask_pii(text: str, extra_names: tuple[str, ...] = ()) -> tuple[str, Found]:
+def mask_pii(
+    text: str, extra_names: tuple[str, ...] = (), extra_addresses: tuple[str, ...] = ()
+) -> tuple[str, Found]:
     found: Found = []
+    for address in extra_addresses:  # a sole trader's address is a person's address
+        words = (re.escape(word) for word in address.split())
+        text = _replace(re.compile(r"\s+".join(words)), text, "АДРЕСА", found)
     for kind, pattern in CODE_PATTERNS:
         text = _replace(pattern, text, kind, found)
     surnames = list(extra_names)
@@ -257,8 +263,8 @@ def suspicious_words(text: str) -> list[str]:
     return list(dict.fromkeys(words))
 
 
-def read_extra_names(raw_dir: Path) -> tuple[str, ...]:
-    path = raw_dir / EXTRA_NAMES_NAME
+def read_reviewer_list(path: Path) -> tuple[str, ...]:
+    """One entry per line, "#" starts a comment; a missing file means an empty list."""
     if not path.exists():
         return ()
     lines = (line.strip() for line in path.read_text().splitlines())
@@ -286,12 +292,13 @@ def convert_all(
             f"{existing[0]} already exists; pass --overwrite to replace the texts"
         )
 
-    extra_names = read_extra_names(raw_dir)
+    extra_names = read_reviewer_list(raw_dir / EXTRA_NAMES_NAME)
+    extra_addresses = read_reviewer_list(raw_dir / EXTRA_ADDRESSES_NAME)
     texts_dir.mkdir(parents=True, exist_ok=True)
     rows, review = [], []
     for doc_id, pdf in zip(ids, pdfs, strict=True):
         raw_text, pages = extract_text(pdf)
-        text, found = mask_pii(clean_text(raw_text), extra_names)
+        text, found = mask_pii(clean_text(raw_text), extra_names, extra_addresses)
         (texts_dir / f"{doc_id}.txt").write_text(text)
         tender_id = pdf.stem.removeprefix(FILE_PREFIX)
         counts = Counter(kind for kind, _ in found)

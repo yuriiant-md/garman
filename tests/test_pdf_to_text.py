@@ -215,6 +215,7 @@ def test_convert_all_writes_numbered_masked_texts_sources_and_review(tmp_path, m
     saved = list(csv.DictReader(sources.open()))
     assert saved[0]["tender_id"] == "UA-2016-11-02-000170-c"
     assert saved[0]["tender_url"] == "https://prozorro.gov.ua/tender/UA-2016-11-02-000170-c"
+    assert "contract_no" not in saved[0]
     assert saved[0]["masked"] == "ТЕЛЕФОН:1"
     assert "0966378279" in review.read_text()
 
@@ -259,6 +260,59 @@ def test_convert_all_with_own_prefix_records_the_source_file_instead_of_a_tender
     assert saved[0]["source_file"] == "Training_set_01.pdf"
     assert "tender_id" not in saved[0]
     assert "== own_001 (Training_set_01.pdf)" in review.read_text()
+
+
+def test_company_codes_are_hidden_only_when_asked():
+    text = "код ЄДРПОУ 30307207 ІПН\nвул. Миру, буд. 40, 12345678 (надалі – місце поставки)\n"
+
+    hidden, found = mask_pii(text, company_codes=True)
+
+    assert hidden == (
+        "код ЄДРПОУ [ЄДРПОУ] ІПН\nвул. Миру, буд. 40, [ЄДРПОУ] (надалі – місце поставки)\n"
+    )
+    assert [kind for kind, _ in found] == ["ЄДРПОУ", "ЄДРПОУ"]
+    assert mask_pii(text)[0] == text  # Prozorro buyers are public bodies: their codes stay
+
+
+def test_company_codes_spare_amounts_and_contract_numbers():
+    text = "Сума 12500000,00 грн, аванс 12500000.00 грн, договір № 20260484\n"
+
+    assert mask_pii(text, company_codes=True)[0] == text
+
+
+@pytest.mark.parametrize(
+    ("text", "number"),
+    [
+        ("ДОГОВІР ПОСТАВКИ № K2606-0484\n", "K2606-0484"),
+        ("ДОГОВІР ПОСТАВКИ\n№ K2606-0484\n", "K2606-0484"),  # the PDF broke the title
+        ("Договір поставки сільськогосподарської продукції № 12/06.\n", "12/06"),
+    ],
+)
+def test_contract_number_survives_line_breaks_and_drops_the_final_dot(text, number):
+    assert pdf_to_text.CONTRACT_NO.search(text).group(1) == number
+
+
+def test_reviewer_strings_are_hidden_even_when_split_across_lines():
+    hidden, found = mask_pii("Agro-zbud\nTOV ДОГОВІР ПОСТАВКИ\n", extra_hidden=("Agro-zbud TOV",))
+
+    assert hidden == "[ПРИХОВАНО] ДОГОВІР ПОСТАВКИ\n"
+    assert found == [("ПРИХОВАНО", "Agro-zbud\nTOV")]
+
+
+def test_own_contracts_record_the_contract_number_and_hide_codes(tmp_path, monkeypatch):
+    text = "ДОГОВІР ПОСТАВКИ № K2606-0484\nм. Київ\nкод ЄДРПОУ 30307207\n"
+    monkeypatch.setattr(pdf_to_text, "extract_text", lambda path: (text, 9))
+    raw, texts = tmp_path / "raw", tmp_path / "texts"
+    raw.mkdir()
+    (raw / "Training_set_01.pdf").write_bytes(b"%PDF stub")
+    (raw / "extra_hidden.txt").write_text("# назви, які лишились у колонтитулі\nм. Київ\n")
+
+    rows = convert_all(raw, texts, tmp_path / "own_sources.csv", raw / "review.txt", prefix="own_")
+
+    assert rows[0]["contract_no"] == "K2606-0484"
+    assert (texts / "own_001.txt").read_text() == (
+        "ДОГОВІР ПОСТАВКИ № K2606-0484\n[ПРИХОВАНО]\nкод ЄДРПОУ [ЄДРПОУ]\n"
+    )
 
 
 def test_prefix_picks_the_raw_folder_and_sources_file():

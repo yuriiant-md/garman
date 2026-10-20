@@ -10,7 +10,7 @@ import json
 import math
 import random
 import sys
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from itertools import groupby
 from pathlib import Path
@@ -33,6 +33,9 @@ BOOTSTRAP_SEED = 0  # fixed, so the same results always give the same interval
 CI_TAIL_PCT = 2.5  # the 95% interval runs from the 2.5th to the 97.5th percentile
 LATENCY_TAIL_PCT = 95
 SPLIT_ORDER = ("dev", "test")
+SOURCE_ORDER = ("synthetic", "prozorro", "own")
+DEFAULT_SOURCE = "synthetic"  # data/synthetic/*.json carry no "source" field
+ALL_SOURCES = "all"  # every golden source of a split together: the model is chosen on this row
 NO_VALUE = "—"
 ZERO = Counts(filled=0, filled_correct=0, empty=0, fabricated=0, total=0, correct=0)
 HEADER = (
@@ -48,6 +51,7 @@ Prices = Mapping[str, tuple[float, float]]  # model id -> USD per 1M input and o
 class Reference:
     deal: Deal
     split: str
+    source: str = DEFAULT_SOURCE
 
 
 @dataclass(frozen=True)
@@ -56,6 +60,7 @@ class ConfigMetrics:
     prompt_version: str
     sampling: str
     split: str
+    source: str
     docs: int
     filled_accuracy: float | None  # the main number: share of golden values the model got right
     filled_ci: tuple[float, float] | None
@@ -132,7 +137,7 @@ def _predicted(record: Record) -> Deal | None:
 
 
 def _config_metrics(
-    records: Sequence[Record], references: Mapping[str, Reference], prices: Prices
+    records: Sequence[Record], references: Mapping[str, Reference], prices: Prices, source: str
 ) -> ConfigMetrics:
     first = records[0]
     doc_counts = [
@@ -148,6 +153,7 @@ def _config_metrics(
         prompt_version=first["prompt_version"],
         sampling=first["sampling"],
         split=references[first["doc_id"]].split,
+        source=source,
         docs=len(records),
         filled_accuracy=share(total.filled_correct, total.filled),
         filled_ci=bootstrap_ci(doc_counts),
@@ -161,24 +167,46 @@ def _config_metrics(
     )
 
 
-def _split_rank(split: str) -> int:
-    return SPLIT_ORDER.index(split) if split in SPLIT_ORDER else len(SPLIT_ORDER)
+def _rank(value: str, order: tuple[str, ...]) -> int:
+    return order.index(value) if value in order else len(order)
+
+
+def _config(record: Record) -> tuple[str, str, str]:
+    return record["model"], record["prompt_version"], record["sampling"]
+
+
+def _row_keys(
+    record: Record, reference: Reference, split_sources: Mapping[tuple, set[str]]
+) -> Iterator[tuple]:
+    """The record's own row and, when its split mixes golden sources, the `all` row."""
+    split = _rank(reference.split, SPLIT_ORDER), reference.split
+    yield (*split, _rank(reference.source, SOURCE_ORDER), reference.source, *_config(record))
+    if len(split_sources[(reference.split, _config(record))]) > 1:
+        yield (*split, len(SOURCE_ORDER) + 1, ALL_SOURCES, *_config(record))
 
 
 def compute_metrics(
     records: Iterable[Record], references: Mapping[str, Reference], prices: Prices
 ) -> tuple[ConfigMetrics, ...]:
-    """One row per configuration and split, dev before test; documents without a golden deal
-    are left out (see `missing_references`)."""
-
-    def key(record: Record) -> tuple[int, str, str, str, str]:
-        split = references[record["doc_id"]].split
-        config = record["model"], record["prompt_version"], record["sampling"]
-        return _split_rank(split), split, *config
-
-    known = sorted((record for record in records if record["doc_id"] in references), key=key)
+    """One row per configuration, split and source, dev before test, plus an `all` row for a
+    split with several golden sources. Documents without a golden deal are left out (see
+    `missing_references`)."""
+    known = [record for record in records if record["doc_id"] in references]
+    split_sources: dict[tuple, set[str]] = {}
+    for record in known:
+        reference = references[record["doc_id"]]
+        split_sources.setdefault((reference.split, _config(record)), set()).add(reference.source)
+    rows = sorted(
+        (
+            (key, record)
+            for record in known
+            for key in _row_keys(record, references[record["doc_id"]], split_sources)
+        ),
+        key=lambda row: row[0],
+    )
     return tuple(
-        _config_metrics(tuple(group), references, prices) for _, group in groupby(known, key=key)
+        _config_metrics(tuple(record for _, record in group), references, prices, source=key[3])
+        for key, group in groupby(rows, key=lambda row: row[0])
     )
 
 
@@ -202,7 +230,11 @@ def load_references(directories: Iterable[Path]) -> dict[str, Reference]:
     paths = (path for directory in directories for path in sorted(directory.glob("*.json")))
     entries = (json.loads(path.read_text(encoding="utf-8")) for path in paths)
     return {
-        entry["id"]: Reference(deal=Deal.model_validate(entry["deal"]), split=entry["split"])
+        entry["id"]: Reference(
+            deal=Deal.model_validate(entry["deal"]),
+            split=entry["split"],
+            source=entry.get("source", DEFAULT_SOURCE),
+        )
         for entry in entries
     }
 
@@ -228,7 +260,8 @@ def _row(metrics: ConfigMetrics) -> tuple[str, ...]:
     )
     cost = metrics.cost_per_1000_docs_usd
     return (
-        metrics.model, metrics.prompt_version, metrics.sampling, metrics.split, str(metrics.docs),
+        metrics.model, metrics.prompt_version, metrics.sampling,
+        f"{metrics.split} · {metrics.source}", str(metrics.docs),
         _pct(metrics.filled_accuracy) + interval, _pct(metrics.fabricated_pct),
         _pct(metrics.overall_pct), _pct(metrics.valid_pct), _pct(metrics.failed_pct),
         f"{metrics.latency_p50_s:.1f}", f"{metrics.latency_p95_s:.1f}",

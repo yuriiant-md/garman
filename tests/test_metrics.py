@@ -24,7 +24,8 @@ DEAL = {"crop": "wheat", "quantity_t": 100, "buyer": "Зерно Поле"}  # 3
 REFERENCES = {
     "synthetic_001": Reference(deal=Deal.model_validate(DEAL), split="dev"),
     "synthetic_002": Reference(deal=Deal.model_validate(DEAL), split="dev"),
-    "prozorro_001": Reference(deal=Deal.model_validate(DEAL), split="test"),
+    "prozorro_001": Reference(deal=Deal.model_validate(DEAL), split="test", source="prozorro"),
+    "own_001": Reference(deal=Deal.model_validate(DEAL), split="test", source="own"),
 }
 PRICES = {"claude-haiku-4-5": (1.0, 5.0)}
 
@@ -99,10 +100,32 @@ def test_metrics_score_each_configuration_per_split_dev_first():
 
     dev, test = compute_metrics(records, REFERENCES, PRICES)
 
-    assert (dev.split, dev.docs, test.split, test.docs) == ("dev", 2, "test", 1)
+    assert (dev.split, dev.source, dev.docs) == ("dev", "synthetic", 2)
+    assert (test.split, test.source, test.docs) == ("test", "prozorro", 1)
     assert dev.filled_accuracy == pytest.approx(100 * 5 / 6)
     assert dev.overall_pct == pytest.approx(100 * 41 / 42)
     assert test.filled_accuracy == pytest.approx(100.0)
+
+
+def test_golden_sources_get_their_own_rows_and_one_row_for_all_of_them():
+    records = [record("own_001", deal={**DEAL, "buyer": "Агро Світ"}), record("prozorro_001")]
+
+    rows = compute_metrics(records, REFERENCES, PRICES)
+
+    assert [(row.source, row.docs) for row in rows] == [("prozorro", 1), ("own", 1), ("all", 2)]
+    assert rows[-1].filled_accuracy == pytest.approx(100 * 5 / 6)
+
+
+def test_all_row_is_per_configuration():
+    records = [record("own_001"), record("prozorro_001"), record("prozorro_001", model="lapa")]
+
+    rows = compute_metrics(records, REFERENCES, PRICES)
+
+    # lapa ran only on Prozorro, so it gets no `all` row of its own
+    assert [(row.model, row.source) for row in rows] == [
+        ("claude-haiku-4-5", "prozorro"), ("lapa", "prozorro"),
+        ("claude-haiku-4-5", "own"), ("claude-haiku-4-5", "all"),
+    ]
 
 
 def test_failed_documents_stay_in_accuracy_and_count_as_failed():
@@ -148,13 +171,15 @@ def test_stored_deal_that_no_longer_fits_the_schema_names_the_document():
 
 
 def test_missing_references_lists_documents_without_golden():
-    records = [record("synthetic_001"), record("own_001"), record("own_001")]
+    records = [record("synthetic_001"), record("trader_001"), record("trader_001")]
 
-    assert missing_references(records, REFERENCES) == ("own_001",)
+    assert missing_references(records, REFERENCES) == ("trader_001",)
 
 
 def test_documents_without_golden_are_left_out_of_metrics():
-    (metrics,) = compute_metrics([record("synthetic_001"), record("own_001")], REFERENCES, PRICES)
+    records = [record("synthetic_001"), record("trader_001")]
+
+    (metrics,) = compute_metrics(records, REFERENCES, PRICES)
 
     assert metrics.docs == 1
 
@@ -162,8 +187,10 @@ def test_documents_without_golden_are_left_out_of_metrics():
 def test_references_come_from_the_data_files_with_their_split():
     references = load_references((ROOT / "data" / "synthetic", ROOT / "data" / "golden"))
 
-    splits = [reference.split for reference in references.values()]
-    assert (splits.count("dev"), splits.count("test")) == (20, 10)
+    sources = [(reference.split, reference.source) for reference in references.values()]
+    assert sources.count(("dev", "synthetic")) == 20
+    assert sources.count(("test", "prozorro")) == 10
+    assert sources.count(("test", "own")) == 7
     assert references["prozorro_001"].deal.buyer is not None
 
 
@@ -181,7 +208,8 @@ def test_table_shows_interval_and_a_dash_for_missing_values():
 
     lines = table.splitlines()
     assert lines[0].startswith("| Модель | Промпт | Семплінг | Набір | Док. |")
-    assert "| claude-haiku-4-5 | v1 | precise | dev | 1 | 100.0 (100.0–100.0) |" in table
+    row = "| claude-haiku-4-5 | v1 | precise | dev · synthetic | 1 | 100.0 (100.0–100.0) |"
+    assert row in table
     assert lines[-1].endswith("| — |")
 
 
@@ -198,15 +226,15 @@ def write_inputs(tmp_path: Path, records: list[dict[str, object]]) -> tuple[Path
 
 def test_main_prints_the_table_and_warns_about_documents_without_golden(tmp_path, capsys):
     results_dir, references_dir = write_inputs(
-        tmp_path, [record("synthetic_001"), record("own_001")]
+        tmp_path, [record("synthetic_001"), record("trader_001")]
     )
 
     code = main(["--results-dir", str(results_dir), "--references", str(references_dir)])
 
     output = capsys.readouterr()
     assert code == 0
-    assert "| claude-haiku-4-5 | v1 | precise | dev | 1 |" in output.out
-    assert "own_001" in output.err
+    assert "| claude-haiku-4-5 | v1 | precise | dev · synthetic | 1 |" in output.out
+    assert "trader_001" in output.err
 
 
 def test_main_reports_a_stored_deal_that_fails_the_schema(tmp_path, capsys):

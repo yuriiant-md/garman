@@ -6,8 +6,10 @@ tags. Company names and their 8-digit ЄДРПОУ codes are public and stay. Ev
 to a review file inside data/raw/ (outside git), so a person checks the result before labeling;
 a missed surname goes to data/raw/prozorro/extra_names.txt and the script is run again.
 
-`--prefix own_` does the same for the author's own contracts in data/raw/own/ (names and
-commercial details already hidden by the author): texts own_NNN, sources data/own_sources.csv."""
+`--prefix own_` does the same for the author's own contracts in data/raw/own/: texts own_NNN,
+sources data/own_sources.csv with the contract number. These are private contracts, so every
+8-digit company code is hidden too, and strings listed in extra_hidden.txt (a name left in a
+page header) become [ПРИХОВАНО]."""
 
 import argparse
 import csv
@@ -23,6 +25,7 @@ TEXTS_DIR = ROOT / "data" / "texts"
 REVIEW_NAME = "mask_review.txt"
 EXTRA_NAMES_NAME = "extra_names.txt"
 EXTRA_ADDRESSES_NAME = "extra_addresses.txt"
+EXTRA_HIDDEN_NAME = "extra_hidden.txt"
 FILE_PREFIX = "prozorro_"  # Prozorro PDFs are named prozorro_<tenderID>.pdf
 TENDER_URL = "https://prozorro.gov.ua/tender/{tender_id}"
 
@@ -69,6 +72,10 @@ CODE_PATTERNS = (
     ("ІПН", re.compile(r"(?<!\d)\d{12}(?!\d)")),
     ("РНОКПП", re.compile(r"(?<!\d)(?<!№)(?<!№ )[1-9]\d{9}(?!\d)")),  # "№ 2024100012" is a contract
 )
+# ЄДРПОУ of a party or of the elevator; "12500000,00 грн" is a sum and "№ 20260484" a contract
+COMPANY_CODE = re.compile(r"(?<!\d)(?<!№)(?<!№ )\d{8}(?!\d)(?![.,]\d)")
+# The title may break across lines in the PDF; a dot that ends the sentence is not part of it
+CONTRACT_NO = re.compile(r"договір[^№]{0,60}№\s*([\w/-]+(?:\.[\w/-]+)*)", re.IGNORECASE)
 # Nominative for signatures, genitive for "в особі директора Василя ...". Names that are also
 # common words (Надія, Віра, Любов) are left out.
 FIRST_NAMES = tuple(
@@ -128,12 +135,18 @@ def clean_text(text: str) -> str:
 
 
 def mask_pii(
-    text: str, extra_names: tuple[str, ...] = (), extra_addresses: tuple[str, ...] = ()
+    text: str,
+    extra_names: tuple[str, ...] = (),
+    extra_addresses: tuple[str, ...] = (),
+    extra_hidden: tuple[str, ...] = (),
+    *,
+    company_codes: bool = False,
 ) -> tuple[str, Found]:
     found: Found = []
-    for address in extra_addresses:  # a sole trader's address is a person's address
-        words = (re.escape(word) for word in address.split())
-        text = _replace(re.compile(r"\s+".join(words)), text, "АДРЕСА", found)
+    text = _mask_listed(text, extra_hidden, "ПРИХОВАНО", found)
+    text = _mask_listed(text, extra_addresses, "АДРЕСА", found)  # a sole trader's home address
+    if company_codes:
+        text = _replace(COMPANY_CODE, text, "ЄДРПОУ", found)
     for kind, pattern in CODE_PATTERNS:
         text = _replace(pattern, text, kind, found)
     surnames = list(extra_names)
@@ -147,6 +160,14 @@ def mask_pii(
         )
         text = _replace(surname_forms, text, "ПІБ", found)
     return text, found
+
+
+def _mask_listed(text: str, values: tuple[str, ...], kind: str, found: Found) -> str:
+    """Reviewer-listed strings, matched even when the PDF broke them across lines."""
+    for value in values:
+        words = (re.escape(word) for word in value.split())
+        text = _replace(re.compile(r"\s+".join(words)), text, kind, found)
+    return text
 
 
 def _replace(pattern: re.Pattern[str], text: str, kind: str, found: Found) -> str:
@@ -305,13 +326,17 @@ def convert_all(
 
     extra_names = read_reviewer_list(raw_dir / EXTRA_NAMES_NAME)
     extra_addresses = read_reviewer_list(raw_dir / EXTRA_ADDRESSES_NAME)
+    extra_hidden = read_reviewer_list(raw_dir / EXTRA_HIDDEN_NAME)
+    private = prefix != FILE_PREFIX  # not a public procurement: company codes are hidden too
     texts_dir.mkdir(parents=True, exist_ok=True)
     rows, review = [], []
     for doc_id, pdf in zip(ids, pdfs, strict=True):
         raw_text, pages = extract_text(pdf)
-        text, found = mask_pii(clean_text(raw_text), extra_names, extra_addresses)
+        text, found = mask_pii(
+            clean_text(raw_text), extra_names, extra_addresses, extra_hidden, company_codes=private
+        )
         (texts_dir / f"{doc_id}.txt").write_text(text)
-        source = _source_columns(pdf, prefix)
+        source = _source_columns(pdf, prefix, text)
         counts = Counter(kind for kind, _ in found)
         rows.append(
             {
@@ -330,10 +355,11 @@ def convert_all(
     return rows
 
 
-def _source_columns(pdf: Path, prefix: str) -> dict[str, str]:
-    """Where a text came from: the tender for Prozorro, the PDF file for other contracts."""
+def _source_columns(pdf: Path, prefix: str, text: str) -> dict[str, str]:
+    """Where a text came from: the tender for Prozorro, the PDF and contract number otherwise."""
     if prefix != FILE_PREFIX:
-        return {"source_file": pdf.name}
+        number = CONTRACT_NO.search(text)
+        return {"source_file": pdf.name, "contract_no": number.group(1) if number else ""}
     tender_id = pdf.stem.removeprefix(FILE_PREFIX)
     return {"tender_id": tender_id, "tender_url": TENDER_URL.format(tender_id=tender_id)}
 

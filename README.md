@@ -54,10 +54,10 @@ uv run python -m scripts.check_golden      # перевірка ручної р�
 | Провайдерська модель через API зі structured output, retry і timeout | `src/extraction/anthropic_extractor.py` (схема як обов'язковий виклик інструмента), налаштування — `configs/models.yaml` | готово |
 | Локальна модель через спільний інтерфейс | `src/extraction/ollama_extractor.py`; інтерфейс `Extractor` — `src/extraction/run.py` | готово |
 | temperature і top_p у конфігу, ≥ 2 конфігурації | `configs/sampling.yaml` (`precise`, `varied`) | конфіг готовий; прогін `varied` — далі |
-| Метрики: точність по полях, % валідних, p50/p95, вартість на 1000 документів | `src/extraction/metrics.py` (таблиця), `src/extraction/scoring.py` (порівняння з еталоном); тести — `tests/test_metrics.py`, `tests/test_scoring.py` | код готовий; цифри поки лише на dev |
+| Метрики: точність по полях, % валідних, p50/p95, вартість на 1000 документів | `src/extraction/metrics.py` (таблиця), `src/extraction/scoring.py` (порівняння з еталоном); тести — `tests/test_metrics.py`, `tests/test_scoring.py` | код готовий; цифри поки лише на dev — `results/stage1/metrics.md` |
 | Промпти з версією в шапці, ≥ 2 версії, `CHANGELOG` | `prompts/extract_v1.md`, `prompts/CHANGELOG.md` | v1 готова; v2 — далі |
 | Кожна відповідь валідується схемою; невалідна → одна спроба виправлення → `failed` | `src/extraction/validation.py` | перевірка схемою готова; спроба виправлення — далі |
-| До кожного результату логуються модель, версія промпту, семплінг | поля запису — `src/extraction/result.py`; самі записи — `results/stage1/*.jsonl` | готово (результати поки локально) |
+| До кожного результату логуються модель, версія промпту, семплінг | поля запису — `src/extraction/result.py`; самі записи — `results/stage1/*.jsonl` | готово |
 | `REPORT.md`: таблиця, розбір помилок, вибір для продакшну | — | далі |
 | Запуск однією командою `make run` | — | далі; поки команди з розділу «Запуск» |
 
@@ -96,7 +96,7 @@ scripts/
   pdf_to_text.py           PDF → знеособлений текст
   check_golden.py          перевірка розмітки golden set
 tests/                     тести pytest: uv run pytest
-results/stage1/            відповіді моделей *.jsonl і таблиця метрик (поки не в git)
+results/stage1/            відповіді моделей *.jsonl (рядок на документ) і metrics.md — таблиця метрик
 ```
 
 План і послідовність робіт описані в `docs/PLAN.md` та `docs/PLAN_SHORT.md`.

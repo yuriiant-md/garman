@@ -14,8 +14,8 @@ htmlcov/
 CLAUDE.md
 data/raw/
 
-# Model outputs and run results
-results/
+# Unfinished runs; finished results/stage1/*.jsonl are committed so the metrics can be checked
+results/**/*.partial
 
 # Claude Code local state (worktrees, settings)
 .claude/

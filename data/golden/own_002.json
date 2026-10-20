@@ -16,7 +16,7 @@
       "currency": "UAH",
       "vat_included": false
     },
-    "basis": "other",
+    "basis": "DAT",
     "delivery": {
       "place": "ТОВ “Бруклін-Київ”, 65026, Україна, Одеська обл., м. Одеса, пл. Митна, 1",
       "date_from": "2026-05-20",

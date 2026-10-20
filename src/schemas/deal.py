@@ -37,6 +37,7 @@ class Basis(StrEnum):
     CPT = "CPT"
     DAP = "DAP"
     FOB = "FOB"
+    DAT = "DAT"
     OTHER = "other"
 
 

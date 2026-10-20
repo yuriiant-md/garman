@@ -59,7 +59,7 @@ uv run python -m src.extraction.metrics                                         
 uv run python -m scripts.check_golden                                            # перевірка розмітки golden set
 ```
 
-`--split` — `dev` (синтетичні тексти), `test` (golden set) або `all`; `--sampling` — назва з `configs/sampling.yaml`; `--fresh` ігнорує збережені відповіді.
+`--split` — `dev` (синтетичні тексти), `test` (golden set) або `all`; `--sampling` — назва з `configs/sampling.yaml`; `--fresh` заново питає модель про всі тексти з `--split`, а збережені відповіді іншого спліта лишає.
 
 Підготовка golden set із договорів Prozorro (докладно — у `data/README.md`):
 

@@ -59,7 +59,7 @@ uv run python -m src.extraction.metrics                                         
 uv run python -m scripts.check_golden                                            # validate the golden labels
 ```
 
-`--split` is `dev` (synthetic texts), `test` (golden set) or `all`; `--sampling` is a name from `configs/sampling.yaml`; `--fresh` ignores the saved answers.
+`--split` is `dev` (synthetic texts), `test` (golden set) or `all`; `--sampling` is a name from `configs/sampling.yaml`; `--fresh` asks the model again for every text of `--split` and keeps the saved answers of the other split.
 
 Building the golden set from Prozorro contracts (details in `data/README.md`):
 

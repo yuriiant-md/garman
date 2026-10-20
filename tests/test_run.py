@@ -285,6 +285,27 @@ def test_main_fresh_asks_the_model_again_despite_the_cache(tmp_path, monkeypatch
     assert len(extractor.texts) == 2
 
 
+def test_main_fresh_on_one_split_keeps_the_other_splits_answers(tmp_path, monkeypatch):
+    make_texts(tmp_path / "texts")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setattr("src.extraction.run.ROOT", tmp_path)
+    monkeypatch.setattr("src.extraction.run.RESULTS_DIR", tmp_path / "results")
+    monkeypatch.setattr("src.extraction.run.configured_model", lambda model: "stub")
+    prompt = load_prompt(DEFAULT_PROMPT)
+    output = result_path(tmp_path / "results", "stub", "v2", "precise")
+    docs = ("synthetic_001", "synthetic_002", "prozorro_001")
+    write_results(output, [stored(doc, prompt) for doc in docs])
+    extractor = StubExtractor()
+    monkeypatch.setattr("src.extraction.run.build_extractor", lambda model: extractor)
+
+    code = main(["--split", "dev", "--fresh", "--texts-dir", str(tmp_path / "texts")])
+
+    lines = output.read_text(encoding="utf-8").splitlines()
+    assert code == 0
+    assert extractor.texts == ["збій", "пш 3кл"]
+    assert [json.loads(line)["doc_id"] for line in lines] == list(docs)
+
+
 def test_main_reports_an_unreachable_ollama_without_traceback(tmp_path, monkeypatch, capsys):
     make_texts(tmp_path / "texts")
     monkeypatch.setattr("src.extraction.run.RESULTS_DIR", tmp_path / "results")

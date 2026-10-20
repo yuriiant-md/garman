@@ -1,7 +1,7 @@
 """Run an extractor over the stage-1 texts and save one JSON line per document.
 
 Answers already saved for the same document, prompt file and sampling are reused; `--fresh`
-asks the model again.
+asks the model again for the chosen split and keeps the saved answers of the other split.
 
     uv run --env-file .env python -m src.extraction.run --split dev
     uv run python -m src.extraction.run --model lapa   # local model through Ollama, no API key
@@ -164,7 +164,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--prompt", type=Path, default=DEFAULT_PROMPT)
     parser.add_argument("--sampling", default="precise", help="Name from configs/sampling.yaml.")
     parser.add_argument(
-        "--fresh", action="store_true", help="Ask the model again even for cached answers."
+        "--fresh", action="store_true", help="Ask the model again for every text of the split."
     )
     return parser.parse_args(argv)
 
@@ -182,7 +182,10 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     prompt = load_prompt(args.prompt)
     output = result_path(RESULTS_DIR, configured_model(args.model), prompt.version, sampling.name)
-    cached = {} if args.fresh else load_cached(output, prompt, sampling)
+    cached = load_cached(output, prompt, sampling)
+    if args.fresh:  # ask this split again; answers of the other split stay in the file
+        asked = {path.stem for path in paths}
+        cached = {doc: record for doc, record in cached.items() if doc not in asked}
     if all(path.stem in cached for path in paths):
         print(f"All {len(paths)} answers are cached in {output.relative_to(ROOT)}")
         return 0

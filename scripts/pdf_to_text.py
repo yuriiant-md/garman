@@ -4,7 +4,10 @@ PyMuPDF reads the text layer as it is: stamp and signature noise stays, the text
 Phones, IBANs, bank accounts, personal tax numbers (РНОКПП), emails and people's names become
 tags. Company names and their 8-digit ЄДРПОУ codes are public and stay. Every masked value goes
 to a review file inside data/raw/ (outside git), so a person checks the result before labeling;
-a missed surname goes to data/raw/prozorro/extra_names.txt and the script is run again."""
+a missed surname goes to data/raw/prozorro/extra_names.txt and the script is run again.
+
+`--prefix own_` does the same for the author's own contracts in data/raw/own/ (names and
+commercial details already hidden by the author): texts own_NNN, sources data/own_sources.csv."""
 
 import argparse
 import csv
@@ -16,14 +19,21 @@ from pathlib import Path
 import pymupdf
 
 ROOT = Path(__file__).resolve().parents[1]
-RAW_DIR = ROOT / "data" / "raw" / "prozorro"
 TEXTS_DIR = ROOT / "data" / "texts"
-SOURCES_PATH = ROOT / "data" / "prozorro_sources.csv"
 REVIEW_NAME = "mask_review.txt"
 EXTRA_NAMES_NAME = "extra_names.txt"
 EXTRA_ADDRESSES_NAME = "extra_addresses.txt"
-FILE_PREFIX = "prozorro_"
+FILE_PREFIX = "prozorro_"  # Prozorro PDFs are named prozorro_<tenderID>.pdf
 TENDER_URL = "https://prozorro.gov.ua/tender/{tender_id}"
+
+
+def raw_dir_for(prefix: str) -> Path:
+    """prozorro_ -> data/raw/prozorro, own_ -> data/raw/own."""
+    return ROOT / "data" / "raw" / prefix.rstrip("_")
+
+
+def sources_path_for(prefix: str) -> Path:
+    return ROOT / "data" / f"{prefix}sources.csv"
 
 UPPER = "А-ЯІЇЄҐ"
 LOWER = "а-яіїєґ'’"
@@ -277,13 +287,14 @@ def convert_all(
     sources_path: Path,
     review_path: Path,
     overwrite: bool = False,
+    prefix: str = FILE_PREFIX,
 ) -> list[dict[str, str]]:
     if not raw_dir.is_dir():
         raise FileNotFoundError(f"no folder with contract PDFs: {raw_dir}")
     pdfs = sorted(raw_dir.glob("*.pdf"))
     if not pdfs:
         raise FileNotFoundError(f"no PDFs in {raw_dir}")
-    ids = [f"{FILE_PREFIX}{index:03d}" for index in range(1, len(pdfs) + 1)]
+    ids = [f"{prefix}{index:03d}" for index in range(1, len(pdfs) + 1)]
     existing = [
         texts_dir / f"{doc_id}.txt" for doc_id in ids if (texts_dir / f"{doc_id}.txt").exists()
     ]
@@ -300,24 +311,35 @@ def convert_all(
         raw_text, pages = extract_text(pdf)
         text, found = mask_pii(clean_text(raw_text), extra_names, extra_addresses)
         (texts_dir / f"{doc_id}.txt").write_text(text)
-        tender_id = pdf.stem.removeprefix(FILE_PREFIX)
+        source = _source_columns(pdf, prefix)
         counts = Counter(kind for kind, _ in found)
         rows.append(
             {
                 "id": doc_id,
-                "tender_id": tender_id,
-                "tender_url": TENDER_URL.format(tender_id=tender_id),
+                **source,
                 "pages": str(pages),
                 "chars": str(len(text)),
                 "masked": " ".join(f"{kind}:{count}" for kind, count in sorted(counts.items())),
             }
         )
-        review.append(f"== {doc_id} ({tender_id})")
+        review.append(f"== {doc_id} ({source_label(source)})")
         review.extend(f"{kind}: {value!r}" for kind, value in found)
         review.extend(f"CHECK: {word!r}" for word in suspicious_words(text))
     _write_sources(sources_path, rows)
     review_path.write_text("\n".join(review) + "\n")
     return rows
+
+
+def _source_columns(pdf: Path, prefix: str) -> dict[str, str]:
+    """Where a text came from: the tender for Prozorro, the PDF file for other contracts."""
+    if prefix != FILE_PREFIX:
+        return {"source_file": pdf.name}
+    tender_id = pdf.stem.removeprefix(FILE_PREFIX)
+    return {"tender_id": tender_id, "tender_url": TENDER_URL.format(tender_id=tender_id)}
+
+
+def source_label(row: dict[str, str]) -> str:
+    return row.get("tender_id") or row["source_file"]
 
 
 def _write_sources(path: Path, rows: list[dict[str, str]]) -> None:
@@ -328,24 +350,35 @@ def _write_sources(path: Path, rows: list[dict[str, str]]) -> None:
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Extract and anonymize Prozorro contract texts.")
-    parser.add_argument("--raw-dir", type=Path, default=RAW_DIR)
+    parser = argparse.ArgumentParser(description="Extract and anonymize contract texts.")
+    parser.add_argument(
+        "--prefix", default=FILE_PREFIX, help="text id prefix: prozorro_ (default) or own_"
+    )
+    parser.add_argument("--raw-dir", type=Path, help="default: data/raw/<prefix without _>")
     parser.add_argument("--texts-dir", type=Path, default=TEXTS_DIR)
-    parser.add_argument("--sources", type=Path, default=SOURCES_PATH)
-    parser.add_argument("--overwrite", action="store_true", help="replace existing prozorro texts")
-    return parser.parse_args(argv)
+    parser.add_argument("--sources", type=Path, help="default: data/<prefix>sources.csv")
+    parser.add_argument("--overwrite", action="store_true", help="replace existing texts")
+    args = parser.parse_args(argv)
+    return argparse.Namespace(**{
+        **vars(args),
+        "raw_dir": args.raw_dir or raw_dir_for(args.prefix),
+        "sources": args.sources or sources_path_for(args.prefix),
+    })
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     review_path = args.raw_dir / REVIEW_NAME
     try:
-        rows = convert_all(args.raw_dir, args.texts_dir, args.sources, review_path, args.overwrite)
+        rows = convert_all(
+            args.raw_dir, args.texts_dir, args.sources, review_path, args.overwrite, args.prefix
+        )
     except (OSError, pymupdf.FileDataError) as error:
         print(f"Conversion failed: {error}", file=sys.stderr)
         return 1
     for row in rows:
-        print(f"{row['id']}  {row['tender_id']}  {row['pages']} p.  masked: {row['masked'] or '-'}")
+        masked = row["masked"] or "-"
+        print(f"{row['id']}  {source_label(row)}  {row['pages']} p.  masked: {masked}")
     print(f"Check every masked value and the texts themselves: {review_path}")
     return 0
 

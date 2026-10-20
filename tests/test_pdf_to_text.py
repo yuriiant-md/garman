@@ -5,7 +5,14 @@ import pymupdf
 import pytest
 
 from scripts import pdf_to_text
-from scripts.pdf_to_text import clean_text, convert_all, extract_text, main, mask_pii
+from scripts.pdf_to_text import (
+    clean_text,
+    convert_all,
+    extract_text,
+    main,
+    mask_pii,
+    parse_args,
+)
 
 
 def masked(text: str, extra_names: tuple[str, ...] = ()) -> str:
@@ -232,6 +239,39 @@ def test_convert_all_reads_extra_names_file(tmp_path, monkeypatch):
     convert_all(raw, texts, tmp_path / "sources.csv", raw / "review.txt")
 
     assert (texts / "prozorro_001.txt").read_text() == "підпис [ПІБ]\n"
+
+
+def test_convert_all_with_own_prefix_records_the_source_file_instead_of_a_tender(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(pdf_to_text, "extract_text", fake_extract)
+    raw, texts = tmp_path / "raw", tmp_path / "texts"
+    raw.mkdir()
+    for name in ("Training_set_02.pdf", "Training_set_01.pdf"):
+        (raw / name).write_bytes(b"%PDF stub")
+    review = raw / "mask_review.txt"
+
+    rows = convert_all(raw, texts, tmp_path / "own_sources.csv", review, prefix="own_")
+
+    assert [row["id"] for row in rows] == ["own_001", "own_002"]
+    assert (texts / "own_001.txt").read_text().startswith("Договір Training_set_01")
+    saved = list(csv.DictReader((tmp_path / "own_sources.csv").open()))
+    assert saved[0]["source_file"] == "Training_set_01.pdf"
+    assert "tender_id" not in saved[0]
+    assert "== own_001 (Training_set_01.pdf)" in review.read_text()
+
+
+def test_prefix_picks_the_raw_folder_and_sources_file():
+    own = parse_args(["--prefix", "own_"])
+    prozorro = parse_args([])
+
+    assert (own.raw_dir, own.sources) == (
+        pdf_to_text.ROOT / "data" / "raw" / "own", pdf_to_text.ROOT / "data" / "own_sources.csv"
+    )
+    assert (prozorro.raw_dir, prozorro.sources) == (
+        pdf_to_text.ROOT / "data" / "raw" / "prozorro",
+        pdf_to_text.ROOT / "data" / "prozorro_sources.csv",
+    )
 
 
 def test_main_reports_missing_raw_dir_without_traceback(tmp_path, capsys):

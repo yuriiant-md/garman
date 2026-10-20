@@ -1,4 +1,4 @@
-"""Score one extracted Deal against its golden Deal by the counting rules in docs/PLAN.md.
+"""Score one extracted Deal against its golden Deal by the counting rules in README.md.
 
 The unit is a leaf field (`price.amount_per_t`); an empty nested object equals one whose fields
 are all null. Strings are compared after normalization and with a similarity threshold, because

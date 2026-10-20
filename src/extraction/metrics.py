@@ -2,7 +2,7 @@
 
     uv run python -m src.extraction.metrics
 
-The counting rules are in docs/PLAN.md; one document is scored in src/extraction/scoring.py.
+The counting rules are in README.md; one document is scored in src/extraction/scoring.py.
 """
 
 import argparse

@@ -282,6 +282,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Folders with golden *.json files (fields id, split, deal).",
     )
     parser.add_argument("--models", type=Path, default=MODELS_PATH, help="Prices per model.")
+    parser.add_argument("--output", type=Path, help="Also write the table to this file.")
     return parser.parse_args(argv)
 
 
@@ -302,7 +303,10 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError as error:
         print(f"Stopped: {error}", file=sys.stderr)
         return 1
-    print(format_table(metrics))
+    table = format_table(metrics)
+    print(table)
+    if args.output:
+        args.output.write_text(table + "\n", encoding="utf-8")
     return 0
 
 

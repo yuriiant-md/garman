@@ -237,6 +237,19 @@ def test_main_prints_the_table_and_warns_about_documents_without_golden(tmp_path
     assert "trader_001" in output.err
 
 
+def test_main_also_writes_the_table_to_a_file_when_asked(tmp_path, capsys):
+    results_dir, references_dir = write_inputs(tmp_path, [record("synthetic_001")])
+    output = tmp_path / "metrics.md"
+
+    code = main(
+        ["--results-dir", str(results_dir), "--references", str(references_dir),
+         "--output", str(output)]
+    )
+
+    assert code == 0
+    assert output.read_text(encoding="utf-8") == capsys.readouterr().out
+
+
 def test_main_reports_a_stored_deal_that_fails_the_schema(tmp_path, capsys):
     results_dir, references_dir = write_inputs(
         tmp_path, [record("synthetic_001", deal={**DEAL, "quantity_t": -5})]

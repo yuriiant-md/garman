@@ -63,8 +63,8 @@ uv run python -m scripts.check_golden      # перевірка ручної р�
 
 | Вимога | Де дивитися | Стан |
 | --- | --- | --- |
-| 30 «брудних» текстів без персональних даних | `data/texts/`: `synthetic_001–020.txt` (dev) і `prozorro_001–010.txt` (test); як знеособлено — `data/README.md` | готово |
-| 10 текстів розмічено вручну (golden set) | `data/golden/prozorro_001–010.json`, правила розмітки — `data/golden/RULES.md` | готово |
+| 30 «брудних» текстів без персональних даних | `data/texts/` — 37 текстів: `synthetic_001–020.txt` (dev), `prozorro_001–010.txt` і власні договори `own_001–007.txt` (test); як знеособлено — `data/README.md` | готово |
+| 10 текстів розмічено вручну (golden set) | `data/golden/`: `prozorro_001–010.json` і `own_001–007.json`, правила розмітки — `data/golden/RULES.md` | Prozorro готово; `own` — чернетка, перевіряє автор |
 | Схема: ≥ 6 полів, ≥ 1 enum, вкладений об'єкт або список | `src/schemas/deal.py` (10 полів, 9 enum, 5 вкладених об'єктів, список `penalties`), тести — `tests/test_deal.py` | готово |
 | Провайдерська модель через API зі structured output, retry і timeout | `src/extraction/anthropic_extractor.py` (схема як обов'язковий виклик інструмента), налаштування — `configs/models.yaml` | готово |
 | Локальна модель через спільний інтерфейс | `src/extraction/ollama_extractor.py`; інтерфейс `Extractor` — `src/extraction/run.py` | готово |
@@ -83,10 +83,11 @@ configs/
   models.yaml              моделі, timeout, retry, ціни за 1M токенів
   sampling.yaml            конфігурації семплінгу precise і varied
 data/
-  texts/                   30 текстів, які отримують моделі
+  texts/                   37 текстів, які отримують моделі
   synthetic/               еталонний Deal і параметри «брудності» для кожного синтетичного тексту
-  golden/                  ручний еталон договорів Prozorro + RULES.md
-  prozorro_sources.csv     з якої закупівлі кожен договір
+  golden/                  еталон договорів Prozorro і власних договорів + RULES.md
+  prozorro_sources.csv     з якої закупівлі кожен договір Prozorro
+  own_sources.csv          з якого PDF і з яким номером кожен власний договір
   README.md                як зібрано, знеособлено й розмічено дані
   raw/                     оригінали PDF і файли перевірки маскування (не в git)
 prompts/

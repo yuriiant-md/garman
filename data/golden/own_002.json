@@ -1,0 +1,76 @@
+{
+  "id": "own_002",
+  "split": "test",
+  "source": "own",
+  "contract_no": "K2605-0292",
+  "text_path": "data/texts/own_002.txt",
+  "deal": {
+    "crop": "wheat",
+    "quantity_t": 500.0,
+    "tolerance": {
+      "pct": 5.0,
+      "option": "seller"
+    },
+    "price": {
+      "amount_per_t": 9736.84,
+      "currency": "UAH",
+      "vat_included": false
+    },
+    "basis": "other",
+    "delivery": {
+      "place": "ТОВ “Бруклін-Київ”, 65026, Україна, Одеська обл., м. Одеса, пл. Митна, 1",
+      "date_from": "2026-05-20",
+      "date_to": "2026-06-05",
+      "period_raw": null
+    },
+    "payment": {
+      "days": 3,
+      "days_type": "other",
+      "trigger": "after_documents",
+      "vat_after_registration": true
+    },
+    "penalties": [
+      {
+        "payer": "buyer",
+        "trigger": "late_payment",
+        "amount": 2.0,
+        "unit": "nbu_rate_multiple",
+        "cap_pct": null
+      },
+      {
+        "payer": "seller",
+        "trigger": "under_delivery",
+        "amount": 30.0,
+        "unit": "one_time_pct",
+        "cap_pct": null
+      },
+      {
+        "payer": "seller",
+        "trigger": "other",
+        "amount": 3.0,
+        "unit": "other",
+        "cap_pct": null
+      }
+    ],
+    "quality": {
+      "grade": "4",
+      "protein_min": null,
+      "moisture_max": 14.0,
+      "foreign_matter_max": 2.0,
+      "lab": "other"
+    },
+    "buyer": null
+  },
+  "evidence": {
+    "crop": "п. 1.1",
+    "quantity_t": "п. 3.1",
+    "tolerance": "п. 3.1",
+    "price": "п. 4.1 (перша названа ціна — без ПДВ, ПДВ додається зверху)",
+    "basis": "п. 4.1, 5.1 (DAT — немає в переліку → other)",
+    "delivery": "п. 5.1, 5.2",
+    "payment": "п. 6.1 (3 робочих дні → other), 6.4 (ПДВ після реєстрації ПН)",
+    "penalties": "п. 7.2, 7.3, 7.6 (3 USD/т за фумігаційні гази)",
+    "quality": "п. 1.1 (клас), 2.1 (показники), 2.3 (лабораторія місця поставки)",
+    "buyer": "п. 2.1 (преамбула потрапила в розділ 2): «назва покупця» — заглушка → null"
+  }
+}

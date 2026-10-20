@@ -1,0 +1,69 @@
+{
+  "id": "own_006",
+  "split": "test",
+  "source": "own",
+  "contract_no": "K2608-0360",
+  "text_path": "data/texts/own_006.txt",
+  "deal": {
+    "crop": "wheat",
+    "quantity_t": 72.0,
+    "tolerance": {
+      "pct": 10.0,
+      "option": null
+    },
+    "price": {
+      "amount_per_t": 5991.23,
+      "currency": "UAH",
+      "vat_included": false
+    },
+    "basis": "EXW",
+    "delivery": {
+      "place": "ПрАТ“Весело-Кутський Комбінат Хлібопродуктів” 67121, Україна, Роздільнянський р-н, Одеська обл., село Новоборисівка, вулиця Центральна, будинок 2",
+      "date_from": null,
+      "date_to": "2026-08-28",
+      "period_raw": null
+    },
+    "payment": {
+      "days": 3,
+      "days_type": "banking",
+      "trigger": "after_documents",
+      "vat_after_registration": true
+    },
+    "penalties": [
+      {
+        "payer": "buyer",
+        "trigger": "late_payment",
+        "amount": 2.0,
+        "unit": "nbu_rate_multiple",
+        "cap_pct": null
+      },
+      {
+        "payer": "seller",
+        "trigger": "under_delivery",
+        "amount": 30.0,
+        "unit": "one_time_pct",
+        "cap_pct": null
+      }
+    ],
+    "quality": {
+      "grade": "4",
+      "protein_min": null,
+      "moisture_max": 14.0,
+      "foreign_matter_max": 2.0,
+      "lab": "other"
+    },
+    "buyer": null
+  },
+  "evidence": {
+    "crop": "п. 1.1",
+    "quantity_t": "п. 3.1",
+    "tolerance": "п. 3.1",
+    "price": "п. 4.1 (перша названа ціна — без ПДВ, ПДВ додається зверху)",
+    "basis": "п. 4.1, 5.1",
+    "delivery": "п. 5.1, 5.2 («у термін до 28.08.2026» → лише date_to)",
+    "payment": "п. 6.1 (3 дні після документів), 6.3–6.4 (ПДВ-частина після реєстрації ПН)",
+    "penalties": "п. 7.3, 7.4",
+    "quality": "п. 1.1 (клас), 2.1 (показники), 2.3 (лабораторія місця поставки)",
+    "buyer": "преамбула: назву покупця приховано автором → null"
+  }
+}

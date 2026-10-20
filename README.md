@@ -70,7 +70,7 @@ uv run python -m scripts.check_golden      # перевірка ручної р�
 | Локальна модель через спільний інтерфейс | `src/extraction/ollama_extractor.py`; інтерфейс `Extractor` — `src/extraction/run.py` | готово |
 | temperature і top_p у конфігу, ≥ 2 конфігурації | `configs/sampling.yaml` (`precise`, `varied`) | конфіг готовий; прогін `varied` — далі |
 | Метрики: точність по полях, % валідних, p50/p95, вартість на 1000 документів | `src/extraction/metrics.py` (таблиця), `src/extraction/scoring.py` (порівняння з еталоном); тести — `tests/test_metrics.py`, `tests/test_scoring.py` | код готовий; цифри поки лише на dev — `results/stage1/metrics.md` |
-| Промпти з версією в шапці, ≥ 2 версії, `CHANGELOG` | `prompts/extract_v1.md`, `prompts/CHANGELOG.md` | v1 готова; v2 — далі |
+| Промпти з версією в шапці, ≥ 2 версії, `CHANGELOG` | `prompts/extract_v1.md`, `prompts/extract_v2.md`, `prompts/CHANGELOG.md` | готово: v1 — baseline, v2 — з помилок v1 на dev |
 | Кожна відповідь валідується схемою; невалідна → одна спроба виправлення → `failed` | `src/extraction/validation.py` | перевірка схемою готова; спроба виправлення — далі |
 | До кожного результату логуються модель, версія промпту, семплінг | поля запису — `src/extraction/result.py`; самі записи — `results/stage1/*.jsonl` | готово |
 | `REPORT.md`: таблиця, розбір помилок, вибір для продакшну | — | далі |
@@ -92,6 +92,7 @@ data/
   raw/                     оригінали PDF і файли перевірки маскування (не в git)
 prompts/
   extract_v1.md            baseline-промпт, версія в шапці
+  extract_v2.md            промпт з правилами по полях; {today} — дата запуску
   CHANGELOG.md             що змінювалось між версіями і чому
 src/schemas/
   deal.py                  схема угоди Deal

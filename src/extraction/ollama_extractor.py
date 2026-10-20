@@ -43,7 +43,7 @@ SCHEMA_TEXT = json.dumps(DEAL_FORMAT, ensure_ascii=False)
 
 
 def system_text(prompt: Prompt) -> str:
-    return f"{prompt.text}\n\nJSON-схема відповіді:\n{SCHEMA_TEXT}"
+    return f"{prompt.text}\n\nResponse JSON schema:\n{SCHEMA_TEXT}"
 
 
 @dataclass(frozen=True)

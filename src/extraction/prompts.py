@@ -2,11 +2,13 @@
 
 import hashlib
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 
 import yaml
 
 HEADER_FENCE = "---"
+TODAY_PLACEHOLDER = "{today}"  # replaced with the run date, the year source for yearless dates
 
 
 @dataclass(frozen=True)
@@ -16,7 +18,7 @@ class Prompt:
     sha256: str  # hash of the whole file, so an edit without a version bump is still visible
 
 
-def load_prompt(path: Path) -> Prompt:
+def load_prompt(path: Path, today: date | None = None) -> Prompt:
     content = path.read_text(encoding="utf-8")
     header, text = _split_header(content, path)
     version = header.get("version")
@@ -24,8 +26,11 @@ def load_prompt(path: Path) -> Prompt:
         raise ValueError(f"{path}: header has no version")
     if not text:
         raise ValueError(f"{path}: prompt text is empty")
+    run_date = (today or date.today()).isoformat()
     sha256 = hashlib.sha256(content.encode("utf-8")).hexdigest()
-    return Prompt(version=str(version), text=text, sha256=sha256)
+    return Prompt(
+        version=str(version), text=text.replace(TODAY_PLACEHOLDER, run_date), sha256=sha256
+    )
 
 
 def _split_header(content: str, path: Path) -> tuple[dict[str, object], str]:

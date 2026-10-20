@@ -28,7 +28,7 @@ ROOT = Path(__file__).resolve().parents[2]
 TEXTS_DIR = ROOT / "data" / "texts"
 RESULTS_DIR = ROOT / "results" / "stage1"
 MODELS_PATH = ROOT / "configs" / "models.yaml"
-DEFAULT_PROMPT = ROOT / "prompts" / "extract_v1.md"
+DEFAULT_PROMPT = ROOT / "prompts" / "extract_v2.md"
 DEV_PREFIX = "synthetic_"  # dev = synthetic texts; everything else (golden set) is test
 SPLITS = ("dev", "test", "all")
 API_KEY_VARIABLE = "ANTHROPIC_API_KEY"

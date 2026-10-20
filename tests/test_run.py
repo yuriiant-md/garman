@@ -171,7 +171,7 @@ def test_main_with_local_model_needs_no_api_key(tmp_path, monkeypatch, capsys):
     code = main(["--model", "lapa", "--texts-dir", str(tmp_path / "texts")])
 
     assert code == 0
-    assert (tmp_path / "results" / "stub__v1__precise.jsonl").exists()
+    assert (tmp_path / "results" / "stub__v2__precise.jsonl").exists()
     assert "ANTHROPIC_API_KEY" not in capsys.readouterr().err
 
 

@@ -2,4 +2,4 @@
 
 
 def user_message(text: str) -> str:
-    return f"Текст угоди:\n<text>\n{text}\n</text>"
+    return f"Document:\n<text>\n{text}\n</text>"

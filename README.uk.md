@@ -1,0 +1,147 @@
+# Гарман
+
+[English](README.md) · Українська
+
+Telegram-бот для фермера: витягує умови з договору трейдера, знаходить ризики з посиланням на пункт договору чи норму закону й допомагає порівнювати пропозиції. Курсовий проєкт розвивається поетапно; етап 1 готовий до перевірки: витягування умов угоди з «брудних» текстів і порівняння платної моделі з локальною.
+
+## Як відтворити етап 1
+
+### Що потрібно
+
+- macOS або Linux з `make` і [uv](https://docs.astral.sh/uv/getting-started/installation/). Python 3.14 uv встановить сам під час першого `make install`.
+- Лише щоб заново запитати моделі (крок 4): ключ Anthropic API для Claude Haiku 4.5 і [Ollama](https://ollama.com) з Lapa 12B (завантаження 7,3 ГБ, під час роботи — близько 12 ГБ вільної пам'яті).
+
+### 1. Встановити
+
+```bash
+git clone <repository-url> garman
+cd garman
+make install    # = uv sync
+```
+
+### 2. Перевірити
+
+```bash
+make test       # = uv run pytest -q
+```
+
+Усі тести працюють офлайн за кілька секунд: без ключа API, без Ollama, без мережі.
+
+### 3. Запустити етап 1
+
+```bash
+make run        # = uv run python main.py
+```
+
+`make run` проганяє всі конфігурації етапу 1 на всіх 37 текстах — 2 моделі × 2 промпти × семплінг `precise` — і записує таблицю метрик у `results/stage1/metrics.md`.
+
+Відповіді, вже збережені в `results/stage1/*.jsonl` для того самого документа, файлу промпту й семплінгу, використовуються повторно, а відповіді прогону автора закомічено. Тому на свіжому клоні `make run` не потребує ні ключа API, ні Ollama: він за кілька секунд перебудовує таблицю зі збережених відповідей. Якщо після цього `git diff results/stage1/metrics.md` нічого не показує, цифри відтворено.
+
+### 4. Запитати моделі заново (необов'язково)
+
+```bash
+cp .env.example .env    # впиши свій ключ: ANTHROPIC_API_KEY=...
+ollama pull hf.co/lapa-llm/lapa-v0.1.2-instruct-GGUF:Q4_K_M
+ollama cp hf.co/lapa-llm/lapa-v0.1.2-instruct-GGUF:Q4_K_M lapa-v0.1.2-q4km
+make run FRESH=1        # = uv run --env-file .env python main.py --fresh
+```
+
+Це той самий файл Lapa (Q4_K_M), на якому зроблено закомічені відповіді. Новий прогін коштує близько $1 за Claude і триває близько 25 хвилин для Lapa на Mac з Apple Silicon. Цифри будуть близькі до закомічених, але не тотожні: Claude не повністю детермінований навіть при temperature 0, а промпт v2 містить дату запуску (`{today}`).
+
+Конфігурацію, якій потрібна відсутня модель (немає ключа в `.env`, не запущено Ollama), пропущено з поясненням; решта все одно проганяється, а `make run` завершується з кодом 1 і переліком того, що не завершено.
+
+### Окремі команди
+
+```bash
+uv run --env-file .env python -m src.extraction.run --split all                 # одна конфігурація: Claude, промпт v2, precise
+uv run python -m src.extraction.run --model lapa --prompt prompts/extract_v1.md   # Lapa, промпт v1, тексти dev
+uv run python -m src.extraction.metrics                                          # лише таблиця метрик (= make metrics)
+uv run python -m scripts.check_golden                                            # перевірка розмітки golden set
+```
+
+`--split` — `dev` (синтетичні тексти), `test` (golden set) або `all`; `--sampling` — назва з `configs/sampling.yaml`; `--fresh` ігнорує збережені відповіді.
+
+Підготовка golden set із договорів Prozorro (докладно — у `data/README.md`):
+
+```bash
+uv run python -m scripts.fetch_prozorro    # кандидати в data/raw/prozorro_candidates/
+uv run python -m scripts.pdf_to_text       # data/raw/prozorro/*.pdf → data/texts/prozorro_NNN.txt
+```
+
+## Як рахуються метрики
+
+Правила записані до першого прогону; код — `src/extraction/scoring.py` (один документ) і `src/extraction/metrics.py` (таблиця), кожне правило має свій тест у `tests/test_scoring.py` і `tests/test_metrics.py`.
+
+1. **Одиниця — кінцеве поле** угоди (`price.amount_per_t`, `payment.trigger`). Порожній вкладений об'єкт дорівнює об'єкту, де всі поля `null`. Поле `delivery.period_raw` не рахується.
+2. **Порівняння:** enum, bool і дати — точний збіг; числа — до сотої (9200 = 9200.004, але 0.1 ≠ 0.11); рядки — після нормалізації (регістр, лапки, апострофи, правова форма ТОВ, ТзОВ, ПрАТ, АТ, ДП, ПП, ФГ) і зі схожістю ≥ 0.85 (`difflib`). Поріг підібрано на OCR-шумі golden Prozorro: виправлена моделлю назва дає 0.87–0.99, назва в іншому відмінку — 0.82, латиницею — 0. Відома вада: назви, що відрізняються лише цифрою, теж зараховуються.
+3. **Неустойки** спарюються за (`payer`, `trigger`, `unit`) незалежно від порядку; із кількох кандидатів береться той, що збігається з еталоном за більшою кількістю з `amount` і `cap_pct`. Неустойка без пари — усі її поля хибні; зайва — її значення вигадані.
+4. **Три числа замість одного:** точність заповнених — головна, лише поля, що в еталоні не `null`; вигадані, % — модель дала значення там, де в еталоні `null`; загальна — усі поля, для довідки. Інакше відповідь «усе `null`» мала б високий бал. Точність рахується по сумі полів усіх документів.
+5. **Невалідна відповідь** (`invalid` чи `error`) не викидається: усі її поля хибні, а порожні в еталоні поля рахуються вигаданими, щоб збій не виглядав кращим за помилку.
+6. **Валідність** — окремо: валідні й failed; «валідні після виправлення» з'являться разом зі спробою виправлення.
+7. **`varied`** — 3 повтори на golden, середнє й розкид; `precise` — один прогін (з'явиться у фінальному прогоні).
+8. **Окремо по наборах:** синтетика (dev), Prozorro і власні договори (test); модель обирається за всіма golden разом.
+9. **Шум:** до точності заповнених додається 95% бутстреп-інтервал — 1000 вибірок документів із поверненням, фіксований seed. Якщо інтервали двох конфігурацій перетинаються, перевагу не заявляю.
+10. **Вартість** — токени всіх спроб × тариф із `configs/models.yaml`, на 1000 відповідей без `error`; для локальної Lapa — $0.
+
+## Де що лежить
+
+### Вимоги етапу 1
+
+| Вимога | Де дивитися | Стан |
+| --- | --- | --- |
+| 30 «брудних» текстів без персональних даних | `data/texts/` — 37 текстів: `synthetic_001–020.txt` (dev), `prozorro_001–010.txt` і власні договори `own_001–007.txt` (test); як знеособлено — `data/README.md` | готово |
+| 10 текстів розмічено вручну (golden set) | `data/golden/`: `prozorro_001–010.json` і `own_001–007.json`, правила розмітки — `data/golden/RULES.md` | Prozorro перевірив автор; `own` — чернетка Claude, перевіряє автор |
+| Схема: ≥ 6 полів, ≥ 1 enum, вкладений об'єкт або список | `src/schemas/deal.py` (10 полів, 9 enum, 5 вкладених об'єктів, список `penalties`), тести — `tests/test_deal.py` | готово |
+| Провайдерська модель через API зі structured output, retry і timeout | `src/extraction/anthropic_extractor.py` (схема як обов'язковий виклик інструмента), налаштування — `configs/models.yaml` | готово |
+| Локальна модель через спільний інтерфейс | `src/extraction/ollama_extractor.py`; інтерфейс `Extractor` — `src/extraction/run.py` | готово |
+| temperature і top_p у конфігу, ≥ 2 конфігурації | `configs/sampling.yaml` (`precise`, `varied`) | конфіг готовий; прогін `varied` — далі |
+| Метрики: точність по полях, % валідних, p50/p95, вартість на 1000 документів | `src/extraction/metrics.py` (таблиця), `src/extraction/scoring.py` (порівняння з еталоном); тести — `tests/test_metrics.py`, `tests/test_scoring.py` | готово; цифри — `results/stage1/metrics.md` |
+| Промпти з версією в шапці, ≥ 2 версії, `CHANGELOG` | `prompts/extract_v1.md`, `prompts/extract_v2.md`, `prompts/CHANGELOG.md` | готово: v1 — baseline, v2 — з помилок v1 на dev |
+| Кожна відповідь валідується схемою; невалідна → одна спроба виправлення → `failed` | `src/extraction/validation.py` | перевірка схемою готова; спроба виправлення — далі |
+| До кожного результату логуються модель, версія промпту, семплінг | поля запису — `src/extraction/result.py`; самі записи — `results/stage1/*.jsonl` | готово |
+| `REPORT.md`: таблиця, розбір помилок, вибір для продакшну | — | далі |
+| Запуск однією командою: `make run` (= `python main.py`) | `Makefile`, `main.py` | готово |
+
+### Папки й файли
+
+```
+Makefile                   make install / test / run / metrics
+main.py                    етап 1 однією командою: уся матриця, потім таблиця метрик
+configs/
+  models.yaml              моделі, timeout, retry, ціни за 1M токенів
+  sampling.yaml            конфігурації семплінгу precise і varied
+data/
+  texts/                   37 текстів, які отримують моделі
+  synthetic/               еталонний Deal і параметри «брудності» для кожного синтетичного тексту
+  golden/                  еталон договорів Prozorro і власних договорів + RULES.md
+  prozorro_sources.csv     з якої закупівлі кожен договір Prozorro
+  own_sources.csv          з якого PDF і з яким номером кожен власний договір
+  README.md                як зібрано, знеособлено й розмічено дані
+  raw/                     оригінали PDF і файли перевірки маскування (не в git)
+prompts/
+  extract_v1.md            baseline-промпт, версія в шапці
+  extract_v2.md            промпт з правилами по полях; {today} — дата запуску
+  CHANGELOG.md             що змінювалось між версіями і чому
+src/schemas/
+  deal.py                  схема угоди Deal
+src/extraction/
+  anthropic_extractor.py   Claude Haiku 4.5 через Anthropic API
+  ollama_extractor.py      Lapa 12B через Ollama
+  run.py                   спільний інтерфейс Extractor, одна конфігурація, збережені відповіді
+  messages.py              однакове повідомлення з документом для обох моделей
+  prompts.py               читання промпту з версією й хешем файлу
+  sampling.py              читання configs/sampling.yaml
+  validation.py            перевірка відповіді схемою Deal
+  result.py                що записується про кожну відповідь
+  scoring.py               порівняння однієї відповіді з еталоном
+  metrics.py               таблиця метрик модель × промпт × семплінг
+scripts/
+  generate_synthetic.py    угоди для синтетичного набору (+ synthetic_render.py, synthetic_checks.py)
+  fetch_prozorro.py        пошук договорів у Prozorro
+  pdf_to_text.py           PDF → знеособлений текст
+  check_golden.py          перевірка розмітки golden set
+tests/                     тести pytest: make test
+results/stage1/            відповіді моделей *.jsonl (рядок на документ) і metrics.md — таблиця метрик
+```
+
+План робіт автор веде локально (`docs/`, поза репо); правила метрик із нього перенесено в розділ «Як рахуються метрики».

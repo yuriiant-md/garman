@@ -14,7 +14,7 @@
     "price": {
       "amount_per_t": 5701.75,
       "currency": "UAH",
-      "vat_included": null
+      "vat_included": false
     },
     "basis": "DAP",
     "delivery": {
@@ -65,7 +65,7 @@
     "crop": "п. 1.1",
     "quantity_t": "п. 3.1",
     "tolerance": "п. 3.1",
-    "price": "п. 4.1: ПДВ не згадано (постачальник — ФОП) → vat_included null",
+    "price": "п. 4.1: ПДВ не згадано (постачальник — ФОП) → vat_included false",
     "basis": "п. 4.1, 5.1",
     "delivery": "п. 5.1, 5.2",
     "payment": "п. 6.1 (100% за 3 банківських дні після документів); про ПДВ пункту немає",

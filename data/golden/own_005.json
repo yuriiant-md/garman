@@ -12,9 +12,9 @@
       "option": "buyer"
     },
     "price": {
-      "amount_per_t": 8508.77,
+      "amount_per_t": 9700.00,
       "currency": "UAH",
-      "vat_included": false
+      "vat_included": true
     },
     "basis": "FCA",
     "delivery": {
@@ -72,7 +72,7 @@
     "crop": "п. 1.1",
     "quantity_t": "п. 3.1",
     "tolerance": "п. 3.1",
-    "price": "п. 4.1 (перша названа ціна — без ПДВ, ПДВ додається зверху)",
+    "price": "п. 4.1 (ціна «разом» — з ПДВ)",
     "basis": "п. 4.1, 5.1",
     "delivery": "п. 5.1, 5.2",
     "payment": "п. 6.1 (3 робочих дні після документів → other), 6.3–6.4",

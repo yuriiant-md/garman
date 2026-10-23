@@ -9,7 +9,7 @@ from src.schemas.deal import Deal
 
 class ExtractionStatus(StrEnum):
     OK = "ok"  # the response passed the Deal schema and its content checks
-    INVALID = "invalid"  # the model answered, but the answer is not a valid Deal
+    FAILED = "failed"  # the model answered, but neither the answer nor its one fix is a valid Deal
     ERROR = "error"  # no answer: timeout, rate limit or server error left after retries
 
 
@@ -26,6 +26,7 @@ class ExtractionResult(BaseModel):
     deal: Deal | None = None
     raw_output: str | None = None
     error: str | None = None
+    attempts: int = 1  # 2 when the first answer was invalid and the model was asked to fix it
     latency_s: float
     input_tokens: int = 0
     output_tokens: int = 0

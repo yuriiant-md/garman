@@ -19,7 +19,7 @@ from src.extraction.messages import user_message
 from src.extraction.prompts import Prompt
 from src.extraction.result import ExtractionResult, ExtractionStatus
 from src.extraction.sampling import Sampling
-from src.extraction.validation import validate_deal
+from src.extraction.validation import repair_request, validate_deal
 from src.schemas.deal import Deal
 
 
@@ -67,24 +67,21 @@ class OllamaExtractor:
     def extract(self, text: str, prompt: Prompt, sampling: Sampling) -> ExtractionResult:
         params = sampling_options(sampling)
         started = time.perf_counter()
+        messages = [
+            {"role": "system", "content": system_text(prompt)},
+            {"role": "user", "content": user_message(text)},
+        ]
         try:
-            response = self._client.chat(
-                model=self.config.model,
-                messages=[
-                    {"role": "system", "content": system_text(prompt)},
-                    {"role": "user", "content": user_message(text)},
-                ],
-                format=DEAL_FORMAT,
-                options={**params, "num_ctx": self.config.num_ctx},
-            )
+            responses = self._ask_with_one_fix(messages, params)
         except httpx.TimeoutException:  # the ollama client lets httpx timeouts through unwrapped
             error = f"timed out after {self.config.timeout_s:g} s"
             return self._result(prompt, sampling, params, started, ExtractionStatus.ERROR, error=error)
+        response = responses[-1]
         raw = response.message.content or ""
         deal, error = validate_deal(raw)
         if error and response.done_reason != "stop":
             error = f"done_reason={response.done_reason}: {error}"
-        status = ExtractionStatus.OK if deal is not None else ExtractionStatus.INVALID
+        status = ExtractionStatus.OK if deal is not None else ExtractionStatus.FAILED
         return self._result(
             prompt,
             sampling,
@@ -94,9 +91,34 @@ class OllamaExtractor:
             deal=deal,
             raw_output=raw,
             error=error,
-            input_tokens=response.prompt_eval_count or 0,
-            output_tokens=response.eval_count or 0,
+            attempts=len(responses),
+            input_tokens=sum(r.prompt_eval_count or 0 for r in responses),
+            output_tokens=sum(r.eval_count or 0 for r in responses),
         )
+
+    def _ask(self, messages: list[dict[str, str]], params: dict[str, float]) -> ollama.ChatResponse:
+        return self._client.chat(
+            model=self.config.model,
+            messages=messages,
+            format=DEAL_FORMAT,
+            options={**params, "num_ctx": self.config.num_ctx},
+        )
+
+    def _ask_with_one_fix(
+        self, messages: list[dict[str, str]], params: dict[str, float]
+    ) -> list[ollama.ChatResponse]:
+        """The answers in order: one, or two when the first was invalid and was sent back."""
+        first = self._ask(messages, params)
+        raw = first.message.content or ""
+        deal, error = validate_deal(raw)
+        if deal is not None:
+            return [first]
+        fix = [
+            *messages,
+            {"role": "assistant", "content": raw},
+            {"role": "user", "content": repair_request(error)},
+        ]
+        return [first, self._ask(fix, params)]
 
     def _result(
         self,

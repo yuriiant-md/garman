@@ -26,15 +26,19 @@ def answer(content: str, done_reason: str = "stop") -> SimpleNamespace:
 
 
 class FakeClient:
+    """A list of outcomes is served one per call, the last one repeating; a single outcome
+    answers every call."""
+
     def __init__(self, outcome: object) -> None:
         self.calls: list[dict[str, object]] = []
-        self._outcome = outcome
+        self._outcomes = outcome if isinstance(outcome, list) else [outcome]
 
     def chat(self, **kwargs: object) -> object:
-        self.calls.append(kwargs)
-        if isinstance(self._outcome, Exception):
-            raise self._outcome
-        return self._outcome
+        self.calls.append({**kwargs, "messages": list(kwargs["messages"])})
+        outcome = self._outcomes.pop(0) if len(self._outcomes) > 1 else self._outcomes[0]
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
 
 
 def extract(outcome: object) -> tuple[object, FakeClient]:
@@ -95,22 +99,64 @@ def test_result_logs_both_sampling_values_sent():
     assert (result.temperature, result.top_p) == (0.0, 1.0)
 
 
-def test_content_validator_failure_is_invalid_and_keeps_raw_output():
+def test_content_validator_failure_that_stays_is_failed_and_keeps_raw_output():
     raw = json.dumps({"delivery": {"date_from": "2026-11-20", "date_to": "2026-11-01"}})
 
     result, _ = extract(answer(raw))
 
-    assert result.status is ExtractionStatus.INVALID
+    assert result.status is ExtractionStatus.FAILED
     assert result.deal is None
     assert result.raw_output == raw
     assert "date_from" in result.error
 
 
-def test_cut_off_answer_is_invalid_and_names_the_done_reason():
+def test_cut_off_answer_is_failed_and_names_the_done_reason():
     result, _ = extract(answer('{"crop": "wh', done_reason="length"))
 
-    assert result.status is ExtractionStatus.INVALID
+    assert result.status is ExtractionStatus.FAILED
     assert "length" in result.error
+
+
+BAD_RAW = json.dumps({"delivery": {"date_from": "2026-11-20", "date_to": "2026-11-01"}})
+
+
+def test_valid_first_answer_is_asked_once():
+    result, client = extract(answer(json.dumps({"crop": "wheat"})))
+
+    assert (result.status, result.attempts, len(client.calls)) == (ExtractionStatus.OK, 1, 1)
+
+
+def test_invalid_answer_gets_one_fix_with_its_own_text_and_the_error_in_the_chat():
+    result, client = extract([answer(BAD_RAW), answer(json.dumps({"crop": "wheat"}))])
+    *_, assistant, user = client.calls[1]["messages"]
+
+    assert result.status is ExtractionStatus.OK
+    assert result.attempts == 2
+    assert result.deal.crop is Crop.WHEAT
+    assert assistant == {"role": "assistant", "content": BAD_RAW}
+    assert user["role"] == "user"
+    assert "date_from" in user["content"]
+
+
+def test_both_attempts_are_paid_for_in_tokens():
+    result, _ = extract([answer(BAD_RAW), answer(json.dumps({"crop": "wheat"}))])
+
+    assert (result.input_tokens, result.output_tokens) == (650, 800)
+
+
+def test_answer_that_is_still_invalid_after_the_fix_is_failed_with_the_last_answer():
+    last = json.dumps({"delivery": {"date_from": "2026-12-20", "date_to": "2026-11-01"}})
+
+    result, client = extract([answer(BAD_RAW), answer(last)])
+
+    assert (result.status, result.attempts, len(client.calls)) == (ExtractionStatus.FAILED, 2, 2)
+    assert result.raw_output == last
+
+
+def test_no_answer_is_not_fixed_because_there_is_nothing_to_fix():
+    result, client = extract(httpx.ReadTimeout("timed out"))
+
+    assert (result.status, result.attempts, len(client.calls)) == (ExtractionStatus.ERROR, 1, 1)
 
 
 def test_timeout_becomes_error_result():

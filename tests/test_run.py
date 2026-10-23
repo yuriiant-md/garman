@@ -116,12 +116,12 @@ def test_summary_counts_statuses_tokens_median_latency_and_cost():
     records = [
         {"status": "ok", "latency_s": 1.0, "input_tokens": 1000, "output_tokens": 100},
         {"status": "ok", "latency_s": 3.0, "input_tokens": 1000, "output_tokens": 100},
-        {"status": "invalid", "latency_s": 2.0, "input_tokens": 1000, "output_tokens": 100},
+        {"status": "failed", "latency_s": 2.0, "input_tokens": 1000, "output_tokens": 100},
     ]
 
     summary = summarize(records, price_input=1.0, price_output=5.0)
 
-    assert summary["statuses"] == {"ok": 2, "invalid": 1, "error": 0}
+    assert summary["statuses"] == {"ok": 2, "failed": 1, "error": 0}
     assert summary["median_latency_s"] == 2.0
     assert summary["cost_usd"] == pytest.approx(3000 / 1e6 + 5 * 300 / 1e6)
     assert summary["cost_per_1000_docs_usd"] == pytest.approx(summary["cost_usd"] / 3 * 1000)

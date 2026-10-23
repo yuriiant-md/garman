@@ -32,7 +32,7 @@ def reply(content: list[SimpleNamespace], stop_reason: str) -> SimpleNamespace:
 
 
 def tool_reply(deal_input: dict[str, object], stop_reason: str = "tool_use") -> SimpleNamespace:
-    block = SimpleNamespace(type="tool_use", name=DEAL_TOOL["name"], input=deal_input)
+    block = SimpleNamespace(type="tool_use", id="toolu_1", name=DEAL_TOOL["name"], input=deal_input)
     return reply([block], stop_reason)
 
 
@@ -41,16 +41,20 @@ def text_reply(text: str, stop_reason: str = "end_turn") -> SimpleNamespace:
 
 
 class FakeClient:
+    """A list of outcomes is served one per call, the last one repeating; a single outcome
+    answers every call."""
+
     def __init__(self, outcome: object) -> None:
         self.calls: list[dict[str, object]] = []
         self.messages = SimpleNamespace(create=self._create)
-        self._outcome = outcome
+        self._outcomes = outcome if isinstance(outcome, list) else [outcome]
 
     def _create(self, **kwargs: object) -> object:
-        self.calls.append(kwargs)
-        if isinstance(self._outcome, Exception):
-            raise self._outcome
-        return self._outcome
+        self.calls.append({**kwargs, "messages": list(kwargs["messages"])})
+        outcome = self._outcomes.pop(0) if len(self._outcomes) > 1 else self._outcomes[0]
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
 
 
 def status_error(error_class: type[anthropic.APIStatusError], code: int) -> Exception:
@@ -106,32 +110,87 @@ def test_result_logs_the_sampling_values_actually_sent():
     assert (result.temperature, result.top_p) == (0.0, None)
 
 
-def test_content_validator_failure_is_invalid_and_keeps_raw_output():
+def test_content_validator_failure_that_stays_is_failed_and_keeps_raw_output():
     deal_input = {"delivery": {"date_from": "2026-11-20", "date_to": "2026-11-01"}}
 
     result, _ = extract(tool_reply(deal_input))
 
-    assert result.status is ExtractionStatus.INVALID
+    assert result.status is ExtractionStatus.FAILED
     assert result.deal is None
     assert json.loads(result.raw_output) == deal_input
     assert "date_from" in result.error
 
 
-def test_truncated_tool_call_is_invalid_even_if_its_input_parses():
+def test_truncated_tool_call_is_failed_even_if_its_input_parses():
     # A cut-off call can arrive with an empty input, and an empty Deal would otherwise pass.
     result, _ = extract(tool_reply({}, stop_reason="max_tokens"))
 
-    assert result.status is ExtractionStatus.INVALID
+    assert result.status is ExtractionStatus.FAILED
     assert result.deal is None
     assert "max_tokens" in result.error
 
 
-def test_reply_without_the_tool_call_is_invalid_and_keeps_the_text():
+def test_reply_without_the_tool_call_is_failed_and_keeps_the_text():
     result, _ = extract(text_reply("Не можу знайти умови угоди."))
 
-    assert result.status is ExtractionStatus.INVALID
+    assert result.status is ExtractionStatus.FAILED
     assert result.raw_output == "Не можу знайти умови угоди."
     assert DEAL_TOOL["name"] in result.error
+
+
+BAD_INPUT = {"delivery": {"date_from": "2026-11-20", "date_to": "2026-11-01"}}
+
+
+def test_valid_first_answer_is_asked_once():
+    result, client = extract(tool_reply({"crop": "wheat"}))
+
+    assert (result.status, result.attempts, len(client.calls)) == (ExtractionStatus.OK, 1, 1)
+
+
+def test_invalid_answer_gets_one_fix_that_returns_the_error_as_a_failed_tool_result():
+    result, client = extract([tool_reply(BAD_INPUT), tool_reply({"crop": "wheat"})])
+    _, assistant, user = client.calls[1]["messages"]
+
+    assert result.status is ExtractionStatus.OK
+    assert result.attempts == 2
+    assert result.deal.crop is Crop.WHEAT
+    assert assistant["content"][0]["id"] == "toolu_1"
+    assert assistant["content"][0]["input"] == BAD_INPUT
+    assert user["content"][0]["type"] == "tool_result"
+    assert user["content"][0]["tool_use_id"] == "toolu_1"
+    assert user["content"][0]["is_error"] is True
+    assert "date_from" in user["content"][0]["content"]
+
+
+def test_both_attempts_are_paid_for_in_tokens_and_latency():
+    result, _ = extract([tool_reply(BAD_INPUT), tool_reply({"crop": "wheat"})])
+
+    assert (result.input_tokens, result.output_tokens) == (2400, 600)
+
+
+def test_answer_that_is_still_invalid_after_the_fix_is_failed_with_the_last_answer():
+    last = {"delivery": {"date_from": "2026-12-20", "date_to": "2026-11-01"}}
+
+    result, client = extract([tool_reply(BAD_INPUT), tool_reply(last)])
+
+    assert (result.status, result.attempts, len(client.calls)) == (ExtractionStatus.FAILED, 2, 2)
+    assert json.loads(result.raw_output) == last
+
+
+def test_text_reply_is_fixed_with_a_plain_user_message():
+    result, client = extract([text_reply("Не можу."), tool_reply({"crop": "wheat"})])
+    _, assistant, user = client.calls[1]["messages"]
+
+    assert (result.status, result.attempts) == (ExtractionStatus.OK, 2)
+    assert assistant == {"role": "assistant", "content": "Не можу."}
+    assert user["role"] == "user"
+    assert DEAL_TOOL["name"] in user["content"]
+
+
+def test_no_answer_is_not_fixed_because_there_is_nothing_to_fix():
+    result, client = extract(anthropic.APITimeoutError(request=REQUEST))
+
+    assert (result.status, result.attempts, len(client.calls)) == (ExtractionStatus.ERROR, 1, 1)
 
 
 @pytest.mark.parametrize(

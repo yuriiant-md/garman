@@ -15,7 +15,7 @@ from src.extraction.messages import user_message
 from src.extraction.prompts import Prompt
 from src.extraction.result import ExtractionResult, ExtractionStatus
 from src.extraction.sampling import Sampling
-from src.extraction.validation import validate_deal
+from src.extraction.validation import repair_request, validate_deal
 from src.schemas.deal import Deal
 
 # A forced tool call instead of output_config.format: strict schemas compile into a grammar that
@@ -65,6 +65,32 @@ def read_answer(response: anthropic.types.Message) -> tuple[str, Deal | None, st
     return raw, deal, error
 
 
+def fix_messages(response: anthropic.types.Message, error: str) -> list[dict[str, object]]:
+    """The invalid answer and the request to fix it, to be appended to the conversation.
+
+    A tool call must be answered by a tool_result, so the error goes back as a failed one.
+    """
+    request = repair_request(error)
+    call = next((block for block in response.content if block.type == "tool_use"), None)
+    if call is None:
+        text = "".join(block.text for block in response.content if block.type == "text")
+        return [
+            {"role": "assistant", "content": text or "(empty answer)"},
+            {"role": "user", "content": request},
+        ]
+    tool_use = {"type": "tool_use", "id": call.id, "name": call.name, "input": call.input}
+    tool_result = {
+        "type": "tool_result",
+        "tool_use_id": call.id,
+        "is_error": True,
+        "content": request,
+    }
+    return [
+        {"role": "assistant", "content": [tool_use]},
+        {"role": "user", "content": [tool_result]},
+    ]
+
+
 class AnthropicExtractor:
     def __init__(self, config: AnthropicConfig, client: anthropic.Anthropic | None = None) -> None:
         self.config = config
@@ -76,17 +102,7 @@ class AnthropicExtractor:
         params = sampling_params(sampling)
         started = time.perf_counter()
         try:
-            response = self._client.messages.create(
-                model=self.config.model,
-                max_tokens=self.config.max_tokens,
-                system=prompt.text,
-                messages=[{"role": "user", "content": user_message(text)}],
-                tools=[DEAL_TOOL],
-                tool_choice={"type": "tool", "name": DEAL_TOOL["name"]},
-                # SDK 1.x dropped sampling arguments from its signatures; models that still
-                # accept them (Haiku 4.5) get them merged into the request body as-is.
-                extra_body=params or None,
-            )
+            responses = self._ask_with_one_fix(text, prompt, params)
         except anthropic.APITimeoutError:
             error = f"timed out after {self.config.max_retries} retries"
         except anthropic.APIConnectionError as exc:
@@ -96,21 +112,49 @@ class AnthropicExtractor:
                 raise
             error = f"API error {exc.status_code} after retries: {exc.message}"
         else:
-            return self._answer_result(response, prompt, sampling, params, started)
+            return self._answer_result(responses, prompt, sampling, params, started)
         return self._result(prompt, sampling, params, started, ExtractionStatus.ERROR, error=error)
+
+    def _ask(
+        self, prompt: Prompt, params: dict[str, float], messages: list[dict[str, object]]
+    ) -> anthropic.types.Message:
+        return self._client.messages.create(
+            model=self.config.model,
+            max_tokens=self.config.max_tokens,
+            system=prompt.text,
+            messages=messages,
+            tools=[DEAL_TOOL],
+            tool_choice={"type": "tool", "name": DEAL_TOOL["name"]},
+            # SDK 1.x dropped sampling arguments from its signatures; models that still
+            # accept them (Haiku 4.5) get them merged into the request body as-is.
+            extra_body=params or None,
+        )
+
+    def _ask_with_one_fix(
+        self, text: str, prompt: Prompt, params: dict[str, float]
+    ) -> list[anthropic.types.Message]:
+        """The answers in order: one, or two when the first was invalid and was sent back."""
+        messages = [{"role": "user", "content": user_message(text)}]
+        first = self._ask(prompt, params, messages)
+        _, deal, error = read_answer(first)
+        if deal is not None:
+            return [first]
+        fix = [*messages, *fix_messages(first, error)]
+        return [first, self._ask(prompt, params, fix)]
 
     def _answer_result(
         self,
-        response: anthropic.types.Message,
+        responses: list[anthropic.types.Message],
         prompt: Prompt,
         sampling: Sampling,
         params: dict[str, float],
         started: float,
     ) -> ExtractionResult:
+        response = responses[-1]
         raw, deal, error = read_answer(response)
         if error and response.stop_reason != "tool_use":
             error = f"stop_reason={response.stop_reason}: {error}"
-        status = ExtractionStatus.OK if deal is not None else ExtractionStatus.INVALID
+        status = ExtractionStatus.OK if deal is not None else ExtractionStatus.FAILED
         return self._result(
             prompt,
             sampling,
@@ -120,8 +164,9 @@ class AnthropicExtractor:
             deal=deal,
             raw_output=raw,
             error=error,
-            input_tokens=response.usage.input_tokens,
-            output_tokens=response.usage.output_tokens,
+            attempts=len(responses),
+            input_tokens=sum(r.usage.input_tokens for r in responses),
+            output_tokens=sum(r.usage.output_tokens for r in responses),
         )
 
     def _result(

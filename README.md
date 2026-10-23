@@ -36,11 +36,13 @@ ollama cp hf.co/lapa-llm/lapa-v0.1.2-instruct-GGUF:Q4_K_M lapa-v0.1.2-q4km
 make run        # = uv run --env-file .env python main.py
 ```
 
-`make run` asks the models for every configuration of stage 1 on all 37 texts — 2 models × 2 prompts × the `precise` sampling. Nothing is cached: every run makes live API and Ollama calls. A full run costs about $1 for Claude and takes about 25 minutes for Lapa on an Apple Silicon Mac. The numbers differ a little from run to run: Claude is not fully deterministic even at temperature 0, and prompt v2 contains the run date (`{today}`).
+`make run` asks the models for every configuration of stage 1 on all 37 texts — 2 models × 2 prompts × 2 samplings (`precise`, `varied`) = 8 configurations. Nothing is cached: every run makes live API and Ollama calls. A full run costs about $2 for Claude and takes about 45 minutes on an Apple Silicon Mac, most of it Lapa. The numbers differ a little from run to run: Claude is not fully deterministic even at temperature 0, and prompt v2 contains the run date (`{today}`).
 
 Each launch is saved to a new folder named with its start time, e.g. `results/stage1/2026-10-27T14-05-33/`. It holds one file per configuration, named with the model, the prompt version and the sampling (`claude-haiku-4-5__v2__precise.jsonl`; every line also carries `run_at`), and the two tables built from them: `metrics.md` and `metrics_by_field.md` (accuracy and fabricated values per field and configuration, on the test golden set). Earlier folders are never touched, so launches can be compared folder by folder.
 
 A configuration whose model is needed but missing (no key in `.env`, Ollama not running) is skipped with the reason; the others still run, and `make run` ends with exit code 1 and the list of what it did not finish.
+
+For a quick check use `make smoke` (= `python main.py --per-source 2`): the same 8 configurations on the first 2 texts of each source (6 texts), about $0.2 and 5–8 minutes. It saves into `results/smoke/<start time>/`, which git ignores and `make metrics` does not read. The numbers of 6 texts prove nothing — it only shows that everything works together.
 
 ### 4. Rebuild the tables from saved runs
 
@@ -97,7 +99,7 @@ The rules were written before the first run. Code: `src/extraction/scoring.py` (
 | temperature and top_p in a config, ≥ 2 configurations | `configs/sampling.yaml` (`precise`, `varied`) | config done; the `varied` run comes next |
 | Metrics: per-field accuracy, % valid, p50/p95 latency, cost per 1000 documents | `src/extraction/metrics.py` (table), `src/extraction/scoring.py` (comparison with the golden deal); tests — `tests/test_metrics.py`, `tests/test_scoring.py` | done; numbers — `results/stage1/<start time>/metrics.md` and `metrics_by_field.md` |
 | Prompts with a version header, ≥ 2 versions, `CHANGELOG` | `prompts/extract_v1.md`, `prompts/extract_v2.md`, `prompts/CHANGELOG.md` | done: v1 is the baseline, v2 is built from the v1 errors on dev |
-| Every answer is validated by the schema; invalid → one fix attempt → `failed` | `src/extraction/validation.py` | schema check done; the fix attempt comes next |
+| Every answer is validated by the schema; invalid → one fix attempt → `failed` | `src/extraction/validation.py` (the fix request), `anthropic_extractor.py` and `ollama_extractor.py` (the second call); tests — `tests/test_validation.py` and the extractor tests | done; the "Виправлено, %" column of the metrics table counts the answers saved by it |
 | Every result logs the model, prompt version and sampling | record fields — `src/extraction/result.py`; the records — `results/stage1/*.jsonl` | done |
 | `REPORT.md`: table, error analysis, production choice | — | next |
 | One command to run: `make run` (= `python main.py`) | `Makefile`, `main.py` | done |

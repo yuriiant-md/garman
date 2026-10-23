@@ -41,7 +41,8 @@ RUN_LABEL_LENGTH = len("2026-10-23T14:05")  # date and minutes of a run's ISO st
 ZERO = Counts(filled=0, filled_correct=0, empty=0, fabricated=0, total=0, correct=0)
 HEADER = (
     "Модель", "Промпт", "Семплінг", "Прогін", "Набір", "Док.", "Точність заповнених, % (95% ДІ)",
-    "Вигадані, %", "Загальна, %", "Валідні, %", "Failed, %", "p50, с", "p95, с", "$ / 1000 док.",
+    "Вигадані, %", "Загальна, %", "Валідні, %", "Failed, %", "Виправлено, %", "p50, с", "p95, с",
+    "$ / 1000 док.",
 )
 
 FIELD_HEADER = ("Поле", "Заповнено у golden", "null у golden")
@@ -91,6 +92,7 @@ class ConfigMetrics:
     overall_pct: float | None
     valid_pct: float
     failed_pct: float
+    fixed_pct: float  # valid only after the one fix attempt; part of valid_pct, not of failed_pct
     latency_p50_s: float
     latency_p95_s: float
     cost_per_1000_docs_usd: float | None
@@ -147,7 +149,7 @@ def bootstrap_ci(
 
 
 def _predicted(record: Record) -> Deal | None:
-    """Only a valid answer has a deal to score; `invalid` and `error` results count as failed."""
+    """Only a valid answer has a deal to score; `failed` and `error` results count as failed."""
     if record["status"] != ExtractionStatus.OK:
         return None
     try:
@@ -169,6 +171,10 @@ def _config_metrics(
     ]
     total = sum(doc_counts, ZERO)
     valid = sum(record["status"] == ExtractionStatus.OK for record in records)
+    fixed = sum(
+        record["status"] == ExtractionStatus.OK and record.get("attempts", 1) > 1
+        for record in records
+    )
     latencies = [record["latency_s"] for record in records]
     price = prices.get(first["model"])
     return ConfigMetrics(
@@ -185,6 +191,7 @@ def _config_metrics(
         overall_pct=share(total.correct, total.total),
         valid_pct=100 * valid / len(records),
         failed_pct=100 * (len(records) - valid) / len(records),
+        fixed_pct=100 * fixed / len(records),
         latency_p50_s=percentile(latencies, 50),
         latency_p95_s=percentile(latencies, LATENCY_TAIL_PCT),
         cost_per_1000_docs_usd=None if price is None else cost_per_1000_docs(records, *price),
@@ -335,7 +342,7 @@ def _row(metrics: ConfigMetrics) -> tuple[str, ...]:
         f"{metrics.split} · {metrics.source}", str(metrics.docs),
         _pct(metrics.filled_accuracy) + interval, _pct(metrics.fabricated_pct),
         _pct(metrics.overall_pct), _pct(metrics.valid_pct), _pct(metrics.failed_pct),
-        f"{metrics.latency_p50_s:.1f}", f"{metrics.latency_p95_s:.1f}",
+        _pct(metrics.fixed_pct), f"{metrics.latency_p50_s:.1f}", f"{metrics.latency_p95_s:.1f}",
         NO_VALUE if cost is None else f"{cost:.2f}",
     )
 

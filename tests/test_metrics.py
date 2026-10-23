@@ -43,6 +43,7 @@ def record(
     model: str = "claude-haiku-4-5",
     latency_s: float = 1.0,
     run_at: str = RUN_AT,
+    attempts: int = 1,
 ) -> dict[str, object]:
     return {
         "doc_id": doc_id,
@@ -52,6 +53,7 @@ def record(
         "sampling": "precise",
         "status": status,
         "deal": deal if status == "ok" else None,
+        "attempts": attempts,
         "latency_s": latency_s,
         "input_tokens": 1000,
         "output_tokens": 100,
@@ -137,13 +139,37 @@ def test_all_row_is_per_configuration():
 
 
 def test_failed_documents_stay_in_accuracy_and_count_as_failed():
-    records = [record("synthetic_001"), record("synthetic_002", status="invalid")]
+    records = [record("synthetic_001"), record("synthetic_002", status="failed")]
 
     (metrics,) = compute_metrics(records, REFERENCES, PRICES)
 
     assert metrics.filled_accuracy == pytest.approx(50.0)
     assert metrics.fabricated_pct == pytest.approx(50.0)  # 18 golden nulls of the failed doc
     assert (metrics.valid_pct, metrics.failed_pct) == (50.0, 50.0)
+
+
+def test_fixed_share_counts_valid_answers_that_needed_the_second_attempt():
+    records = [record("synthetic_001"), record("synthetic_002", attempts=2)]
+
+    (metrics,) = compute_metrics(records, REFERENCES, PRICES)
+
+    assert (metrics.valid_pct, metrics.fixed_pct) == (100.0, 50.0)
+
+
+def test_answer_that_failed_even_after_the_fix_is_failed_not_fixed():
+    records = [record("synthetic_001", status="failed", attempts=2), record("synthetic_002")]
+
+    (metrics,) = compute_metrics(records, REFERENCES, PRICES)
+
+    assert (metrics.failed_pct, metrics.fixed_pct) == (50.0, 0.0)
+
+
+def test_results_saved_before_the_fix_existed_count_as_one_attempt():
+    old = {key: value for key, value in record("synthetic_001").items() if key != "attempts"}
+
+    (metrics,) = compute_metrics([old], REFERENCES, PRICES)
+
+    assert metrics.fixed_pct == 0.0
 
 
 def test_fabricated_share_counts_values_where_golden_is_null():
@@ -252,6 +278,7 @@ def test_table_shows_interval_and_a_dash_for_missing_values():
 
     lines = table.splitlines()
     assert lines[0].startswith("| Модель | Промпт | Семплінг | Прогін | Набір | Док. |")
+    assert "| Failed, % | Виправлено, % | p50, с |" in lines[0]
     row = (
         "| claude-haiku-4-5 | v1 | precise | 2026-10-23 10:00 | dev · synthetic | 1 "
         "| 100.0 (100.0–100.0) |"

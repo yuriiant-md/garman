@@ -280,6 +280,13 @@ def missing_references(
     return tuple(sorted({record["doc_id"] for record in records} - references.keys()))
 
 
+def latest_run_dir(base: Path) -> Path | None:
+    """The newest launch folder (they are named with the start time, so by name) that holds at
+    least one saved run; None when there is none."""
+    folders = sorted(path for path in base.glob("*") if path.is_dir()) if base.is_dir() else []
+    return next((path for path in reversed(folders) if any(path.glob("*.jsonl"))), None)
+
+
 def load_records(results_dir: Path) -> list[dict[str, object]]:
     return [
         json.loads(line)
@@ -394,7 +401,10 @@ def format_field_tables(
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Score stage-1 results against golden deals.")
-    parser.add_argument("--results-dir", type=Path, default=RESULTS_DIR)
+    parser.add_argument(
+        "--results-dir", type=Path,
+        help="Folder of one launch (results/stage1/<time>/); default: the latest one.",
+    )
     parser.add_argument(
         "--references", type=Path, nargs="+", default=list(REFERENCE_DIRS),
         help="Folders with golden *.json files (fields id, split, deal).",
@@ -409,9 +419,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    records = load_records(args.results_dir)
+    results_dir = args.results_dir or latest_run_dir(RESULTS_DIR) or RESULTS_DIR
+    records = load_records(results_dir)
     if not records:
-        print(f"No results in {args.results_dir}; run `python -m src.extraction.run` first.",
+        print(f"No results in {results_dir}; run `python -m src.extraction.run` first.",
               file=sys.stderr)
         return 2
     references = load_references(args.references)

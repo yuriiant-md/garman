@@ -13,6 +13,7 @@ from src.extraction.metrics import (
     field_counts,
     format_field_tables,
     format_table,
+    latest_run_dir,
     load_price_table,
     load_references,
     main,
@@ -369,6 +370,37 @@ def test_main_writes_the_field_table_when_asked(tmp_path):
 
     assert code == 0
     assert output.read_text(encoding="utf-8").startswith("## Угоди (test · prozorro + own)")
+
+
+def test_latest_run_dir_is_the_newest_folder_that_holds_runs(tmp_path):
+    for name, has_runs in (
+        ("2026-10-23T10-56-10", True), ("2026-10-25T09-10-02", True), ("2026-10-26T08-00-00", False)
+    ):
+        folder = tmp_path / name
+        folder.mkdir()
+        if has_runs:
+            (folder / "stub__v1__precise.jsonl").write_text("{}\n", encoding="utf-8")
+    (tmp_path / "notes.md").write_text("not a run folder", encoding="utf-8")
+
+    assert latest_run_dir(tmp_path) == tmp_path / "2026-10-25T09-10-02"
+
+
+def test_latest_run_dir_is_none_without_run_folders(tmp_path):
+    assert latest_run_dir(tmp_path) is None
+    assert latest_run_dir(tmp_path / "missing") is None
+
+
+def test_main_reads_the_latest_run_folder_when_none_is_given(tmp_path, monkeypatch, capsys):
+    results_dir, references_dir = write_inputs(tmp_path, [record("synthetic_001")])
+    base = tmp_path / "stage1"
+    (base / "2026-10-23T10-56-10").mkdir(parents=True)
+    results_dir.rename(base / "2026-10-25T09-10-02")
+    monkeypatch.setattr("src.extraction.metrics.RESULTS_DIR", base)
+
+    code = main(["--references", str(references_dir)])
+
+    assert code == 0
+    assert "| claude-haiku-4-5 | v1 | precise |" in capsys.readouterr().out
 
 
 def test_main_fails_clearly_without_results(tmp_path, capsys):

@@ -12,6 +12,7 @@ from src.extraction.run import (
     load_prices,
     main,
     result_path,
+    run_dir_path,
     run_extraction,
     summarize,
     text_paths,
@@ -67,10 +68,14 @@ def test_text_paths_select_documents_by_split_in_sorted_order(tmp_path, split, e
     assert [path.stem for path in text_paths(tmp_path / "texts", split)] == expected
 
 
-def test_result_path_names_model_prompt_sampling_and_the_time_of_the_run(tmp_path):
-    path = result_path(tmp_path, "claude-haiku-4-5", "v1", "precise", STARTED)
+def test_run_dir_is_named_with_the_start_time(tmp_path):
+    assert run_dir_path(tmp_path, STARTED) == tmp_path / "2026-10-23T14-05-33"
 
-    assert path == tmp_path / "claude-haiku-4-5__v1__precise__2026-10-23T14-05-33.jsonl"
+
+def test_result_path_names_model_prompt_and_sampling_inside_the_run_dir(tmp_path):
+    path = result_path(tmp_path, "claude-haiku-4-5", "v1", "precise")
+
+    assert path == tmp_path / "claude-haiku-4-5__v1__precise.jsonl"
 
 
 def test_run_extraction_writes_one_json_line_per_document_with_doc_id_and_run_time(tmp_path):
@@ -166,7 +171,21 @@ def test_main_with_local_model_needs_no_api_key(tmp_path, monkeypatch, capsys):
     assert "ANTHROPIC_API_KEY" not in capsys.readouterr().err
 
 
-def test_main_saves_every_run_to_its_own_file_named_with_the_time(tmp_path, monkeypatch):
+def test_main_saves_into_the_given_run_dir(tmp_path, monkeypatch):
+    make_texts(tmp_path / "texts")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setattr("src.extraction.run.ROOT", tmp_path)
+    monkeypatch.setattr("src.extraction.run.configured_model", lambda model: "stub")
+    monkeypatch.setattr("src.extraction.run.build_extractor", lambda model: StubExtractor())
+    run_dir = tmp_path / "chosen"
+
+    code = main(["--texts-dir", str(tmp_path / "texts"), "--run-dir", str(run_dir)])
+
+    assert code == 0
+    assert [path.name for path in run_dir.glob("*.jsonl")] == ["stub__v2__precise.jsonl"]
+
+
+def test_main_saves_every_run_to_its_own_folder_named_with_the_time(tmp_path, monkeypatch):
     make_texts(tmp_path / "texts")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
     monkeypatch.setattr("src.extraction.run.ROOT", tmp_path)
@@ -180,11 +199,13 @@ def test_main_saves_every_run_to_its_own_file_named_with_the_time(tmp_path, monk
     first = main(["--texts-dir", str(tmp_path / "texts")])
     second = main(["--texts-dir", str(tmp_path / "texts")])
 
-    names = sorted(path.name for path in (tmp_path / "results").glob("*.jsonl"))
+    names = sorted(
+        f"{path.parent.name}/{path.name}" for path in (tmp_path / "results").glob("*/*.jsonl")
+    )
     assert (first, second) == (0, 0)
     assert names == [
-        "stub__v2__precise__2026-10-23T14-05-33.jsonl",
-        "stub__v2__precise__2026-10-23T14-12-33.jsonl",
+        "2026-10-23T14-05-33/stub__v2__precise.jsonl",
+        "2026-10-23T14-12-33/stub__v2__precise.jsonl",
     ]
     assert len(extractor.texts) == 4  # no answer is reused: both runs asked the model
 

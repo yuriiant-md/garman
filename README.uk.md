@@ -38,7 +38,7 @@ make run        # = uv run --env-file .env python main.py
 
 `make run` запитує моделі для кожної конфігурації етапу 1 на всіх 37 текстах — 2 моделі × 2 промпти × семплінг `precise`. Кешу немає: кожен прогін робить живі виклики API й Ollama. Повний прогін коштує близько $1 за Claude і триває близько 25 хвилин для Lapa на Mac з Apple Silicon. Цифри трохи відрізняються від прогону до прогону: Claude не повністю детермінований навіть при temperature 0, а промпт v2 містить дату запуску (`{today}`).
 
-Кожен прогін зберігається у власний файл у `results/stage1/` з іменем із моделі, версії промпту, семплінгу й часу початку, наприклад `claude-haiku-4-5__v2__precise__2026-10-27T14-05-33.jsonl`; у кожному рядку є також `run_at`. Попередні прогони лишаються як запис. Потім `make run` записує таблицю метрик у `results/stage1/metrics.md`, а таблицю точності по полях (точність і вигадані значення по кожному полю й конфігурації, на test golden set) — у `results/stage1/metrics_by_field.md`. Для кожної конфігурації таблиці беруть її останній прогін і показують його дату й час.
+Кожен запуск зберігається в нову папку з назвою за часом початку, наприклад `results/stage1/2026-10-27T14-05-33/`. У ній по одному файлу на конфігурацію з іменем із моделі, версії промпту й семплінгу (`claude-haiku-4-5__v2__precise.jsonl`; у кожному рядку є також `run_at`) і дві таблиці, побудовані з них: `metrics.md` та `metrics_by_field.md` (точність і вигадані значення по кожному полю й конфігурації, на test golden set). Попередні папки ніколи не змінюються, тож запуски можна порівнювати папка з папкою.
 
 Конфігурацію, якій потрібна відсутня модель (немає ключа в `.env`, не запущено Ollama), пропущено з поясненням; решта все одно проганяється, а `make run` завершується з кодом 1 і переліком того, що не завершено.
 
@@ -48,7 +48,7 @@ make run        # = uv run --env-file .env python main.py
 make metrics    # = uv run python -m src.extraction.metrics
 ```
 
-Це не потребує ні ключа API, ні Ollama: команда порівнює збережені прогони з `results/stage1/*.jsonl` з еталонною розміткою й друкує таблицю метрик. Щоб записати файли, додай `--output results/stage1/metrics.md --by-field-output results/stage1/metrics_by_field.md`.
+Це не потребує ні ключа API, ні Ollama: команда порівнює збережені прогони з останньої папки в `results/stage1/` з еталонною розміткою й друкує таблицю метрик (нічого не записується, тож збережена таблиця потім не змінюється). Іншу папку вибери так: `--results-dir results/stage1/<час початку>`; щоб записати таблиці, додай `--output <файл> --by-field-output <файл>`.
 
 ### Окремі команди
 
@@ -95,7 +95,7 @@ uv run python -m scripts.pdf_to_text       # data/raw/prozorro/*.pdf → data/te
 | Провайдерська модель через API зі structured output, retry і timeout | `src/extraction/anthropic_extractor.py` (схема як обов'язковий виклик інструмента), налаштування — `configs/models.yaml` | готово |
 | Локальна модель через спільний інтерфейс | `src/extraction/ollama_extractor.py`; інтерфейс `Extractor` — `src/extraction/run.py` | готово |
 | temperature і top_p у конфігу, ≥ 2 конфігурації | `configs/sampling.yaml` (`precise`, `varied`) | конфіг готовий; прогін `varied` — далі |
-| Метрики: точність по полях, % валідних, p50/p95, вартість на 1000 документів | `src/extraction/metrics.py` (таблиця), `src/extraction/scoring.py` (порівняння з еталоном); тести — `tests/test_metrics.py`, `tests/test_scoring.py` | код готовий; цифри з'являться в `results/stage1/metrics.md` і `metrics_by_field.md` після живого `make run` |
+| Метрики: точність по полях, % валідних, p50/p95, вартість на 1000 документів | `src/extraction/metrics.py` (таблиця), `src/extraction/scoring.py` (порівняння з еталоном); тести — `tests/test_metrics.py`, `tests/test_scoring.py` | готово; цифри — `results/stage1/<час початку>/metrics.md` і `metrics_by_field.md` |
 | Промпти з версією в шапці, ≥ 2 версії, `CHANGELOG` | `prompts/extract_v1.md`, `prompts/extract_v2.md`, `prompts/CHANGELOG.md` | готово: v1 — baseline, v2 — з помилок v1 на dev |
 | Кожна відповідь валідується схемою; невалідна → одна спроба виправлення → `failed` | `src/extraction/validation.py` | перевірка схемою готова; спроба виправлення — далі |
 | До кожного результату логуються модель, версія промпту, семплінг | поля запису — `src/extraction/result.py`; самі записи — `results/stage1/*.jsonl` | готово |
@@ -141,7 +141,7 @@ scripts/
   pdf_to_text.py           PDF → знеособлений текст
   check_golden.py          перевірка розмітки golden set
 tests/                     тести pytest: make test
-results/stage1/            по одному файлу *.jsonl на прогін (рядок на документ, час початку в імені) і таблиці метрик (metrics.md, metrics_by_field.md)
+results/stage1/            по одній папці на запуск з назвою за часом початку: файл *.jsonl на конфігурацію (рядок на документ) і таблиці метрик (metrics.md, metrics_by_field.md)
 ```
 
 План робіт автор веде локально (`docs/`, поза репо); правила метрик із нього перенесено в розділ «Як рахуються метрики».

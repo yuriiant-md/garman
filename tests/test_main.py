@@ -1,21 +1,35 @@
+from datetime import datetime, timedelta, timezone
+
 import pytest
 
 import main as stage1
 
+STARTED = datetime(2026, 10, 23, 14, 5, 33, tzinfo=timezone(timedelta(hours=3)))
 
-def test_every_configuration_runs_on_all_texts_then_the_metrics_are_saved(monkeypatch):
+
+def test_every_configuration_runs_on_all_texts_into_one_folder_with_the_metrics(
+    monkeypatch, tmp_path
+):
     runs: list[list[str]] = []
     tables: list[list[str]] = []
     monkeypatch.setattr("src.extraction.run.main", lambda argv: runs.append(argv) or 0)
     monkeypatch.setattr("src.extraction.metrics.main", lambda argv: tables.append(argv) or 0)
+    monkeypatch.setattr("src.extraction.run.current_time", lambda: STARTED)
+    monkeypatch.setattr("main.RESULTS_DIR", tmp_path)
+    run_dir = str(tmp_path / "2026-10-23T14-05-33")
 
     code = stage1.main([])
 
     assert code == 0
     assert len(runs) == len(stage1.MODELS) * len(stage1.PROMPTS) * len(stage1.SAMPLINGS)
     assert all(argv[argv.index("--split") + 1] == "all" for argv in runs)
+    assert all(argv[argv.index("--run-dir") + 1] == run_dir for argv in runs)
     assert tables == [
-        ["--output", str(stage1.METRICS_PATH), "--by-field-output", str(stage1.BY_FIELD_PATH)]
+        [
+            "--results-dir", run_dir,
+            "--output", f"{run_dir}/metrics.md",
+            "--by-field-output", f"{run_dir}/metrics_by_field.md",
+        ]
     ]
 
 

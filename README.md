@@ -38,7 +38,7 @@ make run        # = uv run --env-file .env python main.py
 
 `make run` asks the models for every configuration of stage 1 on all 37 texts — 2 models × 2 prompts × the `precise` sampling. Nothing is cached: every run makes live API and Ollama calls. A full run costs about $1 for Claude and takes about 25 minutes for Lapa on an Apple Silicon Mac. The numbers differ a little from run to run: Claude is not fully deterministic even at temperature 0, and prompt v2 contains the run date (`{today}`).
 
-Each run is saved to its own file in `results/stage1/`, named with the model, the prompt version, the sampling and the start time, e.g. `claude-haiku-4-5__v2__precise__2026-10-27T14-05-33.jsonl`; every line also carries `run_at`. Earlier runs stay as a record. Then `make run` writes the metrics table to `results/stage1/metrics.md` and the per-field accuracy table (accuracy and fabricated values per field and configuration, on the test golden set) to `results/stage1/metrics_by_field.md`. For each configuration the tables take its latest run and show its date and time.
+Each launch is saved to a new folder named with its start time, e.g. `results/stage1/2026-10-27T14-05-33/`. It holds one file per configuration, named with the model, the prompt version and the sampling (`claude-haiku-4-5__v2__precise.jsonl`; every line also carries `run_at`), and the two tables built from them: `metrics.md` and `metrics_by_field.md` (accuracy and fabricated values per field and configuration, on the test golden set). Earlier folders are never touched, so launches can be compared folder by folder.
 
 A configuration whose model is needed but missing (no key in `.env`, Ollama not running) is skipped with the reason; the others still run, and `make run` ends with exit code 1 and the list of what it did not finish.
 
@@ -48,7 +48,7 @@ A configuration whose model is needed but missing (no key in `.env`, Ollama not 
 make metrics    # = uv run python -m src.extraction.metrics
 ```
 
-This needs neither an API key nor Ollama: it scores the saved runs in `results/stage1/*.jsonl` against the golden labels and prints the metrics table. Add `--output results/stage1/metrics.md --by-field-output results/stage1/metrics_by_field.md` to write the files.
+This needs neither an API key nor Ollama: it scores the saved runs of the latest folder in `results/stage1/` against the golden labels and prints the metrics table (nothing is written, so a saved table never changes afterwards). Pick another launch with `--results-dir results/stage1/<start time>`; add `--output <file> --by-field-output <file>` to write the tables.
 
 ### Separate commands
 
@@ -95,7 +95,7 @@ The rules were written before the first run. Code: `src/extraction/scoring.py` (
 | Provider model through an API with structured output, retry and timeout | `src/extraction/anthropic_extractor.py` (the schema as a forced tool call), settings — `configs/models.yaml` | done |
 | Local model through a shared interface | `src/extraction/ollama_extractor.py`; the `Extractor` interface — `src/extraction/run.py` | done |
 | temperature and top_p in a config, ≥ 2 configurations | `configs/sampling.yaml` (`precise`, `varied`) | config done; the `varied` run comes next |
-| Metrics: per-field accuracy, % valid, p50/p95 latency, cost per 1000 documents | `src/extraction/metrics.py` (table), `src/extraction/scoring.py` (comparison with the golden deal); tests — `tests/test_metrics.py`, `tests/test_scoring.py` | code done; numbers appear in `results/stage1/metrics.md` and `metrics_by_field.md` after a live `make run` |
+| Metrics: per-field accuracy, % valid, p50/p95 latency, cost per 1000 documents | `src/extraction/metrics.py` (table), `src/extraction/scoring.py` (comparison with the golden deal); tests — `tests/test_metrics.py`, `tests/test_scoring.py` | done; numbers — `results/stage1/<start time>/metrics.md` and `metrics_by_field.md` |
 | Prompts with a version header, ≥ 2 versions, `CHANGELOG` | `prompts/extract_v1.md`, `prompts/extract_v2.md`, `prompts/CHANGELOG.md` | done: v1 is the baseline, v2 is built from the v1 errors on dev |
 | Every answer is validated by the schema; invalid → one fix attempt → `failed` | `src/extraction/validation.py` | schema check done; the fix attempt comes next |
 | Every result logs the model, prompt version and sampling | record fields — `src/extraction/result.py`; the records — `results/stage1/*.jsonl` | done |
@@ -141,7 +141,7 @@ scripts/
   pdf_to_text.py           PDF → anonymised text
   check_golden.py          validates the golden labels
 tests/                     pytest tests: make test
-results/stage1/            one *.jsonl file per run (one line per document, the start time in the name) and the metrics tables (metrics.md, metrics_by_field.md)
+results/stage1/            one folder per launch, named with its start time: a *.jsonl file per configuration (one line per document) and the metrics tables (metrics.md, metrics_by_field.md)
 ```
 
 The author keeps the work plan locally (`docs/`, outside the repository); its metric rules were moved to "How the metrics are counted".

@@ -1,8 +1,8 @@
 """Run an extractor over the stage-1 texts and save one JSON line per document.
 
-Every run asks the model and is saved to its own file named with the model, the prompt version,
-the sampling and the time of the run, so earlier runs stay as a record. Each line carries the
-same `run_at`.
+Every run asks the model and is saved in a folder named with the time of the launch, to a file
+named with the model, the prompt version and the sampling, so earlier launches stay as a record.
+Each line carries the same `run_at`.
 
     uv run --env-file .env python -m src.extraction.run --split dev
     uv run python -m src.extraction.run --model lapa   # local model through Ollama, no API key
@@ -60,11 +60,13 @@ def current_time() -> datetime:
     return datetime.now().astimezone()
 
 
-def result_path(
-    results_dir: Path, model: str, prompt_version: str, sampling_name: str, started: datetime
-) -> Path:
-    stamp = started.strftime(RUN_STAMP_FORMAT)
-    return results_dir / f"{model}__{prompt_version}__{sampling_name}__{stamp}.jsonl"
+def run_dir_path(results_dir: Path, started: datetime) -> Path:
+    """The folder of one launch: its runs, and the tables built from them, live together."""
+    return results_dir / started.strftime(RUN_STAMP_FORMAT)
+
+
+def result_path(run_dir: Path, model: str, prompt_version: str, sampling_name: str) -> Path:
+    return run_dir / f"{model}__{prompt_version}__{sampling_name}.jsonl"
 
 
 def run_extraction(
@@ -150,6 +152,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--texts-dir", type=Path, default=TEXTS_DIR)
     parser.add_argument("--prompt", type=Path, default=DEFAULT_PROMPT)
     parser.add_argument("--sampling", default="precise", help="Name from configs/sampling.yaml.")
+    parser.add_argument(
+        "--run-dir", type=Path, help="Folder for the run; default: a new one named with the time."
+    )
     return parser.parse_args(argv)
 
 
@@ -166,9 +171,8 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     prompt = load_prompt(args.prompt)
     started = current_time()
-    output = result_path(
-        RESULTS_DIR, configured_model(args.model), prompt.version, sampling.name, started
-    )
+    run_dir = args.run_dir or run_dir_path(RESULTS_DIR, started)
+    output = result_path(run_dir, configured_model(args.model), prompt.version, sampling.name)
     if args.model == "claude" and not os.environ.get(API_KEY_VARIABLE):
         print(f"{API_KEY_VARIABLE} is not set: put it in .env and run with "
               "`uv run --env-file .env python -m src.extraction.run`.", file=sys.stderr)

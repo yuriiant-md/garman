@@ -3,10 +3,11 @@
     make run                                        # the same as the next line
     uv run --env-file .env python main.py
 
-Every run asks the models and saves its answers to a new file in results/stage1 named with the
-model, prompt version, sampling and the time of the run. The tables take the latest run of each
-configuration; `make metrics` rebuilds them from the saved runs without an API key or Ollama.
-A configuration whose model is unavailable is skipped with the reason.
+Every launch asks the models and saves everything in a new folder results/stage1/<start time>/:
+one file per configuration (model, prompt version, sampling) and the two metrics tables built
+from them. Earlier folders are never touched, so launches can be compared; `make metrics`
+rebuilds the tables of the latest folder without an API key or Ollama. A configuration whose
+model is unavailable is skipped with the reason.
 """
 
 import argparse
@@ -20,8 +21,9 @@ ROOT = Path(__file__).resolve().parent
 MODELS = ("claude", "lapa")
 PROMPTS = (ROOT / "prompts" / "extract_v1.md", ROOT / "prompts" / "extract_v2.md")
 SAMPLINGS = ("precise",)  # varied, with 3 repeats on the golden set, comes in Е1.4
-METRICS_PATH = ROOT / "results" / "stage1" / "metrics.md"
-BY_FIELD_PATH = ROOT / "results" / "stage1" / "metrics_by_field.md"
+RESULTS_DIR = ROOT / "results" / "stage1"
+METRICS_FILE = "metrics.md"
+BY_FIELD_FILE = "metrics_by_field.md"
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -31,16 +33,21 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     parse_args(argv)
+    run_dir = run.run_dir_path(RESULTS_DIR, run.current_time())
     not_run = []
     for model, prompt, sampling in product(MODELS, PROMPTS, SAMPLINGS):
         name = f"{model} · {prompt.stem} · {sampling}"
         print(f"\n== {name}")
         config = ["--model", model, "--prompt", str(prompt), "--sampling", sampling]
-        if run.main([*config, "--split", "all"]) != 0:
+        if run.main([*config, "--split", "all", "--run-dir", str(run_dir)]) != 0:
             not_run.append(name)
     print()
     code = metrics.main(
-        ["--output", str(METRICS_PATH), "--by-field-output", str(BY_FIELD_PATH)]
+        [
+            "--results-dir", str(run_dir),
+            "--output", str(run_dir / METRICS_FILE),
+            "--by-field-output", str(run_dir / BY_FIELD_FILE),
+        ]
     )
     if not_run:
         print("\nNot finished, see the messages above: " + ", ".join(not_run), file=sys.stderr)

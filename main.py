@@ -20,7 +20,7 @@ from src.extraction import metrics, run
 ROOT = Path(__file__).resolve().parent
 MODELS = ("claude", "lapa")
 PROMPTS = (ROOT / "prompts" / "extract_v1.md", ROOT / "prompts" / "extract_v2.md")
-SAMPLINGS = ("precise",)  # varied, with 3 repeats on the golden set, comes in Е1.4
+SAMPLINGS = ("precise", "varied")  # the two configurations of configs/sampling.yaml
 RESULTS_DIR = ROOT / "results" / "stage1"
 METRICS_FILE = "metrics.md"
 BY_FIELD_FILE = "metrics_by_field.md"

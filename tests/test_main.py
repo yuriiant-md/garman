@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
 import pytest
+import yaml
 
 import main as stage1
 
@@ -31,6 +32,14 @@ def test_every_configuration_runs_on_all_texts_into_one_folder_with_the_metrics(
             "--by-field-output", f"{run_dir}/metrics_by_field.md",
         ]
     ]
+
+
+def test_the_matrix_covers_every_sampling_configuration_of_the_config_file():
+    path = stage1.ROOT / "configs" / "sampling.yaml"
+    configured = yaml.safe_load(path.read_text(encoding="utf-8"))
+
+    assert set(stage1.SAMPLINGS) == set(configured)
+    assert len(configured) >= 2
 
 
 def test_a_configuration_that_cannot_run_is_reported_and_the_metrics_are_still_saved(

@@ -4,11 +4,14 @@ from pathlib import Path
 import pytest
 
 from src.extraction.metrics import (
+    FieldGroup,
     Reference,
     bootstrap_ci,
     compute_metrics,
     cost_per_1000_docs,
     cost_usd,
+    field_counts,
+    format_field_tables,
     format_table,
     load_price_table,
     load_references,
@@ -28,6 +31,8 @@ REFERENCES = {
     "own_001": Reference(deal=Deal.model_validate(DEAL), split="test", source="own"),
 }
 PRICES = {"claude-haiku-4-5": (1.0, 5.0)}
+RUN_AT = "2026-10-23T10:00:00+03:00"
+LATER_RUN_AT = "2026-10-24T09:30:00+03:00"
 
 
 def record(
@@ -36,9 +41,11 @@ def record(
     deal: dict[str, object] = DEAL,
     model: str = "claude-haiku-4-5",
     latency_s: float = 1.0,
+    run_at: str = RUN_AT,
 ) -> dict[str, object]:
     return {
         "doc_id": doc_id,
+        "run_at": run_at,
         "model": model,
         "prompt_version": "v1",
         "sampling": "precise",
@@ -157,6 +164,42 @@ def test_latency_percentiles_and_cost_per_configuration():
     assert metrics.cost_per_1000_docs_usd == pytest.approx(1.5)
 
 
+def test_only_the_latest_run_of_a_configuration_is_scored_and_its_time_is_shown():
+    records = [
+        record("synthetic_001", deal={**DEAL, "buyer": "Агро Світ"}, run_at=RUN_AT),
+        record("synthetic_001", run_at=LATER_RUN_AT),
+    ]
+
+    (metrics,) = compute_metrics(records, REFERENCES, PRICES)
+
+    assert (metrics.docs, metrics.run_at) == (1, LATER_RUN_AT)
+    assert metrics.filled_accuracy == pytest.approx(100.0)
+
+
+def test_a_later_run_on_one_split_does_not_hide_the_earlier_run_on_the_other():
+    records = [
+        record("prozorro_001", run_at=RUN_AT),
+        record("synthetic_001", run_at=LATER_RUN_AT),
+    ]
+
+    dev, test = compute_metrics(records, REFERENCES, PRICES)
+
+    assert (dev.split, dev.run_at) == ("dev", LATER_RUN_AT)
+    assert (test.split, test.run_at) == ("test", RUN_AT)
+
+
+def test_field_counts_use_the_latest_run_only():
+    records = [
+        record("prozorro_001", deal={**DEAL, "buyer": "Хтось інший"}, run_at=RUN_AT),
+        record("prozorro_001", run_at=LATER_RUN_AT),
+    ]
+
+    counts = field_counts(records, REFERENCES, CONTRACTS)
+
+    assert list(counts) == [("claude-haiku-4-5", "v1", "precise", LATER_RUN_AT)]
+    assert counts[("claude-haiku-4-5", "v1", "precise", LATER_RUN_AT)]["buyer"].filled_correct == 1
+
+
 def test_model_without_a_price_has_no_cost():
     (metrics,) = compute_metrics([record("synthetic_001", model="unknown")], REFERENCES, PRICES)
 
@@ -207,8 +250,11 @@ def test_table_shows_interval_and_a_dash_for_missing_values():
     table = format_table(compute_metrics(records, REFERENCES, PRICES))
 
     lines = table.splitlines()
-    assert lines[0].startswith("| Модель | Промпт | Семплінг | Набір | Док. |")
-    row = "| claude-haiku-4-5 | v1 | precise | dev · synthetic | 1 | 100.0 (100.0–100.0) |"
+    assert lines[0].startswith("| Модель | Промпт | Семплінг | Прогін | Набір | Док. |")
+    row = (
+        "| claude-haiku-4-5 | v1 | precise | 2026-10-23 10:00 | dev · synthetic | 1 "
+        "| 100.0 (100.0–100.0) |"
+    )
     assert row in table
     assert lines[-1].endswith("| — |")
 
@@ -233,7 +279,8 @@ def test_main_prints_the_table_and_warns_about_documents_without_golden(tmp_path
 
     output = capsys.readouterr()
     assert code == 0
-    assert "| claude-haiku-4-5 | v1 | precise | dev · synthetic | 1 |" in output.out
+    row = "| claude-haiku-4-5 | v1 | precise | 2026-10-23 10:00 | dev · synthetic | 1 |"
+    assert row in output.out
     assert "trader_001" in output.err
 
 
@@ -259,6 +306,69 @@ def test_main_reports_a_stored_deal_that_fails_the_schema(tmp_path, capsys):
 
     assert code == 1
     assert "synthetic_001" in capsys.readouterr().err
+
+
+CONFIG = ("claude-haiku-4-5", "v1", "precise", RUN_AT)
+CONTRACTS = FieldGroup(title="Угоди", split="test", sources=("prozorro", "own"))
+FIELD_RECORDS = [
+    record("prozorro_001", deal={**DEAL, "buyer": "Агро Світ", "basis": "FCA"}),
+    record("own_001"),
+    record("synthetic_001"),  # dev: outside the group
+]
+
+
+def test_field_counts_score_each_field_over_the_documents_of_the_group():
+    counts = field_counts(FIELD_RECORDS, REFERENCES, CONTRACTS)[CONFIG]
+
+    assert counts["crop"] == Counts(
+        filled=2, filled_correct=2, empty=0, fabricated=0, total=2, correct=2
+    )
+    assert (counts["buyer"].filled, counts["buyer"].filled_correct) == (2, 1)
+    # golden has no basis: one answer invented FCA, the other left it null
+    assert (counts["basis"].filled, counts["basis"].empty, counts["basis"].fabricated) == (0, 2, 1)
+
+
+def test_field_table_shows_accuracy_with_fabricated_values_per_configuration():
+    table = format_field_tables(FIELD_RECORDS, REFERENCES, (CONTRACTS,))
+
+    lines = table.splitlines()
+    assert lines[0] == "## Угоди (test · prozorro + own)"
+    assert lines[2].startswith(
+        "| Поле | Заповнено у golden | null у golden "
+        "| claude-haiku-4-5 · v1 · precise · 2026-10-23 10:00 |"
+    )
+    assert "| buyer | 2 | 0 | 50.0 (1/2) · вигад. 0 |" in lines
+    assert "| basis | 0 | 2 | — · вигад. 1 |" in lines
+
+
+def test_field_table_total_row_matches_the_main_accuracy():
+    table = format_field_tables(FIELD_RECORDS, REFERENCES, (CONTRACTS,))
+    (all_row,) = (row for row in compute_metrics(FIELD_RECORDS, REFERENCES, PRICES)
+                  if (row.split, row.source) == ("test", "all"))
+
+    assert all_row.filled_accuracy == pytest.approx(100 * 5 / 6)
+    assert "| **Разом** | 6 | 36 | 83.3 (5/6) · вигад. 1 |" in table.splitlines()
+
+
+def test_field_table_of_a_group_without_results_is_left_out():
+    only_dev = [record("synthetic_001")]
+
+    assert format_field_tables(only_dev, REFERENCES, (CONTRACTS,)) == ""
+
+
+def test_main_writes_the_field_table_when_asked(tmp_path):
+    results_dir, references_dir = write_inputs(tmp_path, [record("prozorro_001")])
+    reference = {"id": "prozorro_001", "split": "test", "source": "prozorro", "deal": DEAL}
+    (references_dir / "prozorro_001.json").write_text(json.dumps(reference), encoding="utf-8")
+    output = tmp_path / "metrics_by_field.md"
+
+    code = main(
+        ["--results-dir", str(results_dir), "--references", str(references_dir),
+         "--by-field-output", str(output)]
+    )
+
+    assert code == 0
+    assert output.read_text(encoding="utf-8").startswith("## Угоди (test · prozorro + own)")
 
 
 def test_main_fails_clearly_without_results(tmp_path, capsys):

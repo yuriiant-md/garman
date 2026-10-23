@@ -2,11 +2,11 @@
 
     make run                                        # the same as the next line
     uv run --env-file .env python main.py
-    uv run --env-file .env python main.py --fresh   # ask the models again, ignore saved answers
 
-Answers already in results/stage1 for the same document, prompt file and sampling are reused,
-so a fresh clone rebuilds results/stage1/metrics.md from the committed answers without an API key
-or Ollama. A configuration whose model is needed but unavailable is skipped with the reason.
+Every run asks the models and saves its answers to a new file in results/stage1 named with the
+model, prompt version, sampling and the time of the run. The tables take the latest run of each
+configuration; `make metrics` rebuilds them from the saved runs without an API key or Ollama.
+A configuration whose model is unavailable is skipped with the reason.
 """
 
 import argparse
@@ -21,27 +21,27 @@ MODELS = ("claude", "lapa")
 PROMPTS = (ROOT / "prompts" / "extract_v1.md", ROOT / "prompts" / "extract_v2.md")
 SAMPLINGS = ("precise",)  # varied, with 3 repeats on the golden set, comes in Е1.4
 METRICS_PATH = ROOT / "results" / "stage1" / "metrics.md"
+BY_FIELD_PATH = ROOT / "results" / "stage1" / "metrics_by_field.md"
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the whole stage-1 matrix and its metrics.")
-    parser.add_argument(
-        "--fresh", action="store_true", help="Ask the models again even for saved answers."
-    )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = parse_args(argv)
+    parse_args(argv)
     not_run = []
     for model, prompt, sampling in product(MODELS, PROMPTS, SAMPLINGS):
         name = f"{model} · {prompt.stem} · {sampling}"
         print(f"\n== {name}")
         config = ["--model", model, "--prompt", str(prompt), "--sampling", sampling]
-        if run.main([*config, "--split", "all", *(["--fresh"] if args.fresh else [])]) != 0:
+        if run.main([*config, "--split", "all"]) != 0:
             not_run.append(name)
     print()
-    code = metrics.main(["--output", str(METRICS_PATH)])
+    code = metrics.main(
+        ["--output", str(METRICS_PATH), "--by-field-output", str(BY_FIELD_PATH)]
+    )
     if not_run:
         print("\nNot finished, see the messages above: " + ", ".join(not_run), file=sys.stderr)
         return 1

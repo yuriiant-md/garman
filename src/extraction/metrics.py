@@ -37,14 +37,36 @@ SOURCE_ORDER = ("synthetic", "prozorro", "own")
 DEFAULT_SOURCE = "synthetic"  # data/synthetic/*.json carry no "source" field
 ALL_SOURCES = "all"  # every golden source of a split together: the model is chosen on this row
 NO_VALUE = "—"
+RUN_LABEL_LENGTH = len("2026-10-23T14:05")  # date and minutes of a run's ISO start time
 ZERO = Counts(filled=0, filled_correct=0, empty=0, fabricated=0, total=0, correct=0)
 HEADER = (
-    "Модель", "Промпт", "Семплінг", "Набір", "Док.", "Точність заповнених, % (95% ДІ)",
+    "Модель", "Промпт", "Семплінг", "Прогін", "Набір", "Док.", "Точність заповнених, % (95% ДІ)",
     "Вигадані, %", "Загальна, %", "Валідні, %", "Failed, %", "p50, с", "p95, с", "$ / 1000 док.",
+)
+
+FIELD_HEADER = ("Поле", "Заповнено у golden", "null у golden")
+FIELD_TOTAL = "**Разом**"
+FIELD_LEGEND = (
+    "Клітинка: точність по заповнених значеннях golden (правильні/заповнені) · вигад. — "
+    "скільки разів модель дала значення там, де в golden null."
 )
 
 Record = Mapping[str, object]
 Prices = Mapping[str, tuple[float, float]]  # model id -> USD per 1M input and output tokens
+ConfigKey = tuple[str, str, str, str]  # model, prompt version, sampling, start of the run
+
+
+@dataclass(frozen=True)
+class FieldGroup:
+    """Documents of one kind scored field by field in one table: a split and its sources."""
+
+    title: str
+    split: str
+    sources: tuple[str, ...]
+
+
+# Offers (with their own golden set) join here as a second group.
+FIELD_GROUPS = (FieldGroup(title="Угоди", split="test", sources=("prozorro", "own")),)
 
 
 @dataclass(frozen=True)
@@ -59,6 +81,7 @@ class ConfigMetrics:
     model: str
     prompt_version: str
     sampling: str
+    run_at: str  # when the run behind this row started: the latest run of the configuration
     split: str
     source: str
     docs: int
@@ -152,6 +175,7 @@ def _config_metrics(
         model=first["model"],
         prompt_version=first["prompt_version"],
         sampling=first["sampling"],
+        run_at=first["run_at"],
         split=references[first["doc_id"]].split,
         source=source,
         docs=len(records),
@@ -167,12 +191,52 @@ def _config_metrics(
     )
 
 
+def field_counts(
+    records: Iterable[Record], references: Mapping[str, Reference], group: FieldGroup
+) -> dict[ConfigKey, dict[str, Counts]]:
+    """Counts per configuration and leaf field over the documents of `group`. The scores are the
+    ones behind the main accuracy, only not yet added up across fields."""
+    scores: dict[ConfigKey, dict[str, list]] = {}
+    for record in latest_runs(records, references):
+        reference = references[record["doc_id"]]
+        if reference.split != group.split or reference.source not in group.sources:
+            continue
+        by_field = scores.setdefault((*_config(record), record["run_at"]), {})
+        for score in score_deal(reference.deal, _predicted(record)):
+            by_field.setdefault(score.field, []).append(score)
+    return {
+        config: {field: Counts.of(items) for field, items in by_field.items()}
+        for config, by_field in sorted(scores.items())
+    }
+
+
 def _rank(value: str, order: tuple[str, ...]) -> int:
     return order.index(value) if value in order else len(order)
 
 
 def _config(record: Record) -> tuple[str, str, str]:
     return record["model"], record["prompt_version"], record["sampling"]
+
+
+def run_label(run_at: str) -> str:
+    """`2026-10-23T14:05:33+03:00` -> `2026-10-23 14:05`: the date and time of a run for a table."""
+    return run_at[:RUN_LABEL_LENGTH].replace("T", " ")
+
+
+def latest_runs(records: Iterable[Record], references: Mapping[str, Reference]) -> list[Record]:
+    """Records of the latest run of each configuration and data split. Older runs stay in their
+    files as a record; a later run on one split does not hide the earlier run on the other.
+    Documents without a golden deal are left out (see `missing_references`)."""
+    known = [record for record in records if record["doc_id"] in references]
+
+    def run_key(record: Record) -> tuple:
+        return _config(record), references[record["doc_id"]].split
+
+    newest = {
+        key: max(record["run_at"] for record in known if run_key(record) == key)
+        for key in {run_key(record) for record in known}
+    }
+    return [record for record in known if record["run_at"] == newest[run_key(record)]]
 
 
 def _row_keys(
@@ -189,9 +253,9 @@ def compute_metrics(
     records: Iterable[Record], references: Mapping[str, Reference], prices: Prices
 ) -> tuple[ConfigMetrics, ...]:
     """One row per configuration, split and source, dev before test, plus an `all` row for a
-    split with several golden sources. Documents without a golden deal are left out (see
-    `missing_references`)."""
-    known = [record for record in records if record["doc_id"] in references]
+    split with several golden sources. Only the latest run of a configuration is scored (see
+    `latest_runs`)."""
+    known = latest_runs(records, references)
     split_sources: dict[tuple, set[str]] = {}
     for record in known:
         reference = references[record["doc_id"]]
@@ -260,7 +324,7 @@ def _row(metrics: ConfigMetrics) -> tuple[str, ...]:
     )
     cost = metrics.cost_per_1000_docs_usd
     return (
-        metrics.model, metrics.prompt_version, metrics.sampling,
+        metrics.model, metrics.prompt_version, metrics.sampling, run_label(metrics.run_at),
         f"{metrics.split} · {metrics.source}", str(metrics.docs),
         _pct(metrics.filled_accuracy) + interval, _pct(metrics.fabricated_pct),
         _pct(metrics.overall_pct), _pct(metrics.valid_pct), _pct(metrics.failed_pct),
@@ -274,6 +338,60 @@ def format_table(metrics: Iterable[ConfigMetrics]) -> str:
     return "\n".join("| " + " | ".join(row) + " |" for row in rows)
 
 
+def _field_cell(counts: Counts | None) -> str:
+    if counts is None:
+        return NO_VALUE
+    accuracy = share(counts.filled_correct, counts.filled)
+    shown = NO_VALUE if accuracy is None else (
+        f"{accuracy:.1f} ({counts.filled_correct}/{counts.filled})"
+    )
+    return f"{shown} · вигад. {counts.fabricated}"
+
+
+def _group_table(group: FieldGroup, counts: Mapping[ConfigKey, Mapping[str, Counts]]) -> str:
+    fields = tuple(dict.fromkeys(field for by_field in counts.values() for field in by_field))
+    totals = {config: sum(by_field.values(), ZERO) for config, by_field in counts.items()}
+    widest_config = max(totals, key=lambda config: totals[config].total)  # base of golden columns
+    widest = totals[widest_config]
+    header = (
+        *FIELD_HEADER,
+        *(" · ".join((*config[:-1], run_label(config[-1]))) for config in counts),
+    )
+    rows = [
+        (
+            field,
+            str(counts[widest_config].get(field, ZERO).filled),
+            str(counts[widest_config].get(field, ZERO).empty),
+            *(_field_cell(by_field.get(field)) for by_field in counts.values()),
+        )
+        for field in fields
+    ]
+    rows.append(
+        (FIELD_TOTAL, str(widest.filled), str(widest.empty),
+         *(_field_cell(totals[config]) for config in counts))
+    )
+    lines = (header, tuple("---" for _ in header), *rows)
+    title = f"## {group.title} ({group.split} · {' + '.join(group.sources)})"
+    table = "\n".join("| " + " | ".join(row) + " |" for row in lines)
+    return f"{title}\n\n{table}\n\n{FIELD_LEGEND}"
+
+
+def format_field_tables(
+    records: Iterable[Record],
+    references: Mapping[str, Reference],
+    groups: Iterable[FieldGroup] = FIELD_GROUPS,
+) -> str:
+    """One table per group of documents: a row per field, a column per configuration. A group
+    nobody answered is left out."""
+    records = tuple(records)
+    sections = (
+        _group_table(group, counts)
+        for group in groups
+        if (counts := field_counts(records, references, group))
+    )
+    return "\n\n".join(sections)
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Score stage-1 results against golden deals.")
     parser.add_argument("--results-dir", type=Path, default=RESULTS_DIR)
@@ -283,6 +401,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--models", type=Path, default=MODELS_PATH, help="Prices per model.")
     parser.add_argument("--output", type=Path, help="Also write the table to this file.")
+    parser.add_argument(
+        "--by-field-output", type=Path, help="Also write the per-field accuracy tables here."
+    )
     return parser.parse_args(argv)
 
 
@@ -300,6 +421,7 @@ def main(argv: list[str] | None = None) -> int:
               file=sys.stderr)
     try:
         metrics = compute_metrics(records, references, load_price_table(args.models))
+        field_tables = format_field_tables(records, references)
     except ValueError as error:
         print(f"Stopped: {error}", file=sys.stderr)
         return 1
@@ -307,6 +429,8 @@ def main(argv: list[str] | None = None) -> int:
     print(table)
     if args.output:
         args.output.write_text(table + "\n", encoding="utf-8")
+    if args.by_field_output:
+        args.by_field_output.write_text(field_tables + "\n", encoding="utf-8")
     return 0
 
 

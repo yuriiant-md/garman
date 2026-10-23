@@ -1,7 +1,8 @@
 """Run an extractor over the stage-1 texts and save one JSON line per document.
 
-Answers already saved for the same document, prompt file and sampling are reused; `--fresh`
-asks the model again for the chosen split and keeps the saved answers of the other split.
+Every run asks the model and is saved to its own file named with the model, the prompt version,
+the sampling and the time of the run, so earlier runs stay as a record. Each line carries the
+same `run_at`.
 
     uv run --env-file .env python -m src.extraction.run --split dev
     uv run python -m src.extraction.run --model lapa   # local model through Ollama, no API key
@@ -13,6 +14,7 @@ import os
 import statistics
 import sys
 from collections import Counter
+from datetime import datetime
 from pathlib import Path
 from typing import Protocol
 
@@ -36,6 +38,7 @@ DEV_PREFIX = "synthetic_"  # dev = synthetic texts; everything else (golden set)
 SPLITS = ("dev", "test", "all")
 API_KEY_VARIABLE = "ANTHROPIC_API_KEY"
 PARTIAL_SUFFIX = ".partial"
+RUN_STAMP_FORMAT = "%Y-%m-%dT%H-%M-%S"  # colons are not allowed in file names on some systems
 MODEL_SECTIONS = {"claude": "anthropic", "lapa": "ollama"}  # --model -> section of models.yaml
 
 
@@ -52,24 +55,16 @@ def text_paths(texts_dir: Path, split: str) -> list[Path]:
     return paths
 
 
-def result_path(results_dir: Path, model: str, prompt_version: str, sampling_name: str) -> Path:
-    return results_dir / f"{model}__{prompt_version}__{sampling_name}.jsonl"
+def current_time() -> datetime:
+    """The start of a run in local time with its UTC offset."""
+    return datetime.now().astimezone()
 
 
-def load_cached(output: Path, prompt: Prompt, sampling: Sampling) -> dict[str, dict[str, object]]:
-    """Saved answers a rerun may reuse, by document id: same prompt file (its hash) and sampling
-    name. An `error` result holds no answer, so that document is asked again."""
-    if not output.exists():
-        return {}
-    lines = output.read_text(encoding="utf-8").splitlines()
-    records = (json.loads(line) for line in lines if line.strip())
-    return {
-        record["doc_id"]: record
-        for record in records
-        if record["prompt_sha256"] == prompt.sha256
-        and record["sampling"] == sampling.name
-        and record["status"] != ExtractionStatus.ERROR
-    }
+def result_path(
+    results_dir: Path, model: str, prompt_version: str, sampling_name: str, started: datetime
+) -> Path:
+    stamp = started.strftime(RUN_STAMP_FORMAT)
+    return results_dir / f"{model}__{prompt_version}__{sampling_name}__{stamp}.jsonl"
 
 
 def run_extraction(
@@ -78,30 +73,22 @@ def run_extraction(
     prompt: Prompt,
     sampling: Sampling,
     output: Path,
-    cached: dict[str, dict[str, object]] | None = None,
+    started: datetime,
 ) -> list[dict[str, object]]:
-    """Lines go to a .partial file as each document finishes; it replaces `output` only when the
-    whole run succeeds, so a failed rerun never wipes the previous results. A document with a
-    cached answer is not sent to the model; cached answers of documents outside `paths` stay in
-    the file, so a run on one split keeps the other split's answers."""
-    cached = cached or {}
+    """Lines go to a .partial file as each document finishes; it becomes `output` only when the
+    whole run succeeds, so the metrics never see half a run. Every line carries `run_at`."""
     output.parent.mkdir(parents=True, exist_ok=True)
     partial = output.with_name(output.name + PARTIAL_SUFFIX)
+    run_at = started.isoformat(timespec="seconds")
     records = []
     with partial.open("w", encoding="utf-8") as file:
         for path in paths:
-            record = cached.get(path.stem)
-            if record is None:
-                result = extractor.extract(path.read_text(encoding="utf-8"), prompt, sampling)
-                record = {"doc_id": path.stem, **result.model_dump(mode="json")}
-                print(f"{path.stem}: {result.status} in {result.latency_s:.1f} s")
-            else:
-                print(f"{path.stem}: cached")
+            result = extractor.extract(path.read_text(encoding="utf-8"), prompt, sampling)
+            record = {"doc_id": path.stem, "run_at": run_at, **result.model_dump(mode="json")}
+            print(f"{path.stem}: {result.status} in {result.latency_s:.1f} s")
             file.write(json.dumps(record, ensure_ascii=False) + "\n")
             file.flush()
             records.append(record)
-        outside = sorted(set(cached) - {path.stem for path in paths})
-        file.writelines(json.dumps(cached[doc], ensure_ascii=False) + "\n" for doc in outside)
     partial.replace(output)
     return records
 
@@ -163,9 +150,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--texts-dir", type=Path, default=TEXTS_DIR)
     parser.add_argument("--prompt", type=Path, default=DEFAULT_PROMPT)
     parser.add_argument("--sampling", default="precise", help="Name from configs/sampling.yaml.")
-    parser.add_argument(
-        "--fresh", action="store_true", help="Ask the model again for every text of the split."
-    )
     return parser.parse_args(argv)
 
 
@@ -181,21 +165,17 @@ def main(argv: list[str] | None = None) -> int:
         print(error.args[0], file=sys.stderr)
         return 2
     prompt = load_prompt(args.prompt)
-    output = result_path(RESULTS_DIR, configured_model(args.model), prompt.version, sampling.name)
-    cached = load_cached(output, prompt, sampling)
-    if args.fresh:  # ask this split again; answers of the other split stay in the file
-        asked = {path.stem for path in paths}
-        cached = {doc: record for doc, record in cached.items() if doc not in asked}
-    if all(path.stem in cached for path in paths):
-        print(f"All {len(paths)} answers are cached in {output.relative_to(ROOT)}")
-        return 0
+    started = current_time()
+    output = result_path(
+        RESULTS_DIR, configured_model(args.model), prompt.version, sampling.name, started
+    )
     if args.model == "claude" and not os.environ.get(API_KEY_VARIABLE):
         print(f"{API_KEY_VARIABLE} is not set: put it in .env and run with "
               "`uv run --env-file .env python -m src.extraction.run`.", file=sys.stderr)
         return 2
     try:
         records = run_extraction(
-            build_extractor(args.model), paths, prompt, sampling, output, cached
+            build_extractor(args.model), paths, prompt, sampling, output, started
         )
     except anthropic.APIStatusError as error:
         print(f"Stopped: API error {error.status_code}: {error.message}", file=sys.stderr)

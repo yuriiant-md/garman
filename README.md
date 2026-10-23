@@ -80,7 +80,7 @@ The rules were written before the first run. Code: `src/extraction/scoring.py` (
 4. **Three numbers instead of one:** accuracy on filled fields is the main one — only fields that are not `null` in the golden deal; fabricated, % — the model gave a value where the golden deal has `null`; overall — all fields, for reference. Otherwise an "everything `null`" answer would score high. Accuracy is summed over the fields of all documents.
 5. **A failed answer** (`failed` or `error`) is not dropped: all its fields are wrong, and the fields that are empty in the golden deal count as fabricated, so a failure never looks better than a mistake.
 6. **Validity** is reported separately: valid, failed, and "fixed" — the share of documents that became valid only after the one fix attempt (it is part of valid, not of failed).
-7. **`varied`** — 3 repeats on the golden set, mean and spread; `precise` — one run (comes with the final run).
+7. **`varied`** runs once per launch, like `precise`, so its spread shows only by comparing launches; 3 repeats on the golden set with mean and spread are planned for the final run.
 8. **Separately per set:** synthetic texts (dev), Prozorro and the author's own contracts (test); the model is chosen on all golden documents together.
 9. **Noise:** accuracy on filled fields comes with a 95% bootstrap interval — 1000 resamples of documents with replacement, fixed seed. When the intervals of two configurations overlap, no advantage is claimed.
 10. **Cost** — tokens of all attempts × the price in `configs/models.yaml`, per 1000 answers without `error`; $0 for the local Lapa.
@@ -96,7 +96,7 @@ The rules were written before the first run. Code: `src/extraction/scoring.py` (
 | Schema: ≥ 6 fields, ≥ 1 enum, a nested object or a list | `src/schemas/deal.py` (10 fields, 9 enums, 5 nested objects, the `penalties` list), tests — `tests/test_deal.py` | done |
 | Provider model through an API with structured output, retry and timeout | `src/extraction/anthropic_extractor.py` (the schema as a forced tool call), settings — `configs/models.yaml` | done |
 | Local model through a shared interface | `src/extraction/ollama_extractor.py`; the `Extractor` interface — `src/extraction/run.py` | done |
-| temperature and top_p in a config, ≥ 2 configurations | `configs/sampling.yaml` (`precise`, `varied`) | config done; the `varied` run comes next |
+| temperature and top_p in a config, ≥ 2 configurations | `configs/sampling.yaml` (`precise`, `varied`) | done: both samplings run in every `make run` |
 | Metrics: per-field accuracy, % valid, p50/p95 latency, cost per 1000 documents | `src/extraction/metrics.py` (table), `src/extraction/scoring.py` (comparison with the golden deal); tests — `tests/test_metrics.py`, `tests/test_scoring.py` | done; numbers — `results/stage1/<start time>/metrics.md` and `metrics_by_field.md` |
 | Prompts with a version header, ≥ 2 versions, `CHANGELOG` | `prompts/extract_v1.md`, `prompts/extract_v2.md`, `prompts/CHANGELOG.md` | done: v1 is the baseline, v2 is built from the v1 errors on dev |
 | Every answer is validated by the schema; invalid → one fix attempt → `failed` | `src/extraction/validation.py` (the fix request), `anthropic_extractor.py` and `ollama_extractor.py` (the second call); tests — `tests/test_validation.py` and the extractor tests | done; the "Виправлено, %" column of the metrics table counts the answers saved by it |

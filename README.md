@@ -9,7 +9,17 @@ A Telegram bot for farmers: it extracts the terms of a grain trader's contract, 
 ### Requirements
 
 - macOS or Linux with `make` and [uv](https://docs.astral.sh/uv/getting-started/installation/). uv installs Python 3.14 by itself on the first `make install`.
-- To run the models (step 3): an Anthropic API key for Claude Haiku 4.5 and [Ollama](https://ollama.com) with Lapa 12B (a 7.3 GB download, about 12 GB of free memory while it runs).
+- To reproduce our numbers (step 3) you **need** an Anthropic API key for Claude Haiku 4.5 and [Ollama](https://ollama.com) with Lapa 12B (a 7.3 GB download, about 12 GB of free memory while it runs). Without them only steps 1, 2 and 4 work: install, unit tests and viewing saved runs.
+
+### Make commands
+
+| Command | What it does | Needs key and Ollama |
+| --- | --- | --- |
+| `make install` | installs the dependencies (`uv sync`) | no |
+| `make test` | unit tests on stub models: offline, a few seconds; they check the code, not the quality of the models | no |
+| `make smoke` | live quick check: 8 configurations on the first 2 texts of each source (6 texts), saved in `results/smoke/<start time>/`; about $0.2 and 5–8 minutes | yes |
+| `make run` | live full run: 8 configurations on all 37 texts, saved in `results/stage1/<start time>/` together with the two metrics tables; about $2 and 45 minutes | yes |
+| `make metrics` | prints the metrics table of the latest saved folder in `results/stage1/`; calls no model and writes nothing | no |
 
 ### 1. Install
 
@@ -25,7 +35,7 @@ make install    # = uv sync
 make test       # = uv run pytest -q
 ```
 
-All tests run offline in a few seconds: no API key, no Ollama, no network.
+The tests run offline in a few seconds on stub models: no API key, no Ollama, no network. They check the code (parsing, validation, the fix attempt, the metrics arithmetic), not the quality of the models — the numbers come from step 3.
 
 ### 3. Run stage 1
 
@@ -42,15 +52,15 @@ Each launch is saved to a new folder named with its start time, e.g. `results/st
 
 A configuration whose model is needed but missing (no key in `.env`, Ollama not running) is skipped with the reason; the others still run, and `make run` ends with exit code 1 and the list of what it did not finish.
 
-For a quick check use `make smoke` (= `python main.py --per-source 2`): the same 8 configurations on the first 2 texts of each source (6 texts), about $0.2 and 5–8 minutes. It saves into `results/smoke/<start time>/`, which git ignores and `make metrics` does not read. The numbers of 6 texts prove nothing — it only shows that everything works together.
+For a quick check use `make smoke` (= `python main.py --per-source 2`): the same 8 configurations on the first 2 texts of each source (6 texts), about $0.2 and 5–8 minutes. It saves into `results/smoke/<start time>/`, which git ignores and `make metrics` does not read. The numbers of 6 texts prove nothing — it only shows that everything works together. Run it before the full run to see in minutes that your key, Ollama and the whole chain work.
 
-### 4. Rebuild the tables from saved runs
+### 4. View saved runs
 
 ```bash
 make metrics    # = uv run python -m src.extraction.metrics
 ```
 
-This needs neither an API key nor Ollama: it scores the saved runs of the latest folder in `results/stage1/` against the golden labels and prints the metrics table (nothing is written, so a saved table never changes afterwards). Pick another launch with `--results-dir results/stage1/<start time>`; add `--output <file> --by-field-output <file>` to write the tables.
+This only re-reads results that are already saved, so it needs neither an API key nor Ollama — it reproduces nothing by itself, the numbers come from step 3. It scores the saved runs of the latest folder in `results/stage1/` against the golden labels and prints the metrics table (nothing is written, so a saved table never changes afterwards). Pick another launch with `--results-dir results/stage1/<start time>`; add `--output <file> --by-field-output <file>` to write the tables. To compare your run with ours, our full run of 8 configurations is in `results/stage1/2026-10-23T11-46-35/` (`2026-10-23T10-56-10/` is an earlier run of 4 configurations with the `precise` sampling only).
 
 ### Separate commands
 

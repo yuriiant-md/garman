@@ -9,7 +9,7 @@ Telegram-бот для фермера: витягує умови з догово
 ### Що потрібно
 
 - macOS або Linux з `make` і [uv](https://docs.astral.sh/uv/getting-started/installation/). Python 3.14 uv встановить сам під час першого `make install`.
-- Лише щоб заново запитати моделі (крок 4): ключ Anthropic API для Claude Haiku 4.5 і [Ollama](https://ollama.com) з Lapa 12B (завантаження 7,3 ГБ, під час роботи — близько 12 ГБ вільної пам'яті).
+- Щоб запустити моделі (крок 3): ключ Anthropic API для Claude Haiku 4.5 і [Ollama](https://ollama.com) з Lapa 12B (завантаження 7,3 ГБ, під час роботи — близько 12 ГБ вільної пам'яті).
 
 ### 1. Встановити
 
@@ -30,25 +30,25 @@ make test       # = uv run pytest -q
 ### 3. Запустити етап 1
 
 ```bash
-make run        # = uv run python main.py
-```
-
-`make run` проганяє всі конфігурації етапу 1 на всіх 37 текстах — 2 моделі × 2 промпти × семплінг `precise` — і записує таблицю метрик у `results/stage1/metrics.md`.
-
-Відповіді, вже збережені в `results/stage1/*.jsonl` для того самого документа, файлу промпту й семплінгу, використовуються повторно, а відповіді прогону автора закомічено. Тому на свіжому клоні `make run` не потребує ні ключа API, ні Ollama: він за кілька секунд перебудовує таблицю зі збережених відповідей. Якщо після цього `git diff results/stage1/metrics.md` нічого не показує, цифри відтворено.
-
-### 4. Запитати моделі заново (необов'язково)
-
-```bash
 cp .env.example .env    # впиши свій ключ: ANTHROPIC_API_KEY=...
 ollama pull hf.co/lapa-llm/lapa-v0.1.2-instruct-GGUF:Q4_K_M
 ollama cp hf.co/lapa-llm/lapa-v0.1.2-instruct-GGUF:Q4_K_M lapa-v0.1.2-q4km
-make run FRESH=1        # = uv run --env-file .env python main.py --fresh
+make run        # = uv run --env-file .env python main.py
 ```
 
-Це той самий файл Lapa (Q4_K_M), на якому зроблено закомічені відповіді. Новий прогін коштує близько $1 за Claude і триває близько 25 хвилин для Lapa на Mac з Apple Silicon. Цифри будуть близькі до закомічених, але не тотожні: Claude не повністю детермінований навіть при temperature 0, а промпт v2 містить дату запуску (`{today}`).
+`make run` запитує моделі для кожної конфігурації етапу 1 на всіх 37 текстах — 2 моделі × 2 промпти × семплінг `precise`. Кешу немає: кожен прогін робить живі виклики API й Ollama. Повний прогін коштує близько $1 за Claude і триває близько 25 хвилин для Lapa на Mac з Apple Silicon. Цифри трохи відрізняються від прогону до прогону: Claude не повністю детермінований навіть при temperature 0, а промпт v2 містить дату запуску (`{today}`).
+
+Кожен прогін зберігається у власний файл у `results/stage1/` з іменем із моделі, версії промпту, семплінгу й часу початку, наприклад `claude-haiku-4-5__v2__precise__2026-10-27T14-05-33.jsonl`; у кожному рядку є також `run_at`. Попередні прогони лишаються як запис. Потім `make run` записує таблицю метрик у `results/stage1/metrics.md`, а таблицю точності по полях (точність і вигадані значення по кожному полю й конфігурації, на test golden set) — у `results/stage1/metrics_by_field.md`. Для кожної конфігурації таблиці беруть її останній прогін і показують його дату й час.
 
 Конфігурацію, якій потрібна відсутня модель (немає ключа в `.env`, не запущено Ollama), пропущено з поясненням; решта все одно проганяється, а `make run` завершується з кодом 1 і переліком того, що не завершено.
+
+### 4. Перебудувати таблиці зі збережених прогонів
+
+```bash
+make metrics    # = uv run python -m src.extraction.metrics
+```
+
+Це не потребує ні ключа API, ні Ollama: команда порівнює збережені прогони з `results/stage1/*.jsonl` з еталонною розміткою й друкує таблицю метрик. Щоб записати файли, додай `--output results/stage1/metrics.md --by-field-output results/stage1/metrics_by_field.md`.
 
 ### Окремі команди
 
@@ -59,7 +59,7 @@ uv run python -m src.extraction.metrics                                         
 uv run python -m scripts.check_golden                                            # перевірка розмітки golden set
 ```
 
-`--split` — `dev` (синтетичні тексти), `test` (golden set) або `all`; `--sampling` — назва з `configs/sampling.yaml`; `--fresh` заново питає модель про всі тексти з `--split`, а збережені відповіді іншого спліта лишає.
+`--split` — `dev` (синтетичні тексти), `test` (golden set) або `all`; `--sampling` — назва з `configs/sampling.yaml`. Кожен прогін зберігається в новий файл, жоден не використовується повторно.
 
 Підготовка golden set із договорів Prozorro (докладно — у `data/README.md`):
 
@@ -95,7 +95,7 @@ uv run python -m scripts.pdf_to_text       # data/raw/prozorro/*.pdf → data/te
 | Провайдерська модель через API зі structured output, retry і timeout | `src/extraction/anthropic_extractor.py` (схема як обов'язковий виклик інструмента), налаштування — `configs/models.yaml` | готово |
 | Локальна модель через спільний інтерфейс | `src/extraction/ollama_extractor.py`; інтерфейс `Extractor` — `src/extraction/run.py` | готово |
 | temperature і top_p у конфігу, ≥ 2 конфігурації | `configs/sampling.yaml` (`precise`, `varied`) | конфіг готовий; прогін `varied` — далі |
-| Метрики: точність по полях, % валідних, p50/p95, вартість на 1000 документів | `src/extraction/metrics.py` (таблиця), `src/extraction/scoring.py` (порівняння з еталоном); тести — `tests/test_metrics.py`, `tests/test_scoring.py` | готово; цифри — `results/stage1/metrics.md` |
+| Метрики: точність по полях, % валідних, p50/p95, вартість на 1000 документів | `src/extraction/metrics.py` (таблиця), `src/extraction/scoring.py` (порівняння з еталоном); тести — `tests/test_metrics.py`, `tests/test_scoring.py` | код готовий; цифри з'являться в `results/stage1/metrics.md` і `metrics_by_field.md` після живого `make run` |
 | Промпти з версією в шапці, ≥ 2 версії, `CHANGELOG` | `prompts/extract_v1.md`, `prompts/extract_v2.md`, `prompts/CHANGELOG.md` | готово: v1 — baseline, v2 — з помилок v1 на dev |
 | Кожна відповідь валідується схемою; невалідна → одна спроба виправлення → `failed` | `src/extraction/validation.py` | перевірка схемою готова; спроба виправлення — далі |
 | До кожного результату логуються модель, версія промпту, семплінг | поля запису — `src/extraction/result.py`; самі записи — `results/stage1/*.jsonl` | готово |
@@ -127,7 +127,7 @@ src/schemas/
 src/extraction/
   anthropic_extractor.py   Claude Haiku 4.5 через Anthropic API
   ollama_extractor.py      Lapa 12B через Ollama
-  run.py                   спільний інтерфейс Extractor, одна конфігурація, збережені відповіді
+  run.py                   спільний інтерфейс Extractor, одна конфігурація, один збережений прогін
   messages.py              однакове повідомлення з документом для обох моделей
   prompts.py               читання промпту з версією й хешем файлу
   sampling.py              читання configs/sampling.yaml
@@ -141,7 +141,7 @@ scripts/
   pdf_to_text.py           PDF → знеособлений текст
   check_golden.py          перевірка розмітки golden set
 tests/                     тести pytest: make test
-results/stage1/            відповіді моделей *.jsonl (рядок на документ) і metrics.md — таблиця метрик
+results/stage1/            по одному файлу *.jsonl на прогін (рядок на документ, час початку в імені) і таблиці метрик (metrics.md, metrics_by_field.md)
 ```
 
 План робіт автор веде локально (`docs/`, поза репо); правила метрик із нього перенесено в розділ «Як рахуються метрики».

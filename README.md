@@ -9,7 +9,7 @@ A Telegram bot for farmers: it extracts the terms of a grain trader's contract, 
 ### Requirements
 
 - macOS or Linux with `make` and [uv](https://docs.astral.sh/uv/getting-started/installation/). uv installs Python 3.14 by itself on the first `make install`.
-- Only to ask the models again (step 4): an Anthropic API key for Claude Haiku 4.5 and [Ollama](https://ollama.com) with Lapa 12B (a 7.3 GB download, about 12 GB of free memory while it runs).
+- To run the models (step 3): an Anthropic API key for Claude Haiku 4.5 and [Ollama](https://ollama.com) with Lapa 12B (a 7.3 GB download, about 12 GB of free memory while it runs).
 
 ### 1. Install
 
@@ -30,25 +30,25 @@ All tests run offline in a few seconds: no API key, no Ollama, no network.
 ### 3. Run stage 1
 
 ```bash
-make run        # = uv run python main.py
-```
-
-`make run` runs every configuration of stage 1 on all 37 texts — 2 models × 2 prompts × the `precise` sampling — and writes the metrics table to `results/stage1/metrics.md`.
-
-Answers already saved in `results/stage1/*.jsonl` for the same document, prompt file and sampling are reused, and the answers of the author's run are committed. So on a fresh clone `make run` needs neither an API key nor Ollama: it rebuilds the table from the saved answers in a few seconds. If `git diff results/stage1/metrics.md` shows nothing afterwards, the numbers are reproduced.
-
-### 4. Ask the models again (optional)
-
-```bash
 cp .env.example .env    # put your key in it: ANTHROPIC_API_KEY=...
 ollama pull hf.co/lapa-llm/lapa-v0.1.2-instruct-GGUF:Q4_K_M
 ollama cp hf.co/lapa-llm/lapa-v0.1.2-instruct-GGUF:Q4_K_M lapa-v0.1.2-q4km
-make run FRESH=1        # = uv run --env-file .env python main.py --fresh
+make run        # = uv run --env-file .env python main.py
 ```
 
-This is the same Lapa file (Q4_K_M) the committed answers were made with. A fresh run costs about $1 for Claude and takes about 25 minutes for Lapa on an Apple Silicon Mac. The numbers will be close to the committed ones, not identical: Claude is not fully deterministic even at temperature 0, and prompt v2 contains the run date (`{today}`).
+`make run` asks the models for every configuration of stage 1 on all 37 texts — 2 models × 2 prompts × the `precise` sampling. Nothing is cached: every run makes live API and Ollama calls. A full run costs about $1 for Claude and takes about 25 minutes for Lapa on an Apple Silicon Mac. The numbers differ a little from run to run: Claude is not fully deterministic even at temperature 0, and prompt v2 contains the run date (`{today}`).
+
+Each run is saved to its own file in `results/stage1/`, named with the model, the prompt version, the sampling and the start time, e.g. `claude-haiku-4-5__v2__precise__2026-10-27T14-05-33.jsonl`; every line also carries `run_at`. Earlier runs stay as a record. Then `make run` writes the metrics table to `results/stage1/metrics.md` and the per-field accuracy table (accuracy and fabricated values per field and configuration, on the test golden set) to `results/stage1/metrics_by_field.md`. For each configuration the tables take its latest run and show its date and time.
 
 A configuration whose model is needed but missing (no key in `.env`, Ollama not running) is skipped with the reason; the others still run, and `make run` ends with exit code 1 and the list of what it did not finish.
+
+### 4. Rebuild the tables from saved runs
+
+```bash
+make metrics    # = uv run python -m src.extraction.metrics
+```
+
+This needs neither an API key nor Ollama: it scores the saved runs in `results/stage1/*.jsonl` against the golden labels and prints the metrics table. Add `--output results/stage1/metrics.md --by-field-output results/stage1/metrics_by_field.md` to write the files.
 
 ### Separate commands
 
@@ -59,7 +59,7 @@ uv run python -m src.extraction.metrics                                         
 uv run python -m scripts.check_golden                                            # validate the golden labels
 ```
 
-`--split` is `dev` (synthetic texts), `test` (golden set) or `all`; `--sampling` is a name from `configs/sampling.yaml`; `--fresh` asks the model again for every text of `--split` and keeps the saved answers of the other split.
+`--split` is `dev` (synthetic texts), `test` (golden set) or `all`; `--sampling` is a name from `configs/sampling.yaml`. Every run is saved to a new file; none is reused.
 
 Building the golden set from Prozorro contracts (details in `data/README.md`):
 
@@ -95,7 +95,7 @@ The rules were written before the first run. Code: `src/extraction/scoring.py` (
 | Provider model through an API with structured output, retry and timeout | `src/extraction/anthropic_extractor.py` (the schema as a forced tool call), settings — `configs/models.yaml` | done |
 | Local model through a shared interface | `src/extraction/ollama_extractor.py`; the `Extractor` interface — `src/extraction/run.py` | done |
 | temperature and top_p in a config, ≥ 2 configurations | `configs/sampling.yaml` (`precise`, `varied`) | config done; the `varied` run comes next |
-| Metrics: per-field accuracy, % valid, p50/p95 latency, cost per 1000 documents | `src/extraction/metrics.py` (table), `src/extraction/scoring.py` (comparison with the golden deal); tests — `tests/test_metrics.py`, `tests/test_scoring.py` | done; numbers — `results/stage1/metrics.md` |
+| Metrics: per-field accuracy, % valid, p50/p95 latency, cost per 1000 documents | `src/extraction/metrics.py` (table), `src/extraction/scoring.py` (comparison with the golden deal); tests — `tests/test_metrics.py`, `tests/test_scoring.py` | code done; numbers appear in `results/stage1/metrics.md` and `metrics_by_field.md` after a live `make run` |
 | Prompts with a version header, ≥ 2 versions, `CHANGELOG` | `prompts/extract_v1.md`, `prompts/extract_v2.md`, `prompts/CHANGELOG.md` | done: v1 is the baseline, v2 is built from the v1 errors on dev |
 | Every answer is validated by the schema; invalid → one fix attempt → `failed` | `src/extraction/validation.py` | schema check done; the fix attempt comes next |
 | Every result logs the model, prompt version and sampling | record fields — `src/extraction/result.py`; the records — `results/stage1/*.jsonl` | done |
@@ -127,7 +127,7 @@ src/schemas/
 src/extraction/
   anthropic_extractor.py   Claude Haiku 4.5 through the Anthropic API
   ollama_extractor.py      Lapa 12B through Ollama
-  run.py                   the shared Extractor interface, one configuration, saved answers
+  run.py                   the shared Extractor interface, one configuration, one saved run
   messages.py              the same user message with the document for both models
   prompts.py               reads a prompt with its version and file hash
   sampling.py              reads configs/sampling.yaml
@@ -141,7 +141,7 @@ scripts/
   pdf_to_text.py           PDF → anonymised text
   check_golden.py          validates the golden labels
 tests/                     pytest tests: make test
-results/stage1/            model answers *.jsonl (one line per document) and metrics.md, the metrics table
+results/stage1/            one *.jsonl file per run (one line per document, the start time in the name) and the metrics tables (metrics.md, metrics_by_field.md)
 ```
 
 The author keeps the work plan locally (`docs/`, outside the repository); its metric rules were moved to "How the metrics are counted".

@@ -34,6 +34,35 @@ def test_every_configuration_runs_on_all_texts_into_one_folder_with_the_metrics(
     ]
 
 
+def test_per_source_runs_a_small_set_into_the_smoke_folder_not_the_stage_one_results(
+    monkeypatch, tmp_path
+):
+    runs: list[list[str]] = []
+    monkeypatch.setattr("src.extraction.run.main", lambda argv: runs.append(argv) or 0)
+    monkeypatch.setattr("src.extraction.metrics.main", lambda argv: 0)
+    monkeypatch.setattr("src.extraction.run.current_time", lambda: STARTED)
+    monkeypatch.setattr("main.RESULTS_DIR", tmp_path / "stage1")
+    monkeypatch.setattr("main.SMOKE_DIR", tmp_path / "smoke")
+
+    code = stage1.main(["--per-source", "2"])
+
+    assert code == 0
+    assert all(argv[argv.index("--per-source") + 1] == "2" for argv in runs)
+    assert all(argv[argv.index("--run-dir") + 1] == str(tmp_path / "smoke" / "2026-10-23T14-05-33")
+               for argv in runs)
+
+
+def test_a_full_run_does_not_limit_the_documents(monkeypatch, tmp_path):
+    runs: list[list[str]] = []
+    monkeypatch.setattr("src.extraction.run.main", lambda argv: runs.append(argv) or 0)
+    monkeypatch.setattr("src.extraction.metrics.main", lambda argv: 0)
+    monkeypatch.setattr("main.RESULTS_DIR", tmp_path)
+
+    stage1.main([])
+
+    assert all("--per-source" not in argv for argv in runs)
+
+
 def test_the_matrix_covers_every_sampling_configuration_of_the_config_file():
     path = stage1.ROOT / "configs" / "sampling.yaml"
     configured = yaml.safe_load(path.read_text(encoding="utf-8"))

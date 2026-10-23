@@ -11,6 +11,7 @@ from src.extraction.run import (
     load_ollama_config,
     load_prices,
     main,
+    parse_args,
     result_path,
     run_dir_path,
     run_extraction,
@@ -66,6 +67,26 @@ def test_text_paths_select_documents_by_split_in_sorted_order(tmp_path, split, e
     make_texts(tmp_path / "texts")
 
     assert [path.stem for path in text_paths(tmp_path / "texts", split)] == expected
+
+
+def test_text_paths_can_take_the_first_n_documents_of_each_source(tmp_path):
+    make_texts(tmp_path / "texts")
+    (tmp_path / "texts" / "prozorro_002.txt").write_text("Додаток", encoding="utf-8")
+
+    paths = text_paths(tmp_path / "texts", "all", per_source=1)
+
+    assert [path.stem for path in paths] == ["prozorro_001", "synthetic_001"]
+
+
+def test_per_source_keeps_every_document_when_a_source_has_fewer_than_n(tmp_path):
+    make_texts(tmp_path / "texts")
+
+    assert len(text_paths(tmp_path / "texts", "all", per_source=5)) == 3
+
+
+def test_per_source_is_off_by_default_and_read_from_the_command_line():
+    assert parse_args([]).per_source is None
+    assert parse_args(["--per-source", "2"]).per_source == 2
 
 
 def test_run_dir_is_named_with_the_start_time(tmp_path):

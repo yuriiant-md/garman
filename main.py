@@ -22,24 +22,32 @@ MODELS = ("claude", "lapa")
 PROMPTS = (ROOT / "prompts" / "extract_v1.md", ROOT / "prompts" / "extract_v2.md")
 SAMPLINGS = ("precise", "varied")  # the two configurations of configs/sampling.yaml
 RESULTS_DIR = ROOT / "results" / "stage1"
+SMOKE_DIR = ROOT / "results" / "smoke"  # quick checks; kept apart so `make metrics` ignores them
 METRICS_FILE = "metrics.md"
 BY_FIELD_FILE = "metrics_by_field.md"
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the whole stage-1 matrix and its metrics.")
+    parser.add_argument(
+        "--per-source",
+        type=int,
+        help="Quick check: only the first N texts of each source, saved in results/smoke/.",
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
-    parse_args(argv)
-    run_dir = run.run_dir_path(RESULTS_DIR, run.current_time())
+    args = parse_args(argv)
+    results_dir = RESULTS_DIR if args.per_source is None else SMOKE_DIR
+    limit = [] if args.per_source is None else ["--per-source", str(args.per_source)]
+    run_dir = run.run_dir_path(results_dir, run.current_time())
     not_run = []
     for model, prompt, sampling in product(MODELS, PROMPTS, SAMPLINGS):
         name = f"{model} · {prompt.stem} · {sampling}"
         print(f"\n== {name}")
         config = ["--model", model, "--prompt", str(prompt), "--sampling", sampling]
-        if run.main([*config, "--split", "all", "--run-dir", str(run_dir)]) != 0:
+        if run.main([*config, "--split", "all", "--run-dir", str(run_dir), *limit]) != 0:
             not_run.append(name)
     print()
     code = metrics.main(

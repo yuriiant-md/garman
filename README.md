@@ -78,8 +78,8 @@ The rules were written before the first run. Code: `src/extraction/scoring.py` (
 2. **Comparison:** enums, booleans and dates must match exactly; numbers to the hundredth (9200 = 9200.004, but 0.1 ≠ 0.11); strings after normalisation (case, quotes, apostrophes, the legal form ТОВ, ТзОВ, ПрАТ, АТ, ДП, ПП, ФГ) with similarity ≥ 0.85 (`difflib`). The threshold was set on the OCR noise of the Prozorro golden set: a name corrected by the model scores 0.87–0.99, a name in another grammatical case 0.82, a name in Latin script 0. Known flaw: names that differ only in a digit also match.
 3. **Penalties** are paired by (`payer`, `trigger`, `unit`) regardless of order; among several candidates the one that matches the golden one on more of `amount` and `cap_pct` wins. An unpaired golden penalty has all its fields wrong; an extra one has its values counted as fabricated.
 4. **Three numbers instead of one:** accuracy on filled fields is the main one — only fields that are not `null` in the golden deal; fabricated, % — the model gave a value where the golden deal has `null`; overall — all fields, for reference. Otherwise an "everything `null`" answer would score high. Accuracy is summed over the fields of all documents.
-5. **An invalid answer** (`invalid` or `error`) is not dropped: all its fields are wrong, and the fields that are empty in the golden deal count as fabricated, so a failure never looks better than a mistake.
-6. **Validity** is reported separately: valid and failed; "valid after the fix attempt" comes with the fix attempt.
+5. **A failed answer** (`failed` or `error`) is not dropped: all its fields are wrong, and the fields that are empty in the golden deal count as fabricated, so a failure never looks better than a mistake.
+6. **Validity** is reported separately: valid, failed, and "fixed" — the share of documents that became valid only after the one fix attempt (it is part of valid, not of failed).
 7. **`varied`** — 3 repeats on the golden set, mean and spread; `precise` — one run (comes with the final run).
 8. **Separately per set:** synthetic texts (dev), Prozorro and the author's own contracts (test); the model is chosen on all golden documents together.
 9. **Noise:** accuracy on filled fields comes with a 95% bootstrap interval — 1000 resamples of documents with replacement, fixed seed. When the intervals of two configurations overlap, no advantage is claimed.
@@ -133,7 +133,7 @@ src/extraction/
   messages.py              the same user message with the document for both models
   prompts.py               reads a prompt with its version and file hash
   sampling.py              reads configs/sampling.yaml
-  validation.py            checks an answer against the Deal schema
+  validation.py            checks an answer against the Deal schema; the fix request text
   result.py                what is recorded about each answer
   scoring.py               compares one answer with the golden deal
   metrics.py               metrics table model × prompt × sampling

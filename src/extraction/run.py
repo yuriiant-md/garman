@@ -46,13 +46,25 @@ class Extractor(Protocol):
     def extract(self, text: str, prompt: Prompt, sampling: Sampling) -> ExtractionResult: ...
 
 
-def text_paths(texts_dir: Path, split: str) -> list[Path]:
+def first_per_source(paths: list[Path], count: int) -> list[Path]:
+    """The first `count` documents of each source; a source is the file name before its number."""
+    taken: Counter[str] = Counter()
+    kept = []
+    for path in paths:
+        source = path.stem.rsplit("_", 1)[0]
+        if taken[source] < count:
+            taken[source] += 1
+            kept.append(path)
+    return kept
+
+
+def text_paths(texts_dir: Path, split: str, per_source: int | None = None) -> list[Path]:
     paths = sorted(texts_dir.glob("*.txt"))
     if split == "dev":
-        return [path for path in paths if path.stem.startswith(DEV_PREFIX)]
-    if split == "test":
-        return [path for path in paths if not path.stem.startswith(DEV_PREFIX)]
-    return paths
+        paths = [path for path in paths if path.stem.startswith(DEV_PREFIX)]
+    elif split == "test":
+        paths = [path for path in paths if not path.stem.startswith(DEV_PREFIX)]
+    return paths if per_source is None else first_per_source(paths, per_source)
 
 
 def current_time() -> datetime:
@@ -149,6 +161,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Extract Deal JSON from stage-1 texts.")
     parser.add_argument("--model", choices=tuple(MODEL_SECTIONS), default="claude")
     parser.add_argument("--split", choices=SPLITS, default="dev")
+    parser.add_argument(
+        "--per-source", type=int, help="Only the first N texts of each source (a quick check)."
+    )
     parser.add_argument("--texts-dir", type=Path, default=TEXTS_DIR)
     parser.add_argument("--prompt", type=Path, default=DEFAULT_PROMPT)
     parser.add_argument("--sampling", default="precise", help="Name from configs/sampling.yaml.")
@@ -160,7 +175,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    paths = text_paths(args.texts_dir, args.split)
+    paths = text_paths(args.texts_dir, args.split, args.per_source)
     if not paths:
         print(f"No {args.split} texts in {args.texts_dir}; see data/README.md.", file=sys.stderr)
         return 2

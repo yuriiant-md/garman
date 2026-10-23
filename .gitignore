@@ -17,6 +17,9 @@ data/raw/
 # Unfinished runs; finished results/stage1/*.jsonl are committed so the metrics can be checked
 results/**/*.partial
 
+# Quick checks (make smoke): throwaway, never committed
+results/smoke/
+
 # Claude Code local state (worktrees, settings)
 .claude/
 

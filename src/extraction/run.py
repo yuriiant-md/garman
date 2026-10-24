@@ -239,7 +239,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Stopped: Ollama error {error.status_code}: {error.error}", file=sys.stderr)
         return 1
     summary = summarize(records, *load_prices(section=MODEL_SECTIONS[args.model]))
-    print(f"Saved {len(records)} results to {output.relative_to(ROOT)}")
+    shown = output.relative_to(ROOT) if output.is_relative_to(ROOT) else output  # --run-dir /tmp/x
+    print(f"Saved {len(records)} results to {shown}")
     print(json.dumps(summary, indent=2))
     return 0
 

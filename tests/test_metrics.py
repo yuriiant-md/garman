@@ -264,6 +264,16 @@ def test_references_come_from_the_data_files_with_their_split():
     assert references["prozorro_001"].deal.buyer is not None
 
 
+def test_references_stop_on_an_id_found_in_two_directories(tmp_path):
+    entry = {"id": "doc_001", "split": "test", "source": "own", "deal": DEAL}
+    for name in ("synthetic", "golden"):
+        (tmp_path / name).mkdir()
+        (tmp_path / name / "doc_001.json").write_text(json.dumps(entry, ensure_ascii=False))
+
+    with pytest.raises(ValueError, match="doc_001.*synthetic.*golden"):
+        load_references((tmp_path / "synthetic", tmp_path / "golden"))
+
+
 def test_price_table_maps_model_ids_from_the_config_to_prices():
     prices = load_price_table(ROOT / "configs" / "models.yaml")
 

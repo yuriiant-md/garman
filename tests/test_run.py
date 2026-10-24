@@ -276,6 +276,22 @@ def test_main_accepts_a_run_dir_given_relative_to_the_working_directory(tmp_path
     assert (tmp_path / "results" / "smoke" / "check" / "stub__v2__precise.jsonl").exists()
 
 
+def test_main_prints_the_full_path_of_a_run_dir_outside_the_project(
+    tmp_path, monkeypatch, capsys
+):
+    make_texts(tmp_path / "texts")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setattr("src.extraction.run.ROOT", tmp_path / "project")
+    monkeypatch.setattr("src.extraction.run.configured_model", lambda model: "stub")
+    monkeypatch.setattr("src.extraction.run.build_extractor", lambda model: StubExtractor())
+    run_dir = tmp_path / "elsewhere"
+
+    code = main(["--texts-dir", str(tmp_path / "texts"), "--run-dir", str(run_dir)])
+
+    assert code == 0
+    assert f"to {run_dir.resolve() / 'stub__v2__precise.jsonl'}\n" in capsys.readouterr().out
+
+
 def test_main_saves_every_run_to_its_own_folder_named_with_the_time(tmp_path, monkeypatch):
     make_texts(tmp_path / "texts")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")

@@ -46,6 +46,8 @@ def write_golden(root: Path, deal: dict | None = None, **overrides: object) -> P
     record = {
         "id": "prozorro_001",
         "text_path": "data/texts/prozorro_001.txt",
+        "split": "test",
+        "source": "prozorro",
         "deal": COMPLETE_DEAL if deal is None else deal,
         **overrides,
     }
@@ -108,7 +110,28 @@ def test_reports_missing_top_level_keys(tmp_path):
     path = write_golden(tmp_path)
     path.write_text(json.dumps({"id": "prozorro_001"}))
 
-    assert check_file(path, tmp_path) == ["missing key: text_path", "missing key: deal"]
+    assert check_file(path, tmp_path) == [
+        "missing key: text_path",
+        "missing key: split",
+        "missing key: source",
+        "missing key: deal",
+    ]
+
+
+@pytest.mark.parametrize("key", ["split", "source"])
+def test_reports_missing_split_or_source_that_the_metrics_read(tmp_path, key):
+    path = write_golden(tmp_path)
+    record = json.loads(path.read_text())
+    del record[key]
+    path.write_text(json.dumps(record, ensure_ascii=False))
+
+    assert check_file(path, tmp_path) == [f"missing key: {key}"]
+
+
+def test_reports_golden_file_outside_the_test_split(tmp_path):
+    path = write_golden(tmp_path, split="dev")
+
+    assert check_file(path, tmp_path) == ["split must be 'test' for a golden file, not 'dev'"]
 
 
 def test_reports_broken_json(tmp_path):
@@ -146,7 +169,7 @@ def test_reports_json_that_is_not_an_object(tmp_path):
 @pytest.mark.parametrize("deal", [None, "crop: barley"])
 def test_reports_deal_that_is_not_an_object(tmp_path, deal):
     path = write_golden(tmp_path)
-    record = {"id": "prozorro_001", "text_path": "data/texts/prozorro_001.txt", "deal": deal}
+    record = {**json.loads(path.read_text()), "deal": deal}
     path.write_text(json.dumps(record))
 
     assert check_file(path, tmp_path) == ["deal must be a JSON object"]

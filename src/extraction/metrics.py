@@ -10,6 +10,7 @@ import json
 import math
 import random
 import sys
+from collections import Counter
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from itertools import groupby
@@ -304,16 +305,25 @@ def load_records(results_dir: Path) -> list[dict[str, object]]:
 
 
 def load_references(directories: Iterable[Path]) -> dict[str, Reference]:
-    """Golden deals by document id: field `deal` of data/synthetic/*.json and data/golden/*.json."""
-    paths = (path for directory in directories for path in sorted(directory.glob("*.json")))
-    entries = (json.loads(path.read_text(encoding="utf-8")) for path in paths)
+    """Golden deals by document id: field `deal` of data/synthetic/*.json and data/golden/*.json.
+    An id in two files stops the load: otherwise the later file silently replaces the earlier."""
+    paths = [path for directory in directories for path in sorted(directory.glob("*.json"))]
+    entries = [(path, json.loads(path.read_text(encoding="utf-8"))) for path in paths]
+    ids = Counter(entry["id"] for _, entry in entries)
+    duplicates = [
+        f"{doc_id} in {', '.join(str(path) for path, entry in entries if entry['id'] == doc_id)}"
+        for doc_id, count in ids.items()
+        if count > 1
+    ]
+    if duplicates:
+        raise ValueError(f"the same id in several reference files: {'; '.join(duplicates)}")
     return {
         entry["id"]: Reference(
             deal=Deal.model_validate(entry["deal"]),
             split=entry["split"],
             source=entry.get("source", DEFAULT_SOURCE),
         )
-        for entry in entries
+        for _, entry in entries
     }
 
 
@@ -432,12 +442,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"No results in {results_dir}; run `python -m src.extraction.run` first.",
               file=sys.stderr)
         return 2
-    references = load_references(args.references)
-    missing = missing_references(records, references)
-    if missing:
-        print(f"No golden deal for {', '.join(missing)}: left out of the metrics.",
-              file=sys.stderr)
     try:
+        references = load_references(args.references)
+        missing = missing_references(records, references)
+        if missing:
+            print(f"No golden deal for {', '.join(missing)}: left out of the metrics.",
+                  file=sys.stderr)
         metrics = compute_metrics(records, references, load_price_table(args.models))
         field_tables = format_field_tables(records, references)
     except ValueError as error:

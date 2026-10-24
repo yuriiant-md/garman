@@ -15,7 +15,10 @@ from pydantic import BaseModel, ValidationError
 from src.schemas.deal import Deal
 
 ROOT = Path(__file__).resolve().parents[1]
-REQUIRED_KEYS = ("id", "text_path", "deal")
+# split and source are read by src/extraction/metrics.py: without split it stops, and without
+# source a golden contract would be counted as synthetic
+REQUIRED_KEYS = ("id", "text_path", "split", "source", "deal")
+GOLDEN_SPLIT = "test"  # golden deals only measure; prompts are tuned on the dev split
 
 
 def check_file(path: Path, root: Path = ROOT) -> list[str]:
@@ -33,6 +36,8 @@ def check_file(path: Path, root: Path = ROOT) -> list[str]:
     errors = []
     if record["id"] != path.stem:
         errors.append(f"id {record['id']!r} does not match file name {path.stem!r}")
+    if record["split"] != GOLDEN_SPLIT:
+        errors.append(f"split must be {GOLDEN_SPLIT!r} for a golden file, not {record['split']!r}")
     if not (root / record["text_path"]).is_file():
         errors.append(f"text_path {record['text_path']} does not exist")
     errors.extend(key_errors(record["deal"], Deal, "deal"))

@@ -19,8 +19,8 @@ Stage 1 was run twice. The first matrix compared Claude Haiku 4.5 with the local
 | --- | --- | --- |
 | `make install` | installs the dependencies (`uv sync`) | no |
 | `make test` | unit tests on stub models: offline, a few seconds; they check the code, not the quality of the models | no |
-| `make smoke` | live quick check: 12 configurations on the first 2 texts of each source (6 texts), saved in `results/smoke/<start time>/`; about $0.7 | yes |
-| `make run` | live full run: 12 configurations on all 37 texts, saved in `results/stage1_2/<start time>/` together with the two metrics tables; about $7 | yes |
+| `make smoke` | live quick check: 12 configurations on the first 2 texts of each source (6 texts), saved in `results/smoke/<start time>/`; about $1 and 20 minutes | yes |
+| `make run` | live full run: 12 configurations on all 37 texts, saved in `results/stage1_2/<start time>/` together with the two metrics tables; about $5 and 1.5 hours | yes |
 | `make metrics` | prints the metrics table of the latest saved folder in `results/stage1_2/`; calls no model and writes nothing | no |
 
 ### 1. Install
@@ -47,7 +47,7 @@ ollama pull qwen3:14b
 make run        # = uv run --env-file .env python main.py
 ```
 
-`make run` asks the models for every configuration of stage 1.2 on all 37 texts — 3 models (Claude Haiku 4.5, GPT-4o, Qwen3 14B) × 2 prompts × 2 samplings (`precise`, `varied`) = 12 configurations. Nothing is cached: every run makes live API and Ollama calls. A full run costs about $2 for Claude and $5 for GPT-4o; most of its time is Qwen on an Apple Silicon Mac. The numbers differ a little from run to run: the paid models are not fully deterministic even at temperature 0, and prompt v2 contains the run date (`{today}`).
+`make run` asks the models for every configuration of stage 1.2 on all 37 texts — 3 models (Claude Haiku 4.5, GPT-4o, Qwen3 14B) × 2 prompts × 2 samplings (`precise`, `varied`) = 12 configurations. Nothing is cached: every run makes live API and Ollama calls. Our full run cost $5 ($1.8 for Claude, $3.2 for GPT-4o) and took about 1.5 hours on an Apple Silicon Mac: 10 minutes for Claude, 6 for GPT-4o and 80 for Qwen. The numbers differ a little from run to run: the paid models are not fully deterministic even at temperature 0, and prompt v2 contains the run date (`{today}`).
 
 GPT-4o gets the schema as strict structured output (`response_format` with `strict: true`), so it cannot answer outside it; Claude gets it as a forced tool call, which the API does not compile strictly for a schema of this size. OpenAI has deprecated GPT-4o, so it is a reference point here, not a candidate for production.
 
@@ -55,7 +55,7 @@ Each launch is saved to a new folder named with its start time, e.g. `results/st
 
 A configuration whose model is needed but missing (no key in `.env`, Ollama not running) is skipped with the reason; the others still run, and `make run` ends with exit code 1 and the list of what it did not finish.
 
-For a quick check use `make smoke` (= `python main.py --per-source 2`): the same 12 configurations on the first 2 texts of each source (6 texts), about $0.7. It saves into `results/smoke/<start time>/`, which git ignores and `make metrics` does not read. The numbers of 6 texts prove nothing — it only shows that everything works together. Run it before the full run to see in minutes that your key, Ollama and the whole chain work.
+For a quick check use `make smoke` (= `python main.py --per-source 2`): the same 12 configurations on the first 2 texts of each source (6 texts), about $1 and 20 minutes, most of it Qwen. It saves into `results/smoke/<start time>/`, which git ignores and `make metrics` does not read. The numbers of 6 texts prove nothing — it only shows that everything works together. Run it before the full run to see that your keys, Ollama and the whole chain work.
 
 ### 4. View saved runs
 
@@ -63,7 +63,7 @@ For a quick check use `make smoke` (= `python main.py --per-source 2`): the same
 make metrics    # = uv run python -m src.extraction.metrics
 ```
 
-This only re-reads results that are already saved, so it needs neither an API key nor Ollama — it reproduces nothing by itself, the numbers come from step 3. It scores the saved runs of the latest folder in `results/stage1_2/` against the golden labels and prints the metrics table (nothing is written, so a saved table never changes afterwards). Pick another launch with `--results-dir <folder>`; add `--output <file> --by-field-output <file>` to write the tables. The first stage-1 matrix (Claude and Lapa, 8 configurations) is in `results/stage1/2026-10-23T11-46-35/` (`2026-10-23T10-56-10/` is an earlier run of 4 configurations with the `precise` sampling only):
+This only re-reads results that are already saved, so it needs neither an API key nor Ollama — it reproduces nothing by itself, the numbers come from step 3. It scores the saved runs of the latest folder in `results/stage1_2/` against the golden labels and prints the metrics table (nothing is written, so a saved table never changes afterwards). Pick another launch with `--results-dir <folder>`; add `--output <file> --by-field-output <file>` to write the tables. To compare your run with ours, our stage 1.2 run is in `results/stage1_2/2026-10-24T18-41-35/`. The first stage-1 matrix (Claude and Lapa, 8 configurations) is in `results/stage1/2026-10-23T11-46-35/` (`2026-10-23T10-56-10/` is an earlier run of 4 configurations with the `precise` sampling only):
 
 ```bash
 uv run python -m src.extraction.metrics --results-dir results/stage1/2026-10-23T11-46-35

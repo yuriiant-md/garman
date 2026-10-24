@@ -2,14 +2,16 @@
 
 English · [Українська](README.uk.md)
 
-A Telegram bot for farmers: it extracts the terms of a grain trader's contract, finds risks with a reference to the contract clause or the law, and helps compare offers. This is a course project that grows in stages; stage 1 is ready for review: extracting deal terms from "dirty" texts and comparing a paid model with a local one.
+A Telegram bot for farmers: it extracts the terms of a grain trader's contract, finds risks with a reference to the contract clause or the law, and helps compare offers. This is a course project that grows in stages; stage 1 is ready for review: extracting deal terms from "dirty" texts and comparing paid models with a local one.
+
+Stage 1 was run twice. The first matrix compared Claude Haiku 4.5 with the local Lapa 12B; Lapa got about 27% accuracy on filled fields of the real contracts, so stage 1.2 replaced it with Qwen3 14B and added GPT-4o through OpenRouter as a second paid model. `make run` now runs the stage 1.2 matrix into `results/stage1_2/`; the first matrix stays in `results/stage1/` and `make metrics` still reads it with `--results-dir` (step 4).
 
 ## Reproduce stage 1
 
 ### Requirements
 
 - macOS or Linux with `make` and [uv](https://docs.astral.sh/uv/getting-started/installation/). uv installs Python 3.14 by itself on the first `make install`.
-- To reproduce our numbers (step 3) you **need** an Anthropic API key for Claude Haiku 4.5 and [Ollama](https://ollama.com) with Lapa 12B (a 7.3 GB download, about 12 GB of free memory while it runs). Without them only steps 1, 2 and 4 work: install, unit tests and viewing saved runs.
+- To reproduce our numbers (step 3) you **need** an Anthropic API key for Claude Haiku 4.5, an [OpenRouter](https://openrouter.ai) API key for GPT-4o and [Ollama](https://ollama.com) with Qwen3 14B (a 9.3 GB download, about 12 GB of free memory while it runs). Without them only steps 1, 2 and 4 work: install, unit tests and viewing saved runs.
 
 ### Make commands
 
@@ -17,9 +19,9 @@ A Telegram bot for farmers: it extracts the terms of a grain trader's contract, 
 | --- | --- | --- |
 | `make install` | installs the dependencies (`uv sync`) | no |
 | `make test` | unit tests on stub models: offline, a few seconds; they check the code, not the quality of the models | no |
-| `make smoke` | live quick check: 8 configurations on the first 2 texts of each source (6 texts), saved in `results/smoke/<start time>/`; about $0.2 and 5–8 minutes | yes |
-| `make run` | live full run: 8 configurations on all 37 texts, saved in `results/stage1/<start time>/` together with the two metrics tables; about $2 and 45 minutes | yes |
-| `make metrics` | prints the metrics table of the latest saved folder in `results/stage1/`; calls no model and writes nothing | no |
+| `make smoke` | live quick check: 12 configurations on the first 2 texts of each source (6 texts), saved in `results/smoke/<start time>/`; about $0.7 | yes |
+| `make run` | live full run: 12 configurations on all 37 texts, saved in `results/stage1_2/<start time>/` together with the two metrics tables; about $7 | yes |
+| `make metrics` | prints the metrics table of the latest saved folder in `results/stage1_2/`; calls no model and writes nothing | no |
 
 ### 1. Install
 
@@ -40,19 +42,20 @@ The tests run offline in a few seconds on stub models: no API key, no Ollama, no
 ### 3. Run stage 1
 
 ```bash
-cp .env.example .env    # put your key in it: ANTHROPIC_API_KEY=...
-ollama pull hf.co/lapa-llm/lapa-v0.1.2-instruct-GGUF:Q4_K_M
-ollama cp hf.co/lapa-llm/lapa-v0.1.2-instruct-GGUF:Q4_K_M lapa-v0.1.2-q4km
+cp .env.example .env    # put your keys in it: ANTHROPIC_API_KEY=... and OPENROUTER_API_KEY=...
+ollama pull qwen3:14b
 make run        # = uv run --env-file .env python main.py
 ```
 
-`make run` asks the models for every configuration of stage 1 on all 37 texts — 2 models × 2 prompts × 2 samplings (`precise`, `varied`) = 8 configurations. Nothing is cached: every run makes live API and Ollama calls. A full run costs about $2 for Claude and takes about 45 minutes on an Apple Silicon Mac, most of it Lapa. The numbers differ a little from run to run: Claude is not fully deterministic even at temperature 0, and prompt v2 contains the run date (`{today}`).
+`make run` asks the models for every configuration of stage 1.2 on all 37 texts — 3 models (Claude Haiku 4.5, GPT-4o, Qwen3 14B) × 2 prompts × 2 samplings (`precise`, `varied`) = 12 configurations. Nothing is cached: every run makes live API and Ollama calls. A full run costs about $2 for Claude and $5 for GPT-4o; most of its time is Qwen on an Apple Silicon Mac. The numbers differ a little from run to run: the paid models are not fully deterministic even at temperature 0, and prompt v2 contains the run date (`{today}`).
 
-Each launch is saved to a new folder named with its start time, e.g. `results/stage1/2026-10-27T14-05-33/`. It holds one file per configuration, named with the model, the prompt version and the sampling (`claude-haiku-4-5__v2__precise.jsonl`; every line also carries `run_at`), and the two tables built from them: `metrics.md` and `metrics_by_field.md` (accuracy and fabricated values per field and configuration, on the test golden set). Earlier folders are never touched, so launches can be compared folder by folder.
+GPT-4o gets the schema as strict structured output (`response_format` with `strict: true`), so it cannot answer outside it; Claude gets it as a forced tool call, which the API does not compile strictly for a schema of this size. OpenAI has deprecated GPT-4o, so it is a reference point here, not a candidate for production.
+
+Each launch is saved to a new folder named with its start time, e.g. `results/stage1_2/2026-10-27T14-05-33/`. It holds one file per configuration, named with the model, the prompt version and the sampling (`claude-haiku-4-5__v2__precise.jsonl`, `openai_gpt-4o__v2__precise.jsonl`; every line also carries `run_at`), and the two tables built from them: `metrics.md` and `metrics_by_field.md` (accuracy and fabricated values per field and configuration, on the test golden set). Earlier folders are never touched, so launches can be compared folder by folder.
 
 A configuration whose model is needed but missing (no key in `.env`, Ollama not running) is skipped with the reason; the others still run, and `make run` ends with exit code 1 and the list of what it did not finish.
 
-For a quick check use `make smoke` (= `python main.py --per-source 2`): the same 8 configurations on the first 2 texts of each source (6 texts), about $0.2 and 5–8 minutes. It saves into `results/smoke/<start time>/`, which git ignores and `make metrics` does not read. The numbers of 6 texts prove nothing — it only shows that everything works together. Run it before the full run to see in minutes that your key, Ollama and the whole chain work.
+For a quick check use `make smoke` (= `python main.py --per-source 2`): the same 12 configurations on the first 2 texts of each source (6 texts), about $0.7. It saves into `results/smoke/<start time>/`, which git ignores and `make metrics` does not read. The numbers of 6 texts prove nothing — it only shows that everything works together. Run it before the full run to see in minutes that your key, Ollama and the whole chain work.
 
 ### 4. View saved runs
 
@@ -60,13 +63,18 @@ For a quick check use `make smoke` (= `python main.py --per-source 2`): the same
 make metrics    # = uv run python -m src.extraction.metrics
 ```
 
-This only re-reads results that are already saved, so it needs neither an API key nor Ollama — it reproduces nothing by itself, the numbers come from step 3. It scores the saved runs of the latest folder in `results/stage1/` against the golden labels and prints the metrics table (nothing is written, so a saved table never changes afterwards). Pick another launch with `--results-dir results/stage1/<start time>`; add `--output <file> --by-field-output <file>` to write the tables. To compare your run with ours, our full run of 8 configurations is in `results/stage1/2026-10-23T11-46-35/` (`2026-10-23T10-56-10/` is an earlier run of 4 configurations with the `precise` sampling only).
+This only re-reads results that are already saved, so it needs neither an API key nor Ollama — it reproduces nothing by itself, the numbers come from step 3. It scores the saved runs of the latest folder in `results/stage1_2/` against the golden labels and prints the metrics table (nothing is written, so a saved table never changes afterwards). Pick another launch with `--results-dir <folder>`; add `--output <file> --by-field-output <file>` to write the tables. The first stage-1 matrix (Claude and Lapa, 8 configurations) is in `results/stage1/2026-10-23T11-46-35/` (`2026-10-23T10-56-10/` is an earlier run of 4 configurations with the `precise` sampling only):
+
+```bash
+uv run python -m src.extraction.metrics --results-dir results/stage1/2026-10-23T11-46-35
+```
 
 ### Separate commands
 
 ```bash
 uv run --env-file .env python -m src.extraction.run --split all                 # one configuration: Claude, prompt v2, precise
-uv run python -m src.extraction.run --model lapa --prompt prompts/extract_v1.md   # Lapa, prompt v1, dev texts
+uv run --env-file .env python -m src.extraction.run --model gpt --split all     # GPT-4o, prompt v2, precise
+uv run python -m src.extraction.run --model qwen --prompt prompts/extract_v1.md   # Qwen, prompt v1, dev texts
 uv run python -m src.extraction.metrics                                          # the metrics table only (= make metrics)
 uv run python -m scripts.check_golden                                            # validate the golden labels
 ```
@@ -93,7 +101,7 @@ The rules were written before the first run. Code: `src/extraction/scoring.py` (
 7. **`varied`** runs once per launch, like `precise`, so its spread shows only by comparing launches; 3 repeats on the golden set with mean and spread are planned for the final run.
 8. **Separately per set:** synthetic texts (dev), Prozorro and the author's own contracts (test); the model is chosen on all golden documents together.
 9. **Noise:** accuracy on filled fields comes with a 95% bootstrap interval — 1000 resamples of documents with replacement, fixed seed. When the intervals of two configurations overlap, no advantage is claimed.
-10. **Cost** — tokens of all attempts × the price in `configs/models.yaml`, per 1000 answers without `error`; $0 for the local Lapa.
+10. **Cost** — tokens of all attempts × the price in `configs/models.yaml`, per 1000 answers without `error`; $0 for the local models.
 
 ## Where things are
 
@@ -104,13 +112,13 @@ The rules were written before the first run. Code: `src/extraction/scoring.py` (
 | 30 "dirty" texts without personal data | `data/texts/` — 37 texts: `synthetic_001–020.txt` (dev), `prozorro_001–010.txt` and the author's own contracts `own_001–007.txt` (test); how they were anonymised — `data/README.md` | done |
 | 10 hand-labelled texts (golden set) | `data/golden/`: `prozorro_001–010.json` and `own_001–007.json`, labelling rules — `data/golden/RULES.md` | Prozorro checked by the author; `own` drafted by Claude, being checked by the author |
 | Schema: ≥ 6 fields, ≥ 1 enum, a nested object or a list | `src/schemas/deal.py` (10 fields, 9 enums, 5 nested objects, the `penalties` list), tests — `tests/test_deal.py` | done |
-| Provider model through an API with structured output, retry and timeout | `src/extraction/anthropic_extractor.py` (the schema as a forced tool call), settings — `configs/models.yaml` | done |
-| Local model through a shared interface | `src/extraction/ollama_extractor.py`; the `Extractor` interface — `src/extraction/run.py` | done |
+| Provider model through an API with structured output, retry and timeout | `src/extraction/anthropic_extractor.py` (Claude: the schema as a forced tool call), `src/extraction/openrouter_extractor.py` (GPT-4o: strict structured output), settings — `configs/models.yaml` | done |
+| Local model through a shared interface | `src/extraction/ollama_extractor.py` (Qwen3 14B; Lapa 12B in the first matrix); the `Extractor` interface — `src/extraction/run.py` | done |
 | temperature and top_p in a config, ≥ 2 configurations | `configs/sampling.yaml` (`precise`, `varied`) | done: both samplings run in every `make run` |
-| Metrics: per-field accuracy, % valid, p50/p95 latency, cost per 1000 documents | `src/extraction/metrics.py` (table), `src/extraction/scoring.py` (comparison with the golden deal); tests — `tests/test_metrics.py`, `tests/test_scoring.py` | done; numbers — `results/stage1/<start time>/metrics.md` and `metrics_by_field.md` |
+| Metrics: per-field accuracy, % valid, p50/p95 latency, cost per 1000 documents | `src/extraction/metrics.py` (table), `src/extraction/scoring.py` (comparison with the golden deal); tests — `tests/test_metrics.py`, `tests/test_scoring.py` | done; numbers — `results/stage1_2/<start time>/metrics.md` and `metrics_by_field.md` |
 | Prompts with a version header, ≥ 2 versions, `CHANGELOG` | `prompts/extract_v1.md`, `prompts/extract_v2.md`, `prompts/CHANGELOG.md` | done: v1 is the baseline, v2 is built from the v1 errors on dev |
-| Every answer is validated by the schema; invalid → one fix attempt → `failed` | `src/extraction/validation.py` (the fix request), `anthropic_extractor.py` and `ollama_extractor.py` (the second call); tests — `tests/test_validation.py` and the extractor tests | done; the "Виправлено, %" column of the metrics table counts the answers saved by it |
-| Every result logs the model, prompt version and sampling | record fields — `src/extraction/result.py`; the records — `results/stage1/*.jsonl` | done |
+| Every answer is validated by the schema; invalid → one fix attempt → `failed` | `src/extraction/validation.py` (the fix request), `anthropic_extractor.py`, `openrouter_extractor.py` and `ollama_extractor.py` (the second call); tests — `tests/test_validation.py` and the extractor tests | done; the "Виправлено, %" column of the metrics table counts the answers saved by it |
+| Every result logs the model, prompt version and sampling | record fields — `src/extraction/result.py`; the records — `results/stage1_2/*/*.jsonl` (and `results/stage1/*/*.jsonl`) | done |
 | `REPORT.md`: table, error analysis, production choice | — | next |
 | One command to run: `make run` (= `python main.py`) | `Makefile`, `main.py` | done |
 
@@ -138,7 +146,8 @@ src/schemas/
   deal.py                  the Deal schema
 src/extraction/
   anthropic_extractor.py   Claude Haiku 4.5 through the Anthropic API
-  ollama_extractor.py      Lapa 12B through Ollama
+  openrouter_extractor.py  GPT-4o through OpenRouter (OpenAI SDK)
+  ollama_extractor.py      local models through Ollama: Qwen3 14B (Lapa 12B in the first matrix)
   run.py                   the shared Extractor interface, one configuration, one saved run
   messages.py              the same user message with the document for both models
   prompts.py               reads a prompt with its version and file hash
@@ -153,7 +162,8 @@ scripts/
   pdf_to_text.py           PDF → anonymised text
   check_golden.py          validates the golden labels
 tests/                     pytest tests: make test
-results/stage1/            one folder per launch, named with its start time: a *.jsonl file per configuration (one line per document) and the metrics tables (metrics.md, metrics_by_field.md)
+results/stage1_2/          one folder per launch, named with its start time: a *.jsonl file per configuration (one line per document) and the metrics tables (metrics.md, metrics_by_field.md)
+results/stage1/            the same for the first matrix (Claude and Lapa)
 ```
 
 The author keeps the work plan locally (`docs/`, outside the repository); its metric rules were moved to "How the metrics are counted".

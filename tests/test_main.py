@@ -86,10 +86,9 @@ def test_a_configuration_that_cannot_run_is_reported_and_the_metrics_are_still_s
     assert "qwen" in capsys.readouterr().err
 
 
-def test_stage_one_two_runs_qwen_instead_of_lapa_into_its_own_folder():
+def test_stage_one_two_compares_two_paid_models_and_qwen_in_its_own_folder():
     # Lapa stays in results/stage1/; the new matrix must not mix with it
-    assert "lapa" not in stage1.MODELS
-    assert "qwen" in stage1.MODELS
+    assert stage1.MODELS == ("claude", "gpt", "qwen")
     assert stage1.RESULTS_DIR == stage1.ROOT / "results" / "stage1_2"
 
 

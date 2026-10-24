@@ -228,6 +228,20 @@ def test_main_saves_into_the_given_run_dir(tmp_path, monkeypatch):
     assert [path.name for path in run_dir.glob("*.jsonl")] == ["stub__v2__precise.jsonl"]
 
 
+def test_main_accepts_a_run_dir_given_relative_to_the_working_directory(tmp_path, monkeypatch):
+    make_texts(tmp_path / "texts")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setattr("src.extraction.run.ROOT", tmp_path)
+    monkeypatch.setattr("src.extraction.run.configured_model", lambda model: "stub")
+    monkeypatch.setattr("src.extraction.run.build_extractor", lambda model: StubExtractor())
+    monkeypatch.chdir(tmp_path)
+
+    code = main(["--texts-dir", "texts", "--run-dir", "results/smoke/check"])
+
+    assert code == 0
+    assert (tmp_path / "results" / "smoke" / "check" / "stub__v2__precise.jsonl").exists()
+
+
 def test_main_saves_every_run_to_its_own_folder_named_with_the_time(tmp_path, monkeypatch):
     make_texts(tmp_path / "texts")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")

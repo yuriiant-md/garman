@@ -196,7 +196,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     prompt = load_prompt(args.prompt)
     started = current_time()
-    run_dir = args.run_dir or run_dir_path(RESULTS_DIR, started)
+    run_dir = (args.run_dir or run_dir_path(RESULTS_DIR, started)).resolve()
     output = result_path(run_dir, configured_model(args.model), prompt.version, sampling.name)
     if args.model == "claude" and not os.environ.get(API_KEY_VARIABLE):
         print(f"{API_KEY_VARIABLE} is not set: put it in .env and run with "

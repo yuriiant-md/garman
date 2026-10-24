@@ -1,5 +1,7 @@
 # Stage 1 commands; see README.md. `make run` asks the models and saves a new run.
 ENV_FILE := $(if $(wildcard .env),--env-file .env,)
+# Print each line at once even when the output goes through a pipe (`make run | tee run.log`).
+export PYTHONUNBUFFERED := 1
 
 .PHONY: install test run smoke metrics
 

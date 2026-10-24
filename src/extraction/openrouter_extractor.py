@@ -16,13 +16,12 @@ from dataclasses import dataclass
 import openai
 from openai.types.chat import ChatCompletion
 
-from src.extraction.anthropic_extractor import is_retryable
 from src.extraction.messages import user_message
-from src.extraction.ollama_extractor import require_every_key, sampling_options
 from src.extraction.prompts import Prompt
-from src.extraction.result import ExtractionResult, ExtractionStatus
-from src.extraction.sampling import Sampling
-from src.extraction.validation import repair_request, validate_deal
+from src.extraction.result import ExtractionResult, ExtractionStatus, make_result
+from src.extraction.retry import is_retryable
+from src.extraction.sampling import Sampling, sampling_options
+from src.extraction.validation import repair_request, require_every_key, validate_deal
 from src.schemas.deal import Deal
 
 BASE_URL = "https://openrouter.ai/api/v1"
@@ -101,7 +100,10 @@ class OpenRouterExtractor:
             error = f"API error {exc.status_code} after retries: {exc.message}"
         else:
             return self._answer_result(responses, prompt, sampling, params, started)
-        return self._result(prompt, sampling, params, started, ExtractionStatus.ERROR, error=error)
+        return make_result(
+            self.config.model, prompt, sampling, params, started, ExtractionStatus.ERROR,
+            error=error,
+        )
 
     def _ask(self, messages: list[dict[str, str]], params: dict[str, float]) -> ChatCompletion:
         return self._client.chat.completions.create(
@@ -138,7 +140,8 @@ class OpenRouterExtractor:
     ) -> ExtractionResult:
         raw, deal, error = read_answer(responses[-1])
         status = ExtractionStatus.OK if deal is not None else ExtractionStatus.FAILED
-        return self._result(
+        return make_result(
+            self.config.model,
             prompt,
             sampling,
             params,
@@ -150,25 +153,4 @@ class OpenRouterExtractor:
             attempts=len(responses),
             input_tokens=sum(r.usage.prompt_tokens for r in responses),
             output_tokens=sum(r.usage.completion_tokens for r in responses),
-        )
-
-    def _result(
-        self,
-        prompt: Prompt,
-        sampling: Sampling,
-        params: dict[str, float],
-        started: float,
-        status: ExtractionStatus,
-        **fields: object,
-    ) -> ExtractionResult:
-        return ExtractionResult(
-            model=self.config.model,
-            prompt_version=prompt.version,
-            prompt_sha256=prompt.sha256,
-            sampling=sampling.name,
-            temperature=params.get("temperature"),
-            top_p=params.get("top_p"),
-            status=status,
-            latency_s=round(time.perf_counter() - started, 3),
-            **fields,
         )

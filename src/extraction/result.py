@@ -1,9 +1,13 @@
 """One extraction attempt and everything needed to reproduce and score it."""
 
+import time
+from collections.abc import Mapping
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict
 
+from src.extraction.prompts import Prompt
+from src.extraction.sampling import Sampling
 from src.schemas.deal import Deal
 
 
@@ -30,3 +34,27 @@ class ExtractionResult(BaseModel):
     latency_s: float
     input_tokens: int = 0
     output_tokens: int = 0
+
+
+def make_result(
+    model: str,
+    prompt: Prompt,
+    sampling: Sampling,
+    params: Mapping[str, float],
+    started: float,
+    status: ExtractionStatus,
+    **fields: object,
+) -> ExtractionResult:
+    """The result every extractor logs: `params` are the sampling values it sent, and `started`
+    is the time.perf_counter() reading taken before its first request."""
+    return ExtractionResult(
+        model=model,
+        prompt_version=prompt.version,
+        prompt_sha256=prompt.sha256,
+        sampling=sampling.name,
+        temperature=params.get("temperature"),
+        top_p=params.get("top_p"),
+        status=status,
+        latency_s=round(time.perf_counter() - started, 3),
+        **fields,
+    )

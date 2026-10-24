@@ -13,7 +13,8 @@ import anthropic
 
 from src.extraction.messages import user_message
 from src.extraction.prompts import Prompt
-from src.extraction.result import ExtractionResult, ExtractionStatus
+from src.extraction.result import ExtractionResult, ExtractionStatus, make_result
+from src.extraction.retry import is_retryable
 from src.extraction.sampling import Sampling
 from src.extraction.validation import repair_request, validate_deal
 from src.schemas.deal import Deal
@@ -26,7 +27,6 @@ DEAL_TOOL = {
     "description": "Record the deal terms found in the text; use null for terms it does not state.",
     "input_schema": Deal.model_json_schema(),
 }
-RETRYABLE_STATUS_CODES = frozenset({408, 409, 429})
 
 
 @dataclass(frozen=True)
@@ -44,10 +44,6 @@ def sampling_params(sampling: Sampling) -> dict[str, float]:
     if sampling.top_p is not None:
         return {"top_p": sampling.top_p}
     return {}
-
-
-def is_retryable(status_code: int) -> bool:
-    return status_code in RETRYABLE_STATUS_CODES or status_code >= 500
 
 
 def read_answer(response: anthropic.types.Message) -> tuple[str, Deal | None, str | None]:
@@ -113,7 +109,10 @@ class AnthropicExtractor:
             error = f"API error {exc.status_code} after retries: {exc.message}"
         else:
             return self._answer_result(responses, prompt, sampling, params, started)
-        return self._result(prompt, sampling, params, started, ExtractionStatus.ERROR, error=error)
+        return make_result(
+            self.config.model, prompt, sampling, params, started, ExtractionStatus.ERROR,
+            error=error,
+        )
 
     def _ask(
         self, prompt: Prompt, params: dict[str, float], messages: list[dict[str, object]]
@@ -155,7 +154,8 @@ class AnthropicExtractor:
         if error and response.stop_reason != "tool_use":
             error = f"stop_reason={response.stop_reason}: {error}"
         status = ExtractionStatus.OK if deal is not None else ExtractionStatus.FAILED
-        return self._result(
+        return make_result(
+            self.config.model,
             prompt,
             sampling,
             params,
@@ -167,25 +167,4 @@ class AnthropicExtractor:
             attempts=len(responses),
             input_tokens=sum(r.usage.input_tokens for r in responses),
             output_tokens=sum(r.usage.output_tokens for r in responses),
-        )
-
-    def _result(
-        self,
-        prompt: Prompt,
-        sampling: Sampling,
-        params: dict[str, float],
-        started: float,
-        status: ExtractionStatus,
-        **fields: object,
-    ) -> ExtractionResult:
-        return ExtractionResult(
-            model=self.config.model,
-            prompt_version=prompt.version,
-            prompt_sha256=prompt.sha256,
-            sampling=sampling.name,
-            temperature=params.get("temperature"),
-            top_p=params.get("top_p"),
-            status=status,
-            latency_s=round(time.perf_counter() - started, 3),
-            **fields,
         )

@@ -21,3 +21,10 @@ def load_sampling(name: str, path: Path = SAMPLING_PATH) -> Sampling:
         raise KeyError(f"unknown sampling '{name}'; known: {', '.join(configs)}")
     values = configs[name]
     return Sampling(name=name, temperature=values.get("temperature"), top_p=values.get("top_p"))
+
+
+def sampling_options(sampling: Sampling) -> dict[str, float]:
+    """The values that are set, both as configured: for Ollama and OpenAI, which accept
+    temperature and top_p together (Claude takes one of them, see anthropic_extractor)."""
+    values = {"temperature": sampling.temperature, "top_p": sampling.top_p}
+    return {name: value for name, value in values.items() if value is not None}

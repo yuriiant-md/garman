@@ -23,7 +23,7 @@ from src.extraction.scoring import Counts, score_deal
 from src.schemas.deal import Deal
 
 ROOT = Path(__file__).resolve().parents[2]
-RESULTS_DIR = ROOT / "results" / "stage1"
+RESULTS_DIR = ROOT / "results" / "stage1_2"  # Lapa's stage-1 runs: --results-dir results/stage1/…
 REFERENCE_DIRS = (ROOT / "data" / "synthetic", ROOT / "data" / "golden")
 MODELS_PATH = ROOT / "configs" / "models.yaml"
 TOKENS_PER_PRICE_UNIT = 1_000_000  # prices in configs/models.yaml are per 1M tokens
@@ -410,7 +410,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Score stage-1 results against golden deals.")
     parser.add_argument(
         "--results-dir", type=Path,
-        help="Folder of one launch (results/stage1/<time>/); default: the latest one.",
+        help="Folder of one launch (results/stage1_2/<time>/); default: the latest one.",
     )
     parser.add_argument(
         "--references", type=Path, nargs="+", default=list(REFERENCE_DIRS),

@@ -4,6 +4,7 @@ import pytest
 import yaml
 
 import main as stage1
+from src.extraction import metrics
 
 STARTED = datetime(2026, 10, 23, 14, 5, 33, tzinfo=timezone(timedelta(hours=3)))
 
@@ -75,14 +76,25 @@ def test_a_configuration_that_cannot_run_is_reported_and_the_metrics_are_still_s
     monkeypatch, capsys
 ):
     tables: list[list[str]] = []
-    monkeypatch.setattr("src.extraction.run.main", lambda argv: 2 if "lapa" in argv else 0)
+    monkeypatch.setattr("src.extraction.run.main", lambda argv: 2 if "qwen" in argv else 0)
     monkeypatch.setattr("src.extraction.metrics.main", lambda argv: tables.append(argv) or 0)
 
     code = stage1.main([])
 
     assert code == 1
     assert len(tables) == 1
-    assert "lapa" in capsys.readouterr().err
+    assert "qwen" in capsys.readouterr().err
+
+
+def test_stage_one_two_runs_qwen_instead_of_lapa_into_its_own_folder():
+    # Lapa stays in results/stage1/; the new matrix must not mix with it
+    assert "lapa" not in stage1.MODELS
+    assert "qwen" in stage1.MODELS
+    assert stage1.RESULTS_DIR == stage1.ROOT / "results" / "stage1_2"
+
+
+def test_make_metrics_reads_the_folder_that_make_run_writes():
+    assert metrics.RESULTS_DIR == stage1.RESULTS_DIR
 
 
 def test_there_is_no_cache_to_skip_so_fresh_is_not_an_option():

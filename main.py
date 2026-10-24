@@ -3,7 +3,8 @@
     make run                                        # the same as the next line
     uv run --env-file .env python main.py
 
-Every launch asks the models and saves everything in a new folder results/stage1/<start time>/:
+Stage 1.2 matrix: Qwen3 14B replaced Lapa as the local model; Lapa's runs stay in results/stage1/.
+Every launch asks the models and saves everything in a new folder results/stage1_2/<start time>/:
 one file per configuration (model, prompt version, sampling) and the two metrics tables built
 from them. Earlier folders are never touched, so launches can be compared; `make metrics`
 rebuilds the tables of the latest folder without an API key or Ollama. A configuration whose
@@ -18,10 +19,10 @@ from pathlib import Path
 from src.extraction import metrics, run
 
 ROOT = Path(__file__).resolve().parent
-MODELS = ("claude", "lapa")
+MODELS = ("claude", "qwen")
 PROMPTS = (ROOT / "prompts" / "extract_v1.md", ROOT / "prompts" / "extract_v2.md")
 SAMPLINGS = ("precise", "varied")  # the two configurations of configs/sampling.yaml
-RESULTS_DIR = ROOT / "results" / "stage1"
+RESULTS_DIR = ROOT / "results" / "stage1_2"
 SMOKE_DIR = ROOT / "results" / "smoke"  # quick checks; kept apart so `make metrics` ignores them
 METRICS_FILE = "metrics.md"
 BY_FIELD_FILE = "metrics_by_field.md"

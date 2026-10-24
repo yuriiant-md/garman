@@ -6,6 +6,7 @@ dependencies = [
     "anthropic>=1.15.0",
     "httpx>=0.28.1",
     "ollama>=0.6.3",
+    "openai>=3.37.0",
     "pydantic>=2.14.1",
     "pymupdf>=1.28.2",
     "pyyaml>=6.0.3",

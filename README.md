@@ -110,7 +110,7 @@ The rules were written before the first run. Code: `src/extraction/scoring.py` (
 | Requirement | Where to look | Status |
 | --- | --- | --- |
 | 30 "dirty" texts without personal data | `data/texts/` — 37 texts: `synthetic_001–020.txt` (dev), `prozorro_001–010.txt` and the author's own contracts `own_001–007.txt` (test); how they were anonymised — `data/README.md` | done |
-| 10 hand-labelled texts (golden set) | `data/golden/`: `prozorro_001–010.json` and `own_001–007.json`, labelling rules — `data/golden/RULES.md` | Prozorro checked by the author; `own` drafted by Claude, being checked by the author |
+| 10 hand-labelled texts (golden set) | `data/golden/`: `prozorro_001–010.json` and `own_001–007.json`, labelling rules — `data/golden/RULES.md` | done: all 17 drafted by Claude, checked and corrected by the author |
 | Schema: ≥ 6 fields, ≥ 1 enum, a nested object or a list | `src/schemas/deal.py` (10 fields, 9 enums, 5 nested objects, the `penalties` list), tests — `tests/test_deal.py` | done |
 | Provider model through an API with structured output, retry and timeout | `src/extraction/anthropic_extractor.py` (Claude: the schema as a forced tool call), `src/extraction/openrouter_extractor.py` (GPT-4o: strict structured output), settings — `configs/models.yaml` | done |
 | Local model through a shared interface | `src/extraction/ollama_extractor.py` (Qwen3 14B; Lapa 12B in the first matrix); the `Extractor` interface — `src/extraction/run.py` | done |
@@ -119,7 +119,7 @@ The rules were written before the first run. Code: `src/extraction/scoring.py` (
 | Prompts with a version header, ≥ 2 versions, `CHANGELOG` | `prompts/extract_v1.md`, `prompts/extract_v2.md`, `prompts/CHANGELOG.md` | done: v1 is the baseline, v2 is built from the v1 errors on dev |
 | Every answer is validated by the schema; invalid → one fix attempt → `failed` | `src/extraction/validation.py` (the fix request), `anthropic_extractor.py`, `openrouter_extractor.py` and `ollama_extractor.py` (the second call); tests — `tests/test_validation.py` and the extractor tests | done; the "Виправлено, %" column of the metrics table counts the answers saved by it |
 | Every result logs the model, prompt version and sampling | record fields — `src/extraction/result.py`; the records — `results/stage1_2/*/*.jsonl` (and `results/stage1/*/*.jsonl`) | done |
-| `REPORT.md`: table, error analysis, production choice | — | next |
+| `REPORT.md`: table, error analysis, production choice | `REPORT.md` (in Ukrainian) | done: Claude Haiku 4.5 + prompt v2 + `precise` |
 | One command to run: `make run` (= `python main.py`) | `Makefile`, `main.py` | done |
 
 ### Folders and files

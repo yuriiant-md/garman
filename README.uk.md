@@ -110,7 +110,7 @@ uv run python -m scripts.pdf_to_text       # data/raw/prozorro/*.pdf → data/te
 | Вимога | Де дивитися | Стан |
 | --- | --- | --- |
 | 30 «брудних» текстів без персональних даних | `data/texts/` — 37 текстів: `synthetic_001–020.txt` (dev), `prozorro_001–010.txt` і власні договори `own_001–007.txt` (test); як знеособлено — `data/README.md` | готово |
-| 10 текстів розмічено вручну (golden set) | `data/golden/`: `prozorro_001–010.json` і `own_001–007.json`, правила розмітки — `data/golden/RULES.md` | Prozorro перевірив автор; `own` — чернетка Claude, перевіряє автор |
+| 10 текстів розмічено вручну (golden set) | `data/golden/`: `prozorro_001–010.json` і `own_001–007.json`, правила розмітки — `data/golden/RULES.md` | готово: чернетки всіх 17 писав Claude, автор перевірив і виправив |
 | Схема: ≥ 6 полів, ≥ 1 enum, вкладений об'єкт або список | `src/schemas/deal.py` (10 полів, 9 enum, 5 вкладених об'єктів, список `penalties`), тести — `tests/test_deal.py` | готово |
 | Провайдерська модель через API зі structured output, retry і timeout | `src/extraction/anthropic_extractor.py` (Claude: схема як обов'язковий виклик інструмента), `src/extraction/openrouter_extractor.py` (GPT-4o: строгий structured output), налаштування — `configs/models.yaml` | готово |
 | Локальна модель через спільний інтерфейс | `src/extraction/ollama_extractor.py` (Qwen3 14B; у першій матриці — Lapa 12B); інтерфейс `Extractor` — `src/extraction/run.py` | готово |
@@ -119,7 +119,7 @@ uv run python -m scripts.pdf_to_text       # data/raw/prozorro/*.pdf → data/te
 | Промпти з версією в шапці, ≥ 2 версії, `CHANGELOG` | `prompts/extract_v1.md`, `prompts/extract_v2.md`, `prompts/CHANGELOG.md` | готово: v1 — baseline, v2 — з помилок v1 на dev |
 | Кожна відповідь валідується схемою; невалідна → одна спроба виправлення → `failed` | `src/extraction/validation.py` (текст прохання), `anthropic_extractor.py`, `openrouter_extractor.py` і `ollama_extractor.py` (другий виклик); тести — `tests/test_validation.py` і тести екстракторів | готово; колонка «Виправлено, %» у таблиці метрик рахує відповіді, врятовані спробою |
 | До кожного результату логуються модель, версія промпту, семплінг | поля запису — `src/extraction/result.py`; самі записи — `results/stage1_2/*/*.jsonl` (і `results/stage1/*/*.jsonl`) | готово |
-| `REPORT.md`: таблиця, розбір помилок, вибір для продакшну | — | далі |
+| `REPORT.md`: таблиця, розбір помилок, вибір для продакшну | `REPORT.md` (українською) | готово: Claude Haiku 4.5 + промпт v2 + `precise` |
 | Запуск однією командою: `make run` (= `python main.py`) | `Makefile`, `main.py` | готово |
 
 ### Папки й файли

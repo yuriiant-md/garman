@@ -5,7 +5,8 @@ named with the model, the prompt version and the sampling, so earlier launches s
 Each line carries the same `run_at`.
 
     uv run --env-file .env python -m src.extraction.run --split dev
-    uv run python -m src.extraction.run --model lapa   # local model through Ollama, no API key
+    uv run --env-file .env python -m src.extraction.run --model gpt   # GPT-4o through OpenRouter
+    uv run python -m src.extraction.run --model qwen   # local model through Ollama, no API key
 """
 
 import argparse
@@ -20,27 +21,29 @@ from typing import Protocol
 
 import anthropic
 import ollama
+import openai
 import yaml
 
 from src.extraction.anthropic_extractor import AnthropicConfig, AnthropicExtractor
-from src.extraction.metrics import cost_per_1000_docs, cost_usd
+from src.extraction.metrics import RESULTS_DIR, cost_per_1000_docs, cost_usd
 from src.extraction.ollama_extractor import OllamaConfig, OllamaExtractor
+from src.extraction.openrouter_extractor import OpenRouterConfig, OpenRouterExtractor
 from src.extraction.prompts import Prompt, load_prompt
 from src.extraction.result import ExtractionResult, ExtractionStatus
 from src.extraction.sampling import Sampling, load_sampling
 
 ROOT = Path(__file__).resolve().parents[2]
 TEXTS_DIR = ROOT / "data" / "texts"
-RESULTS_DIR = ROOT / "results" / "stage1"
 MODELS_PATH = ROOT / "configs" / "models.yaml"
 DEFAULT_PROMPT = ROOT / "prompts" / "extract_v2.md"
 DEV_PREFIX = "synthetic_"  # dev = synthetic texts; everything else (golden set) is test
 SPLITS = ("dev", "test", "all")
-API_KEY_VARIABLE = "ANTHROPIC_API_KEY"
+API_KEY_VARIABLES = {"claude": "ANTHROPIC_API_KEY", "gpt": "OPENROUTER_API_KEY"}  # --model -> key
 PARTIAL_SUFFIX = ".partial"
 RUN_STAMP_FORMAT = "%Y-%m-%dT%H-%M-%S"  # colons are not allowed in file names on some systems
 MODEL_SECTIONS = {  # --model -> section of models.yaml
     "claude": "anthropic",
+    "gpt": "openrouter",
     "lapa": "ollama",
     "qwen": "qwen",
 }
@@ -83,7 +86,8 @@ def run_dir_path(results_dir: Path, started: datetime) -> Path:
 
 
 def result_path(run_dir: Path, model: str, prompt_version: str, sampling_name: str) -> Path:
-    return run_dir / f"{model}__{prompt_version}__{sampling_name}.jsonl"
+    file_model = model.replace("/", "_")  # openai/gpt-4o would otherwise open a subfolder
+    return run_dir / f"{file_model}__{prompt_version}__{sampling_name}.jsonl"
 
 
 def run_extraction(
@@ -148,6 +152,16 @@ def load_ollama_config(path: Path = MODELS_PATH, section: str = "ollama") -> Oll
     )
 
 
+def load_openrouter_config(path: Path = MODELS_PATH) -> OpenRouterConfig:
+    values = yaml.safe_load(path.read_text(encoding="utf-8"))["openrouter"]
+    return OpenRouterConfig(
+        model=values["model"],
+        timeout_s=float(values["timeout_s"]),
+        max_retries=int(values["max_retries"]),
+        max_tokens=int(values["max_tokens"]),
+    )
+
+
 def load_prices(path: Path = MODELS_PATH, section: str = "anthropic") -> tuple[float, float]:
     values = yaml.safe_load(path.read_text(encoding="utf-8"))[section]
     return float(values["price_input_per_mtok"]), float(values["price_output_per_mtok"])
@@ -157,13 +171,17 @@ def configured_model(model: str) -> str:
     """The model id from configs/models.yaml for a --model choice; it names the results file."""
     if model in LOCAL_MODELS:
         return load_ollama_config(section=MODEL_SECTIONS[model]).model
+    if model == "gpt":
+        return load_openrouter_config().model
     return load_anthropic_config().model
 
 
 def build_extractor(model: str) -> Extractor:
-    """Built only when some document needs the model: the Claude client requires the API key."""
+    """Built only when some document needs the model: API clients require their keys."""
     if model in LOCAL_MODELS:
         return OllamaExtractor(load_ollama_config(section=MODEL_SECTIONS[model]))
+    if model == "gpt":
+        return OpenRouterExtractor(load_openrouter_config())
     return AnthropicExtractor(load_anthropic_config())
 
 
@@ -198,18 +216,19 @@ def main(argv: list[str] | None = None) -> int:
     started = current_time()
     run_dir = (args.run_dir or run_dir_path(RESULTS_DIR, started)).resolve()
     output = result_path(run_dir, configured_model(args.model), prompt.version, sampling.name)
-    if args.model == "claude" and not os.environ.get(API_KEY_VARIABLE):
-        print(f"{API_KEY_VARIABLE} is not set: put it in .env and run with "
+    key = API_KEY_VARIABLES.get(args.model)
+    if key and not os.environ.get(key):
+        print(f"{key} is not set: put it in .env and run with "
               "`uv run --env-file .env python -m src.extraction.run`.", file=sys.stderr)
         return 2
     try:
         records = run_extraction(
             build_extractor(args.model), paths, prompt, sampling, output, started
         )
-    except anthropic.APIStatusError as error:
+    except (anthropic.APIStatusError, openai.APIStatusError) as error:
         print(f"Stopped: API error {error.status_code}: {error.message}", file=sys.stderr)
         return 1
-    except anthropic.AnthropicError as error:
+    except (anthropic.AnthropicError, openai.OpenAIError) as error:
         print(f"Stopped: {error}", file=sys.stderr)
         return 1
     except ConnectionError as error:

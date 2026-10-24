@@ -2,14 +2,20 @@ import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import httpx2
+import openai
 import pytest
 
+from src.extraction import metrics, run
+from src.extraction.openrouter_extractor import OpenRouterExtractor
 from src.extraction.prompts import Prompt
 from src.extraction.result import ExtractionResult, ExtractionStatus
 from src.extraction.run import (
+    build_extractor,
     configured_model,
     load_anthropic_config,
     load_ollama_config,
+    load_openrouter_config,
     load_prices,
     main,
     parse_args,
@@ -194,10 +200,38 @@ def test_lapa_config_does_not_send_think():
     assert load_ollama_config(ROOT / "configs" / "models.yaml").think is None
 
 
-def test_results_are_named_after_the_chosen_local_model():
+def test_project_configs_load_gpt_through_openrouter_with_its_token_prices():
+    path = ROOT / "configs" / "models.yaml"
+
+    config = load_openrouter_config(path)
+
+    assert config.model == "openai/gpt-4o"
+    assert config.timeout_s > 0 and config.max_retries >= 1 and config.max_tokens > 0
+    assert load_prices(path, section="openrouter") == (2.5, 10.0)
+
+
+def test_results_are_named_after_the_chosen_model():
     assert configured_model("qwen") == "qwen3:14b"
     assert configured_model("lapa") == "lapa-v0.1.2-q4km"
     assert configured_model("claude") == "claude-haiku-4-5"
+    assert configured_model("gpt") == "openai/gpt-4o"
+
+
+def test_a_slash_in_the_model_id_does_not_open_a_subfolder(tmp_path):
+    # metrics reads only the *.jsonl files directly inside a run folder
+    path = result_path(tmp_path, "openai/gpt-4o", "v1", "precise")
+
+    assert path == tmp_path / "openai_gpt-4o__v1__precise.jsonl"
+
+
+def test_gpt_is_built_as_the_openrouter_extractor(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+
+    assert isinstance(build_extractor("gpt"), OpenRouterExtractor)
+
+
+def test_runs_without_a_run_dir_land_where_make_metrics_looks():
+    assert run.RESULTS_DIR == metrics.RESULTS_DIR
 
 
 def test_main_with_local_model_needs_no_api_key(tmp_path, monkeypatch, capsys):
@@ -293,6 +327,53 @@ def test_main_without_api_key_stops_before_writing_results(tmp_path, monkeypatch
     assert code == 2
     assert "ANTHROPIC_API_KEY" in capsys.readouterr().err
     assert not (tmp_path / "results").exists()
+
+
+def test_gpt_needs_the_openrouter_key_not_the_anthropic_one(tmp_path, monkeypatch, capsys):
+    make_texts(tmp_path / "texts")
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setattr("src.extraction.run.RESULTS_DIR", tmp_path / "results")
+
+    code = main(["--model", "gpt", "--texts-dir", str(tmp_path / "texts")])
+
+    assert code == 2
+    assert "OPENROUTER_API_KEY" in capsys.readouterr().err
+    assert not (tmp_path / "results").exists()
+
+
+def test_gpt_runs_without_the_anthropic_key(tmp_path, monkeypatch):
+    make_texts(tmp_path / "texts")
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+    monkeypatch.setattr("src.extraction.run.ROOT", tmp_path)
+    monkeypatch.setattr("src.extraction.run.RESULTS_DIR", tmp_path / "results")
+    monkeypatch.setattr("src.extraction.run.build_extractor", lambda model: StubExtractor())
+
+    code = main(["--model", "gpt", "--texts-dir", str(tmp_path / "texts")])
+
+    assert code == 0
+
+
+def test_main_reports_a_rejected_openrouter_request_without_traceback(
+    tmp_path, monkeypatch, capsys
+):
+    make_texts(tmp_path / "texts")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+    monkeypatch.setattr("src.extraction.run.RESULTS_DIR", tmp_path / "results")
+    request = httpx2.Request("POST", "https://openrouter.ai/api/v1/chat/completions")
+
+    class Rejected(StubExtractor):
+        def extract(self, text: str, prompt: Prompt, sampling: Sampling) -> ExtractionResult:
+            response = httpx2.Response(400, request=request)
+            raise openai.BadRequestError("Invalid schema", response=response, body=None)
+
+    monkeypatch.setattr("src.extraction.run.build_extractor", lambda model: Rejected())
+
+    code = main(["--model", "gpt", "--texts-dir", str(tmp_path / "texts")])
+
+    assert code == 1
+    assert "400" in capsys.readouterr().err
 
 
 def test_unknown_sampling_name_is_rejected():

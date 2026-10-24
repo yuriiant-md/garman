@@ -17,6 +17,15 @@ ollama:
   num_ctx: 32768       # Ollama silently cuts input beyond the window; own_005 alone is ~16k tokens
   price_input_per_mtok: 0.0   # local model: no token price (electricity is not counted)
   price_output_per_mtok: 0.0
+openrouter:
+  # Stage 1.2: GPT-4o through OpenRouter, a second paid model to compare Claude with. OpenAI has
+  # deprecated it, so it is a reference point, not a candidate for production.
+  model: openai/gpt-4o
+  timeout_s: 60        # per request; the SDK retries timeouts too
+  max_retries: 3       # SDK retries 408/409/429/5xx and connection errors with exponential backoff
+  max_tokens: 4096
+  price_input_per_mtok: 2.5
+  price_output_per_mtok: 10.0
 qwen:
   # Stage 1.2: replaces Lapa as the local model. Qwen3 reasons first by default, which breaks
   # the constrained JSON, so thinking is switched off.

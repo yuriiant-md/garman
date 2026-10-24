@@ -39,7 +39,12 @@ SPLITS = ("dev", "test", "all")
 API_KEY_VARIABLE = "ANTHROPIC_API_KEY"
 PARTIAL_SUFFIX = ".partial"
 RUN_STAMP_FORMAT = "%Y-%m-%dT%H-%M-%S"  # colons are not allowed in file names on some systems
-MODEL_SECTIONS = {"claude": "anthropic", "lapa": "ollama"}  # --model -> section of models.yaml
+MODEL_SECTIONS = {  # --model -> section of models.yaml
+    "claude": "anthropic",
+    "lapa": "ollama",
+    "qwen": "qwen",
+}
+LOCAL_MODELS = ("lapa", "qwen")  # served by Ollama, so they need no API key
 
 
 class Extractor(Protocol):
@@ -133,10 +138,13 @@ def load_anthropic_config(path: Path = MODELS_PATH) -> AnthropicConfig:
     )
 
 
-def load_ollama_config(path: Path = MODELS_PATH) -> OllamaConfig:
-    values = yaml.safe_load(path.read_text(encoding="utf-8"))["ollama"]
+def load_ollama_config(path: Path = MODELS_PATH, section: str = "ollama") -> OllamaConfig:
+    values = yaml.safe_load(path.read_text(encoding="utf-8"))[section]
     return OllamaConfig(
-        model=values["model"], timeout_s=float(values["timeout_s"]), num_ctx=int(values["num_ctx"])
+        model=values["model"],
+        timeout_s=float(values["timeout_s"]),
+        num_ctx=int(values["num_ctx"]),
+        think=values.get("think"),
     )
 
 
@@ -147,13 +155,15 @@ def load_prices(path: Path = MODELS_PATH, section: str = "anthropic") -> tuple[f
 
 def configured_model(model: str) -> str:
     """The model id from configs/models.yaml for a --model choice; it names the results file."""
-    return load_ollama_config().model if model == "lapa" else load_anthropic_config().model
+    if model in LOCAL_MODELS:
+        return load_ollama_config(section=MODEL_SECTIONS[model]).model
+    return load_anthropic_config().model
 
 
 def build_extractor(model: str) -> Extractor:
     """Built only when some document needs the model: the Claude client requires the API key."""
-    if model == "lapa":
-        return OllamaExtractor(load_ollama_config())
+    if model in LOCAL_MODELS:
+        return OllamaExtractor(load_ollama_config(section=MODEL_SECTIONS[model]))
     return AnthropicExtractor(load_anthropic_config())
 
 

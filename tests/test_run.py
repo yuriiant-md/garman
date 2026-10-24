@@ -7,6 +7,7 @@ import pytest
 from src.extraction.prompts import Prompt
 from src.extraction.result import ExtractionResult, ExtractionStatus
 from src.extraction.run import (
+    configured_model,
     load_anthropic_config,
     load_ollama_config,
     load_prices,
@@ -176,6 +177,27 @@ def test_project_configs_load_the_local_model_without_token_prices():
     assert config.model == "lapa-v0.1.2-q4km"
     assert config.timeout_s > 0 and config.num_ctx >= 8192
     assert load_prices(ROOT / "configs" / "models.yaml", section="ollama") == (0.0, 0.0)
+
+
+def test_project_configs_load_qwen_with_thinking_off_and_a_context_for_long_contracts():
+    path = ROOT / "configs" / "models.yaml"
+
+    config = load_ollama_config(path, section="qwen")
+
+    assert config.model == "qwen3:14b"
+    assert config.think is False
+    assert config.num_ctx >= 16384  # own_005 alone is about 16k tokens
+    assert load_prices(path, section="qwen") == (0.0, 0.0)
+
+
+def test_lapa_config_does_not_send_think():
+    assert load_ollama_config(ROOT / "configs" / "models.yaml").think is None
+
+
+def test_results_are_named_after_the_chosen_local_model():
+    assert configured_model("qwen") == "qwen3:14b"
+    assert configured_model("lapa") == "lapa-v0.1.2-q4km"
+    assert configured_model("claude") == "claude-haiku-4-5"
 
 
 def test_main_with_local_model_needs_no_api_key(tmp_path, monkeypatch, capsys):

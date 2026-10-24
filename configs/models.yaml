@@ -10,8 +10,19 @@ anthropic:
   price_output_per_mtok: 5.0
 ollama:
   # Lapa 12B: Gemma 3 with a Ukrainian tokenizer, Q4_K_M GGUF imported into Ollama.
+  # Used in stage 1 only; kept so its saved results keep their prices. Removed from the PC
+  # on 2026-10-24, so a new run with --model lapa needs the model pulled again.
   model: lapa-v0.1.2-q4km
   timeout_s: 120       # per request; no retries: a local model that timed out once will again
   num_ctx: 32768       # Ollama silently cuts input beyond the window; own_005 alone is ~16k tokens
   price_input_per_mtok: 0.0   # local model: no token price (electricity is not counted)
+  price_output_per_mtok: 0.0
+qwen:
+  # Stage 1.2: replaces Lapa as the local model. Qwen3 reasons first by default, which breaks
+  # the constrained JSON, so thinking is switched off.
+  model: qwen3:14b
+  timeout_s: 120
+  num_ctx: 32768       # the model's own window is 40K; own_005 alone is ~16k tokens
+  think: false
+  price_input_per_mtok: 0.0
   price_output_per_mtok: 0.0

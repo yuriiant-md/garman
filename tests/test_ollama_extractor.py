@@ -77,6 +77,22 @@ def test_request_sends_system_prompt_text_schema_and_both_sampling_values():
     assert call["options"] == {"temperature": 0.0, "top_p": 1.0, "num_ctx": 16384}
 
 
+def test_think_is_not_sent_unless_the_config_sets_it():
+    _, client = extract(answer("{}"))
+
+    assert "think" not in client.calls[0]
+
+
+def test_models_that_think_by_default_are_asked_not_to():
+    # Qwen3 spends its answer on a reasoning trace first, which breaks the constrained JSON.
+    config = OllamaConfig(model="qwen3:14b", timeout_s=120, num_ctx=32768, think=False)
+    client = FakeClient(answer("{}"))
+
+    OllamaExtractor(config, client=client).extract("пш 3кл 500т", PROMPT, PRECISE)
+
+    assert client.calls[0]["think"] is False
+
+
 def test_system_message_carries_the_schema_text_the_grammar_alone_does_not_convey():
     # The grammar only forbids tokens; field meanings reach the model through the prompt.
     _, client = extract(answer("{}"))

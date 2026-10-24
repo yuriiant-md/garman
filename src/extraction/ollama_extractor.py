@@ -51,6 +51,7 @@ class OllamaConfig:
     model: str
     timeout_s: float
     num_ctx: int
+    think: bool | None = None  # False for models that reason first (Qwen3); None: not sent
 
 
 def sampling_options(sampling: Sampling) -> dict[str, float]:
@@ -97,11 +98,13 @@ class OllamaExtractor:
         )
 
     def _ask(self, messages: list[dict[str, str]], params: dict[str, float]) -> ollama.ChatResponse:
+        extra = {} if self.config.think is None else {"think": self.config.think}
         return self._client.chat(
             model=self.config.model,
             messages=messages,
             format=DEAL_FORMAT,
             options={**params, "num_ctx": self.config.num_ctx},
+            **extra,
         )
 
     def _ask_with_one_fix(

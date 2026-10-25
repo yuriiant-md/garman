@@ -32,6 +32,7 @@ PENALTY_REST = ("amount", "cap_pct")
 GRADE_FIELDS = ("grade", "amount_per_t")  # its indicators are scored one unit each
 QUOTES = re.compile(r"[\"«»“”„]")
 APOSTROPHES = re.compile(r"['’ʼ`]")  # inside a word: "П'ятихатки" = "Пʼятихатки"
+EXPLANATION = re.compile(r"\s*\([^()]*\)")  # a closed bracket after an indicator's name
 LEGAL_FORMS = re.compile(
     r"\b(?:товариство з обмеженою відповідальністю|приватне акціонерне товариство"
     r"|публічне акціонерне товариство|акціонерне товариство|приватне підприємство"
@@ -184,13 +185,22 @@ def pair_penalties(
     )
 
 
+def drop_explanation(name: str) -> str:
+    """The written name of an indicator without what it explains in brackets: golden keeps the
+    name only (RULES.md), so "(зерна жита, ячменю)" after it is not a different name. An
+    unclosed bracket is OCR noise around the name itself and stays."""
+    return EXPLANATION.sub("", name).strip()
+
+
 def _same_indicator(expected: QualityIndicator, predicted: QualityIndicator) -> bool:
     """The same name and limit; an "other" indicator also needs a similar written name."""
     if (expected.name, expected.limit) != (predicted.name, predicted.limit):
         return False
     if expected.name != IndicatorName.OTHER:
         return True
-    return texts_match(expected.raw_name or "", predicted.raw_name or "")
+    return texts_match(
+        drop_explanation(expected.raw_name or ""), drop_explanation(predicted.raw_name or "")
+    )
 
 
 def _indicator_agreement(expected: QualityIndicator, predicted: QualityIndicator) -> int:

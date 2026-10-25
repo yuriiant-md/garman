@@ -2,7 +2,14 @@ from datetime import date
 
 import pytest
 
-from src.extraction.scoring import Counts, normalize_text, pair_penalties, score_deal, values_match
+from src.extraction.scoring import (
+    Counts,
+    drop_explanation,
+    normalize_text,
+    pair_penalties,
+    score_deal,
+    values_match,
+)
 from src.schemas.deal import Crop, Deal, Party, PaymentTrigger, Penalty
 
 LATE_DELIVERY = {
@@ -285,6 +292,48 @@ def test_other_indicators_pair_by_a_similar_written_name():
     predicted = graded({**SECOND, "indicators": [{**RYE, "raw_name": "зерна жита,"}]})
 
     assert by_field(golden, predicted)["grades.indicators.other"] == [True]
+
+
+CEREALS = {
+    "name": "other", "limit": "max", "value": 4, "unit": "pct",
+    "raw_name": (
+        "Зерна злакових культур, що за характером пошкоджень не віднесені до смітної домішки"
+    ),
+}
+
+
+@pytest.mark.parametrize(
+    "written",
+    [
+        f"{CEREALS['raw_name']} (зерна жита, тритикале, ячменю)",  # the explanation the rule drops
+        f"{CEREALS['raw_name']} (жито) (тритикале)",
+    ],
+)
+def test_other_indicator_names_are_compared_without_the_explanation_in_brackets(written):
+    golden = graded({**SECOND, "indicators": [CEREALS]})
+    predicted = graded({**SECOND, "indicators": [{**CEREALS, "raw_name": written}]})
+
+    assert by_field(golden, predicted)["grades.indicators.other"] == [True]
+
+
+def test_brackets_do_not_make_other_names_equal():
+    golden = graded({**SECOND, "indicators": [RYE]})
+    predicted = graded({**SECOND, "indicators": [{**RYE, "raw_name": "Зерна ячменю (жита)"}]})
+
+    assert by_field(golden, predicted)["grades.indicators.other"] == [False]
+
+
+@pytest.mark.parametrize(
+    ("written", "kept"),
+    [
+        ("Зерна злакових культур (жита, ячменю)", "Зерна злакових культур"),
+        ("Сажка (всіх видів), ріжки (будь-які)", "Сажка, ріжки"),
+        ("(в тому числі ушкоджені під час сушіння", "(в тому числі ушкоджені під час сушіння"),
+    ],
+)
+def test_only_a_closed_bracket_is_dropped_as_an_explanation(written, kept):
+    # an unclosed bracket is OCR noise around the name itself, so it stays
+    assert drop_explanation(written) == kept
 
 
 def test_missing_grade_makes_its_class_price_and_indicators_wrong():

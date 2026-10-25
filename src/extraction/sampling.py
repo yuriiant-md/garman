@@ -6,6 +6,7 @@ from pathlib import Path
 import yaml
 
 SAMPLING_PATH = Path(__file__).resolve().parents[2] / "configs" / "sampling.yaml"
+DEFAULT_SAMPLING = "default"  # sends nothing: for models that reject temperature/top_p
 
 
 @dataclass(frozen=True)

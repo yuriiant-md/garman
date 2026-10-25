@@ -35,6 +35,8 @@ class AnthropicConfig:
     timeout_s: float
     max_retries: int
     max_tokens: int
+    effort: str | None = None  # output_config.effort, sent only when set: Haiku 4.5 rejects it
+    accepts_sampling: bool = True  # Haiku 5.5 rejects any temperature/top_p but the defaults
 
 
 def sampling_params(sampling: Sampling) -> dict[str, float]:
@@ -95,7 +97,7 @@ class AnthropicExtractor:
         )
 
     def extract(self, text: str, prompt: Prompt, sampling: Sampling) -> ExtractionResult:
-        params = sampling_params(sampling)
+        params = sampling_params(sampling) if self.config.accepts_sampling else {}
         started = time.perf_counter()
         try:
             responses = self._ask_with_one_fix(text, prompt, params)
@@ -117,6 +119,7 @@ class AnthropicExtractor:
     def _ask(
         self, prompt: Prompt, params: dict[str, float], messages: list[dict[str, object]]
     ) -> anthropic.types.Message:
+        effort = {"output_config": {"effort": self.config.effort}} if self.config.effort else {}
         return self._client.messages.create(
             model=self.config.model,
             max_tokens=self.config.max_tokens,
@@ -127,6 +130,7 @@ class AnthropicExtractor:
             # SDK 1.x dropped sampling arguments from its signatures; models that still
             # accept them (Haiku 4.5) get them merged into the request body as-is.
             extra_body=params or None,
+            **effort,
         )
 
     def _ask_with_one_fix(
@@ -136,7 +140,7 @@ class AnthropicExtractor:
         messages = [{"role": "user", "content": user_message(text)}]
         first = self._ask(prompt, params, messages)
         _, deal, error = read_answer(first)
-        if deal is not None:
+        if deal is not None or first.stop_reason == "refusal":  # asking again will not help
             return [first]
         fix = [*messages, *fix_messages(first, error)]
         return [first, self._ask(prompt, params, fix)]

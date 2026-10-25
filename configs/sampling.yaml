@@ -7,3 +7,7 @@ precise:
 varied:
   temperature: 0.7
   top_p: 0.9
+# Nothing is sent: each model samples with its own defaults. The only sampling for models that
+# reject temperature/top_p (Haiku 5.5, `sampling: false` in models.yaml); not in the matrix
+# of the other models.
+default: {}

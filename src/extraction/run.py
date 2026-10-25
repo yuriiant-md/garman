@@ -30,7 +30,7 @@ from src.extraction.ollama_extractor import OllamaConfig, OllamaExtractor
 from src.extraction.openrouter_extractor import OpenRouterConfig, OpenRouterExtractor
 from src.extraction.prompts import Prompt, load_prompt
 from src.extraction.result import ExtractionResult, ExtractionStatus
-from src.extraction.sampling import Sampling, load_sampling
+from src.extraction.sampling import DEFAULT_SAMPLING, Sampling, load_sampling
 
 ROOT = Path(__file__).resolve().parents[2]
 TEXTS_DIR = ROOT / "data" / "texts"
@@ -38,11 +38,14 @@ MODELS_PATH = ROOT / "configs" / "models.yaml"
 DEFAULT_PROMPT = ROOT / "prompts" / "extract_v2.md"
 DEV_PREFIX = "synthetic_"  # dev = synthetic texts; everything else (golden set) is test
 SPLITS = ("dev", "test", "all")
-API_KEY_VARIABLES = {"claude": "ANTHROPIC_API_KEY", "gpt": "OPENROUTER_API_KEY"}  # --model -> key
+API_KEY_VARIABLES = {  # --model -> key
+    "claude": "ANTHROPIC_API_KEY", "haiku55": "ANTHROPIC_API_KEY", "gpt": "OPENROUTER_API_KEY"
+}
 PARTIAL_SUFFIX = ".partial"
 RUN_STAMP_FORMAT = "%Y-%m-%dT%H-%M-%S"  # colons are not allowed in file names on some systems
 MODEL_SECTIONS = {  # --model -> section of models.yaml
     "claude": "anthropic",
+    "haiku55": "haiku55",
     "gpt": "openrouter",
     "lapa": "ollama",
     "qwen": "qwen",
@@ -132,14 +135,22 @@ def summarize(
     }
 
 
-def load_anthropic_config(path: Path = MODELS_PATH) -> AnthropicConfig:
-    values = yaml.safe_load(path.read_text(encoding="utf-8"))["anthropic"]
+def load_anthropic_config(path: Path = MODELS_PATH, section: str = "anthropic") -> AnthropicConfig:
+    values = yaml.safe_load(path.read_text(encoding="utf-8"))[section]
     return AnthropicConfig(
         model=values["model"],
         timeout_s=float(values["timeout_s"]),
         max_retries=int(values["max_retries"]),
         max_tokens=int(values["max_tokens"]),
+        effort=values.get("effort"),
+        accepts_sampling=bool(values.get("sampling", True)),
     )
+
+
+def takes_sampling(model: str, path: Path = MODELS_PATH) -> bool:
+    """False for a model that rejects temperature/top_p: it runs with the default sampling only."""
+    values = yaml.safe_load(path.read_text(encoding="utf-8"))[MODEL_SECTIONS[model]]
+    return bool(values.get("sampling", True))
 
 
 def load_ollama_config(path: Path = MODELS_PATH, section: str = "ollama") -> OllamaConfig:
@@ -173,7 +184,7 @@ def configured_model(model: str) -> str:
         return load_ollama_config(section=MODEL_SECTIONS[model]).model
     if model == "gpt":
         return load_openrouter_config().model
-    return load_anthropic_config().model
+    return load_anthropic_config(section=MODEL_SECTIONS[model]).model
 
 
 def build_extractor(model: str) -> Extractor:
@@ -182,7 +193,7 @@ def build_extractor(model: str) -> Extractor:
         return OllamaExtractor(load_ollama_config(section=MODEL_SECTIONS[model]))
     if model == "gpt":
         return OpenRouterExtractor(load_openrouter_config())
-    return AnthropicExtractor(load_anthropic_config())
+    return AnthropicExtractor(load_anthropic_config(section=MODEL_SECTIONS[model]))
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -211,6 +222,10 @@ def main(argv: list[str] | None = None) -> int:
         sampling = load_sampling(args.sampling)
     except KeyError as error:
         print(error.args[0], file=sys.stderr)
+        return 2
+    if sampling.name != DEFAULT_SAMPLING and not takes_sampling(args.model):
+        print(f"{configured_model(args.model)} rejects temperature and top_p: run it with "
+              f"--sampling {DEFAULT_SAMPLING}.", file=sys.stderr)
         return 2
     prompt = load_prompt(args.prompt)
     started = current_time()

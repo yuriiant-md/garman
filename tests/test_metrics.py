@@ -388,6 +388,49 @@ def test_field_table_total_row_matches_the_main_accuracy():
     assert "| **Разом** | 6 | 36 | 83.3 (5/6) · вигад. 1 |" in table.splitlines()
 
 
+PENALTY = {"payer": "seller", "trigger": "late_delivery", "amount": 0.1, "unit": "pct_per_day"}
+
+
+def test_extra_list_items_are_counted_apart_from_the_fabricated_share():
+    answer = {**DEAL, "penalties": [PENALTY, {**PENALTY, "trigger": "under_delivery"}]}
+
+    (metrics,) = compute_metrics([record("synthetic_001", deal=answer)], REFERENCES, PRICES)
+
+    assert metrics.extra_items == 2
+    assert metrics.fabricated_pct == 0.0  # the 18 golden nulls stay empty
+
+
+def test_table_shows_extra_items_after_the_fabricated_share():
+    records = [record("synthetic_001", deal={**DEAL, "penalties": [PENALTY]})]
+
+    table = format_table(compute_metrics(records, REFERENCES, PRICES))
+
+    assert "| Вигадані, % | Зайві елементи | Загальна, % |" in table.splitlines()[0]
+    assert "| 0.0 | 1 | 95.5 |" in table  # 21 golden fields right, 1 extra penalty wrong
+
+
+def test_field_table_shows_extra_items_on_the_row_of_their_list():
+    records = [record("prozorro_001", deal={**DEAL, "penalties": [PENALTY]}), record("own_001")]
+
+    lines = format_field_tables(records, REFERENCES, (CONTRACTS,)).splitlines()
+
+    assert "| penalties | 0 | 0 | — · вигад. 0 · зайв. 1 |" in lines
+    assert "| **Разом** | 6 | 36 | 100.0 (6/6) · вигад. 0 · зайв. 1 |" in lines
+
+
+def test_golden_columns_count_golden_fields_not_extra_items():
+    crowded = {**DEAL, "penalties": [PENALTY] * 30}  # more units than two full documents
+    records = [
+        record("prozorro_001"),
+        record("own_001"),
+        record("prozorro_001", model="gpt-4o", deal=crowded),
+    ]
+
+    lines = format_field_tables(records, REFERENCES, (CONTRACTS,)).splitlines()
+
+    assert any(line.startswith("| **Разом** | 6 | 36 |") for line in lines)
+
+
 def test_field_table_of_a_group_without_results_is_left_out():
     only_dev = [record("synthetic_001")]
 

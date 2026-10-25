@@ -11,7 +11,11 @@ from src.schemas.deal import (
     DaysType,
     Deal,
     Delivery,
+    GradeTerms,
+    IndicatorName,
+    IndicatorUnit,
     Lab,
+    Limit,
     Party,
     Payment,
     PaymentTrigger,
@@ -20,6 +24,7 @@ from src.schemas.deal import (
     PenaltyUnit,
     Price,
     Quality,
+    QualityIndicator,
     Tolerance,
 )
 
@@ -141,3 +146,86 @@ def test_every_enum_accepts_other(enum_type: type[StrEnum]) -> None:
 )
 def test_quality_normalizes_grade_to_vocabulary(raw: str, expected: str) -> None:
     assert Quality(grade=raw).grade == expected
+
+
+def test_deal_keeps_each_grade_with_its_own_price_and_indicators() -> None:
+    deal = Deal(
+        price={"currency": "UAH", "vat_included": True},
+        grades=[
+            {
+                "grade": "2-го класу",
+                "amount_per_t": 7100,
+                "indicators": [
+                    {"name": "test_weight", "limit": "min", "value": 770, "unit": "g_per_l"},
+                    {"name": "gluten", "limit": "min", "value": 23, "unit": "pct"},
+                    {"name": "fusarium", "limit": "max", "value": 0, "unit": "pct"},
+                ],
+            },
+            {"grade": "4", "amount_per_t": 6300},
+        ],
+    )
+
+    assert [grade.grade for grade in deal.grades] == ["2", "4"]
+    assert deal.grades[0].indicators[0] == QualityIndicator(
+        name=IndicatorName.TEST_WEIGHT, limit=Limit.MIN, value=770, unit=IndicatorUnit.G_PER_L
+    )
+    assert deal.grades[1] == GradeTerms(grade="4", amount_per_t=6300)
+
+
+def test_other_indicator_keeps_its_name_as_written() -> None:
+    indicator = QualityIndicator(
+        name="other", limit="max", value=4, unit="pct", raw_name="Зерна злакових культур"
+    )
+
+    assert indicator.raw_name == "Зерна злакових культур"
+
+
+@pytest.mark.parametrize(
+    "indicators",
+    [
+        [  # two "other" indicators differ by their names
+            {"name": "other", "limit": "max", "value": 4, "unit": "pct", "raw_name": "жито"},
+            {"name": "other", "limit": "max", "value": 1, "unit": "pct", "raw_name": "ячмінь"},
+        ],
+        [  # a range: moisture not below 10% and not above 14%
+            {"name": "moisture", "limit": "min", "value": 10, "unit": "pct"},
+            {"name": "moisture", "limit": "max", "value": 14, "unit": "pct"},
+        ],
+    ],
+)
+def test_grade_accepts_indicators_that_differ_by_name_or_limit(
+    indicators: list[dict[str, object]],
+) -> None:
+    assert len(GradeTerms(indicators=indicators).indicators) == 2
+
+
+def _one_grade(*indicators: dict[str, object]) -> dict[str, object]:
+    return {"grades": [{"indicators": list(indicators)}]}
+
+
+GLUTEN = {"name": "gluten", "limit": "min", "value": 23, "unit": "pct"}
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        {"grades": [{"amount_per_t": 0}]},
+        {"grades": [{"amount_per_t": 7100}]},  # a price needs price.currency
+        {"grades": [{"grade": "3"}, {"grade": "3-го класу"}]},
+        {"grades": [{}, {}]},  # two grades without a class are one grade
+        _one_grade({"name": "gluten", "limit": "min", "unit": "pct"}),  # no value
+        _one_grade({**GLUTEN, "value": -1}),
+        _one_grade({**GLUTEN, "value": 101}),  # a percent above 100
+        _one_grade({**GLUTEN, "name": "other"}),  # "other" without raw_name
+        _one_grade({**GLUTEN, "name": "starch"}),
+        _one_grade(GLUTEN, {**GLUTEN, "value": 18}),  # the same limit twice
+    ],
+)
+def test_deal_rejects_invalid_grades(data: dict[str, object]) -> None:
+    with pytest.raises(ValidationError):
+        Deal.model_validate(data)
+
+
+@pytest.mark.parametrize("enum_type", [IndicatorName, IndicatorUnit])
+def test_indicator_enums_accept_other(enum_type: type[StrEnum]) -> None:
+    assert enum_type("other").value == "other"

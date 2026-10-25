@@ -24,7 +24,7 @@ from src.extraction.scoring import Counts, score_deal
 from src.schemas.deal import Deal
 
 ROOT = Path(__file__).resolve().parents[2]
-RESULTS_DIR = ROOT / "results" / "stage1_3"  # earlier: --results-dir results/stage1_2/… or stage1/…
+RESULTS_DIR = ROOT / "results" / "stage1_3"  # older runs (stage1_2/, stage1/): use the stage-1 tag
 REFERENCE_DIRS = (ROOT / "data" / "synthetic", ROOT / "data" / "golden")
 MODELS_PATH = ROOT / "configs" / "models.yaml"
 TOKENS_PER_PRICE_UNIT = 1_000_000  # prices in configs/models.yaml are per 1M tokens

@@ -1,0 +1,143 @@
+{
+  "id": "own_011",
+  "split": "test",
+  "source": "own",
+  "contract_no": "ТЗ-2026/04",
+  "text_path": "data/texts/own_011.txt",
+  "deal": {
+    "crop": "wheat",
+    "quantity_t": 600.0,
+    "tolerance": {
+      "pct": 5.0,
+      "option": null
+    },
+    "price": {
+      "currency": "UAH",
+      "vat_included": false
+    },
+    "basis": "DAP",
+    "delivery": {
+      "place": "борошномельний комбінат Покупця за адресою: Київська обл., м. Біла Церква, вул. Заводська, 1",
+      "date_from": "2026-11-01",
+      "date_to": "2026-12-15",
+      "period_raw": null
+    },
+    "payment": {
+      "days": 5,
+      "days_type": "banking",
+      "trigger": "after_documents",
+      "vat_after_registration": true
+    },
+    "penalties": [
+      {
+        "payer": "buyer",
+        "trigger": "late_payment",
+        "amount": 0.1,
+        "unit": "pct_per_day",
+        "cap_pct": null
+      },
+      {
+        "payer": "seller",
+        "trigger": "under_delivery",
+        "amount": 5.0,
+        "unit": "one_time_pct",
+        "cap_pct": null
+      },
+      {
+        "payer": "seller",
+        "trigger": "late_delivery",
+        "amount": 0.1,
+        "unit": "pct_per_day",
+        "cap_pct": null
+      }
+    ],
+    "quality": {
+      "lab": "buyer"
+    },
+    "grades": [
+      {
+        "grade": null,
+        "amount_per_t": 9650.0,
+        "indicators": [
+          {
+            "name": "moisture",
+            "limit": "max",
+            "value": 14.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "protein",
+            "limit": "min",
+            "value": 13.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "gluten",
+            "limit": "min",
+            "value": 25.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "falling_number",
+            "limit": "min",
+            "value": 250.0,
+            "unit": "seconds",
+            "raw_name": null
+          },
+          {
+            "name": "test_weight",
+            "limit": "min",
+            "value": 760.0,
+            "unit": "g_per_l",
+            "raw_name": null
+          },
+          {
+            "name": "foreign_matter",
+            "limit": "max",
+            "value": 1.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "grain_admixture",
+            "limit": "max",
+            "value": 4.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "other",
+            "limit": "max",
+            "value": 1.0,
+            "unit": "other",
+            "raw_name": "Дезоксиніваленол"
+          },
+          {
+            "name": "other",
+            "limit": "max",
+            "value": 0.0,
+            "unit": "pct",
+            "raw_name": "Зараженість шкідниками"
+          }
+        ]
+      }
+    ],
+    "buyer": "Товариство з обмеженою відповідальністю «Столичний Млин»"
+  },
+  "evidence": {
+    "crop": "п. 1.1",
+    "quantity_t": "п. 1.2",
+    "tolerance": "п. 1.2: ±5%, хто обирає — не сказано → option null",
+    "price": "п. 5.1: 9 650,00 грн/т без ПДВ → vat_included false",
+    "basis": "п. 3.1",
+    "delivery": "п. 3.1 (місце після DAP), 3.2 (період поставки)",
+    "payment": "п. 6.2: залишок (70%) за 5 банківських днів після приймання й документів, серед них зареєстрована податкова накладна → vat_after_registration true; передоплата 30% (п. 6.1) окремо не розмічається",
+    "penalties": "п. 6.3, 7.1, 7.2; п. 7.3 — різниця в ціні без розміру, не санкція",
+    "quality": "п. 4.1: «за аналізом лабораторії Покупця» → buyer; незалежна лабораторія п. 4.2 — лише для спору",
+    "buyer": "преамбула",
+    "grades": "п. 1.1 (продовольча, номера класу немає → grade null), 5.1 (ціна), 2.1 (показники; ДОН у мг/кг → other, unit other, «(ДОН)» у дужках не входить у raw_name); знижки п. 2.2 — не показники"
+  }
+}

@@ -1,0 +1,122 @@
+{
+  "id": "own_012",
+  "split": "test",
+  "source": "own",
+  "contract_no": "ФЦ-2026/05",
+  "text_path": "data/texts/own_012.txt",
+  "deal": {
+    "crop": "corn",
+    "quantity_t": 10000.0,
+    "tolerance": {
+      "pct": 10.0,
+      "option": "seller"
+    },
+    "price": {
+      "currency": "USD",
+      "vat_included": null
+    },
+    "basis": "CPT",
+    "delivery": {
+      "place": "термінал Покупця, порт Чорноморськ, Одеська область",
+      "date_from": "2026-11-01",
+      "date_to": "2026-12-31",
+      "period_raw": null
+    },
+    "payment": {
+      "days": 5,
+      "days_type": "banking",
+      "trigger": "after_documents",
+      "vat_after_registration": true
+    },
+    "penalties": [
+      {
+        "payer": "buyer",
+        "trigger": "late_payment",
+        "amount": 0.1,
+        "unit": "pct_per_day",
+        "cap_pct": null
+      },
+      {
+        "payer": "seller",
+        "trigger": "under_delivery",
+        "amount": 5.0,
+        "unit": "one_time_pct",
+        "cap_pct": null
+      },
+      {
+        "payer": "buyer",
+        "trigger": "other",
+        "amount": 5.0,
+        "unit": "one_time_pct",
+        "cap_pct": null
+      },
+      {
+        "payer": "seller",
+        "trigger": "late_delivery",
+        "amount": 0.1,
+        "unit": "pct_per_day",
+        "cap_pct": null
+      }
+    ],
+    "quality": {
+      "lab": "independent"
+    },
+    "grades": [
+      {
+        "grade": "фураж",
+        "amount_per_t": null,
+        "indicators": [
+          {
+            "name": "moisture",
+            "limit": "max",
+            "value": 14.5,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "broken",
+            "limit": "max",
+            "value": 3.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "grain_admixture",
+            "limit": "max",
+            "value": 5.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "foreign_matter",
+            "limit": "max",
+            "value": 2.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "other",
+            "limit": "max",
+            "value": 0.0,
+            "unit": "pct",
+            "raw_name": "Зараженість шкідниками"
+          }
+        ]
+      }
+    ],
+    "buyer": "Товариство з обмеженою відповідальністю «Лиман Грейн Трейд»"
+  },
+  "evidence": {
+    "crop": "п. 1.1",
+    "quantity_t": "п. 1.2",
+    "tolerance": "п. 1.2: ±10% за вибором Продавця",
+    "price": "п. 5.1, 5.4: ціна за формулою Ц = Р − Д у дол. США → currency USD; числа ціни за тонну немає (приклад п. 5.5 — умовні значення) → vat_included null",
+    "basis": "п. 3.1",
+    "delivery": "п. 3.1 (місце після CPT), 3.2 (період відвантаження)",
+    "payment": "п. 6.1: 90% за 5 банківських днів після документів, серед них зареєстрована податкова накладна → vat_after_registration true; залишок 10% (п. 6.2) окремо не розмічається",
+    "penalties": "п. 6.3, 7.1, 7.2 (неприйняття товару → trigger other), 7.3; різниця цін і збитки без розміру — не санкції",
+    "quality": "п. 4.1: незалежний інспектор або акредитована лабораторія → independent",
+    "buyer": "преамбула",
+    "grades": "п. 1.1 (фуражна → фураж); ціни за тонну немає → amount_per_t null; 2.1 (показники); «Мікотоксини у межах нормативів» і «Запах і колір» — не показники"
+  }
+}

@@ -20,7 +20,7 @@ Stage 1 grew in three steps. The first matrix compared Claude Haiku 4.5 with the
 | `make install` | installs the dependencies (`uv sync`) | no |
 | `make test` | unit tests on stub models: offline, a few seconds; they check the code, not the quality of the models | no |
 | `make smoke` | live quick check: 14 configurations on the first 2 texts of each source (6 texts), saved in `results/smoke/<start time>/`; about $1 and 20 minutes | yes |
-| `make run` | live full run: 14 configurations on all 37 texts, saved in `results/stage1_3/<start time>/` together with the two metrics tables; about $5 and 1.5 hours | yes |
+| `make run` | live full run: 14 configurations on all 42 texts, saved in `results/stage1_3/<start time>/` together with the two metrics tables; about $5 and 1.5 hours | yes |
 | `make metrics` | prints the metrics table of the latest saved folder in `results/stage1_3/`; calls no model and writes nothing | no |
 
 ### 1. Install
@@ -47,7 +47,7 @@ ollama pull qwen3:14b
 make run        # = uv run --env-file .env python main.py
 ```
 
-`make run` asks the models for every configuration of stage 1.3 on all 37 texts — 3 models (Claude Haiku 4.5, GPT-4o, Qwen3 14B) × 2 prompts × 2 samplings (`precise`, `varied`), plus Claude Haiku 5.5 × 2 prompts with the `default` sampling = 14 configurations. Haiku 5.5 rejects any temperature and top_p but its own, so it gets neither `precise` nor `varied`: `default` sends no sampling parameters at all. Nothing is cached: every run makes live API and Ollama calls. The full stage 1.2 run (12 configurations) cost $5 ($1.8 for Claude Haiku 4.5, $3.2 for GPT-4o) and took about 1.5 hours on an Apple Silicon Mac: 10 minutes for Claude, 6 for GPT-4o and 80 for Qwen; Haiku 5.5 adds about $0.11 and 3 minutes. The numbers differ a little from run to run: the paid models are not fully deterministic even at temperature 0, and prompt v2 contains the run date (`{today}`).
+`make run` asks the models for every configuration of stage 1.3 on all 42 texts — 3 models (Claude Haiku 4.5, GPT-4o, Qwen3 14B) × 2 prompts × 2 samplings (`precise`, `varied`), plus Claude Haiku 5.5 × 2 prompts with the `default` sampling = 14 configurations. Haiku 5.5 rejects any temperature and top_p but its own, so it gets neither `precise` nor `varied`: `default` sends no sampling parameters at all. Nothing is cached: every run makes live API and Ollama calls. The full stage 1.2 run (12 configurations) cost $5 ($1.8 for Claude Haiku 4.5, $3.2 for GPT-4o) and took about 1.5 hours on an Apple Silicon Mac: 10 minutes for Claude, 6 for GPT-4o and 80 for Qwen; Haiku 5.5 adds about $0.11 and 3 minutes. The numbers differ a little from run to run: the paid models are not fully deterministic even at temperature 0, and prompt v2 contains the run date (`{today}`).
 
 To run only some models, name them with `--models`: `uv run --env-file .env python main.py --models claude haiku55 gpt` runs the 10 configurations of the paid models without Qwen, which takes most of the time. `--models` also works with `--per-source` (below).
 
@@ -116,8 +116,8 @@ The rules were written before the first run; the rules for grades and quality in
 
 | Requirement | Where to look | Status |
 | --- | --- | --- |
-| 30 "dirty" texts without personal data | `data/texts/` — 37 texts: `synthetic_001–020.txt` (dev), `prozorro_001–010.txt` and the author's own contracts `own_001–007.txt` (test); how they were anonymised — `data/README.md` | done |
-| 10 hand-labelled texts (golden set) | `data/golden/`: `prozorro_001–010.json` and `own_001–007.json`, labelling rules — `data/golden/RULES.md` | done: all 17 drafted by Claude, checked and corrected by the author |
+| 30 "dirty" texts without personal data | `data/texts/` — 42 texts: `synthetic_001–020.txt` (dev), `prozorro_001–010.txt` and the author's own contracts `own_001–012.txt` (test; `own_008–012` written by the author on a general template with fictional parties); how they were anonymised — `data/README.md` | done |
+| 10 hand-labelled texts (golden set) | `data/golden/`: `prozorro_001–010.json` and `own_001–012.json`, labelling rules — `data/golden/RULES.md` | done: all 22 drafted by Claude, checked and corrected by the author |
 | Schema: ≥ 6 fields, ≥ 1 enum, a nested object or a list | `src/schemas/deal.py` (11 fields, 12 enums, 5 nested objects, the lists `penalties` and `grades`, each grade with its own list of quality indicators), tests — `tests/test_deal.py` | done |
 | Provider model through an API with structured output, retry and timeout | `src/extraction/anthropic_extractor.py` (Claude Haiku 4.5 and 5.5: the schema as a forced tool call), `src/extraction/openrouter_extractor.py` (GPT-4o: strict structured output), settings — `configs/models.yaml` | done |
 | Local model through a shared interface | `src/extraction/ollama_extractor.py` (Qwen3 14B; Lapa 12B in the first matrix); the `Extractor` interface — `src/extraction/run.py` | done |
@@ -138,7 +138,7 @@ configs/
   models.yaml              models, timeout, retry, prices per 1M tokens
   sampling.yaml            sampling configurations precise, varied and default
 data/
-  texts/                   the 37 texts the models get
+  texts/                   the 42 texts the models get
   synthetic/               golden Deal and "dirtiness" parameters of each synthetic text
   golden/                  golden deals of the Prozorro and own contracts + RULES.md
   prozorro_sources.csv     which Prozorro tender each contract comes from

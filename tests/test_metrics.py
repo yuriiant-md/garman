@@ -260,7 +260,7 @@ def test_references_come_from_the_data_files_with_their_split():
     sources = [(reference.split, reference.source) for reference in references.values()]
     assert sources.count(("dev", "synthetic")) == 20
     assert sources.count(("test", "prozorro")) == 10
-    assert sources.count(("test", "own")) == 7
+    assert sources.count(("test", "own")) == 12
     assert references["prozorro_001"].deal.buyer is not None
 
 

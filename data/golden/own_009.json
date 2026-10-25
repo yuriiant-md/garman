@@ -1,0 +1,115 @@
+{
+  "id": "own_009",
+  "split": "test",
+  "source": "own",
+  "contract_no": "ФВ-2026/02",
+  "text_path": "data/texts/own_009.txt",
+  "deal": {
+    "crop": "corn",
+    "quantity_t": 1000.0,
+    "tolerance": {
+      "pct": 5.0,
+      "option": null
+    },
+    "price": {
+      "currency": "UAH",
+      "vat_included": false
+    },
+    "basis": "FCA",
+    "delivery": {
+      "place": "зерновий склад Продавця, Вінницька область",
+      "date_from": "2027-10-01",
+      "date_to": "2027-11-30",
+      "period_raw": null
+    },
+    "payment": {
+      "days": 5,
+      "days_type": "banking",
+      "trigger": "after_documents",
+      "vat_after_registration": null
+    },
+    "penalties": [
+      {
+        "payer": "other",
+        "trigger": "late_payment",
+        "amount": 0.1,
+        "unit": "pct_per_day",
+        "cap_pct": null
+      },
+      {
+        "payer": "seller",
+        "trigger": "under_delivery",
+        "amount": 10.0,
+        "unit": "one_time_pct",
+        "cap_pct": null
+      },
+      {
+        "payer": "seller",
+        "trigger": "late_delivery",
+        "amount": 0.1,
+        "unit": "pct_per_day",
+        "cap_pct": null
+      }
+    ],
+    "quality": {
+      "lab": "independent"
+    },
+    "grades": [
+      {
+        "grade": "фураж",
+        "amount_per_t": 7200.0,
+        "indicators": [
+          {
+            "name": "moisture",
+            "limit": "max",
+            "value": 14.5,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "broken",
+            "limit": "max",
+            "value": 3.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "grain_admixture",
+            "limit": "max",
+            "value": 5.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "foreign_matter",
+            "limit": "max",
+            "value": 2.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "other",
+            "limit": "max",
+            "value": 0.0,
+            "unit": "pct",
+            "raw_name": "Зараженість шкідниками"
+          }
+        ]
+      }
+    ],
+    "buyer": "Товариство з обмеженою відповідальністю «Грейн Партнер Україна»"
+  },
+  "evidence": {
+    "crop": "п. 1.1: кукурудза фуражна",
+    "quantity_t": "п. 1.2",
+    "tolerance": "п. 1.2: ±5%, хто обирає — не сказано → option null",
+    "price": "п. 5.1: 7 200,00 грн/т без ПДВ → vat_included false",
+    "basis": "п. 3.1",
+    "delivery": "п. 3.1 (місце після FCA), 3.2 (період поставки)",
+    "payment": "п. 6.2: залишок (70%) за 5 банківських днів після завантаження й документів — більша частина, як own_005/007; аванс 30% (п. 6.1) окремо не розмічається; «податкової накладної» без «зареєстрованої» → vat_after_registration null",
+    "penalties": "п. 6.4 (пеню платить «винна Сторона» → payer other), 8.1, 8.3; п. 8.2 — різниця цін без розміру, не санкція",
+    "quality": "п. 4.1: «акредитованої лабораторії», чия — не сказано → independent",
+    "buyer": "преамбула",
+    "grades": "п. 1.1 (фуражна → фураж), 5.1 (ціна), 2.1 (показники); «Мікотоксини у межах нормативів» без числа і «Запах і колір» — не показники"
+  }
+}

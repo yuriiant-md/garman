@@ -1,0 +1,129 @@
+{
+  "id": "own_008",
+  "split": "test",
+  "source": "own",
+  "contract_no": "ТЗ-2026/01",
+  "text_path": "data/texts/own_008.txt",
+  "deal": {
+    "crop": "wheat",
+    "quantity_t": 3000.0,
+    "tolerance": {
+      "pct": 10.0,
+      "option": "seller"
+    },
+    "price": {
+      "currency": "UAH",
+      "vat_included": false
+    },
+    "basis": "CPT",
+    "delivery": {
+      "place": "термінал Покупця, порт Миколаїв",
+      "date_from": "2026-11-01",
+      "date_to": "2026-11-30",
+      "period_raw": null
+    },
+    "payment": {
+      "days": 5,
+      "days_type": "banking",
+      "trigger": "after_documents",
+      "vat_after_registration": true
+    },
+    "penalties": [
+      {
+        "payer": "buyer",
+        "trigger": "late_payment",
+        "amount": 0.1,
+        "unit": "pct_per_day",
+        "cap_pct": null
+      },
+      {
+        "payer": "seller",
+        "trigger": "under_delivery",
+        "amount": 5.0,
+        "unit": "one_time_pct",
+        "cap_pct": null
+      }
+    ],
+    "quality": {
+      "lab": "independent"
+    },
+    "grades": [
+      {
+        "grade": "2",
+        "amount_per_t": 9200.0,
+        "indicators": [
+          {
+            "name": "moisture",
+            "limit": "max",
+            "value": 14.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "protein",
+            "limit": "min",
+            "value": 12.5,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "gluten",
+            "limit": "min",
+            "value": 23.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "falling_number",
+            "limit": "min",
+            "value": 220.0,
+            "unit": "seconds",
+            "raw_name": null
+          },
+          {
+            "name": "test_weight",
+            "limit": "min",
+            "value": 750.0,
+            "unit": "g_per_l",
+            "raw_name": null
+          },
+          {
+            "name": "foreign_matter",
+            "limit": "max",
+            "value": 2.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "grain_admixture",
+            "limit": "max",
+            "value": 5.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "other",
+            "limit": "max",
+            "value": 0.0,
+            "unit": "pct",
+            "raw_name": "Зараженість шкідниками"
+          }
+        ]
+      }
+    ],
+    "buyer": "Товариство з обмеженою відповідальністю «Південна Зернова Компанія»"
+  },
+  "evidence": {
+    "crop": "п. 1.1",
+    "quantity_t": "п. 1.2",
+    "tolerance": "п. 1.2: ±10% за вибором Продавця",
+    "price": "п. 5.1: 9 200,00 грн/т без ПДВ → vat_included false",
+    "basis": "п. 3.1",
+    "delivery": "п. 3.1 (місце після CPT), 3.2 (період відвантаження)",
+    "payment": "п. 6.1: 100% за 5 банківських днів після документів, серед них зареєстрована податкова накладна → vat_after_registration true",
+    "penalties": "п. 6.3 (пеня 0,1% за день; межа — подвійна облікова ставка НБУ, не % суми → cap_pct null), 7.1; п. 7.2 — збитки без розміру, не санкція",
+    "quality": "п. 4.1: незалежний інспектор або акредитована лабораторія → independent",
+    "buyer": "преамбула",
+    "grades": "п. 1.1 (2-го класу), 5.1 (ціна), 2.1 (таблиця показників); «Запах і колір» без порогу — не показник; знижки п. 2.2 — не показники"
+  }
+}

@@ -129,17 +129,12 @@ class Tolerance(BaseModel):
 
 
 class Price(BaseModel):
-    amount_per_t: float | None = Field(default=None, gt=0, description="Price per tonne.")
+    """What all grade prices share; the price per tonne itself lives in each GradeTerms."""
+
     currency: Currency | None = None
     vat_included: bool | None = Field(
-        default=None, description="True if the price includes VAT, false if it excludes VAT."
+        default=None, description="True if the grade prices include VAT, false if they exclude it."
     )
-
-    @model_validator(mode="after")
-    def require_currency_for_amount(self) -> "Price":
-        if self.amount_per_t is not None and self.currency is None:
-            raise ValueError("currency is required when amount_per_t is provided")
-        return self
 
 
 class Delivery(BaseModel):
@@ -196,26 +191,9 @@ class Penalty(BaseModel):
 
 
 class Quality(BaseModel):
-    grade: str | None = Field(
-        default=None, description="Wheat class as written: '2', '3', '4' or 'фураж'."
-    )
-    protein_min: float | None = Field(
-        default=None, ge=0, le=100, description="Minimum protein, percent."
-    )
-    moisture_max: float | None = Field(
-        default=None, ge=0, le=100, description="Maximum moisture, percent."
-    )
-    foreign_matter_max: float | None = Field(
-        default=None, ge=0, le=100, description="Maximum foreign matter, percent."
-    )
-    lab: Lab | None = Field(default=None, description="Whose laboratory determines quality.")
+    """What all grades share; each grade's own limits live in GradeTerms.indicators."""
 
-    @field_validator("grade")
-    @classmethod
-    def canonical_grade(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        return normalize_grade(value) or None
+    lab: Lab | None = Field(default=None, description="Whose laboratory determines quality.")
 
 
 class QualityIndicator(BaseModel):

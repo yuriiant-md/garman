@@ -16,7 +16,6 @@
     "quantity_t": 2500.0,
     "tolerance": null,
     "price": {
-      "amount_per_t": 9400.0,
       "currency": "UAH",
       "vat_included": true
     },
@@ -35,12 +34,30 @@
     },
     "penalties": null,
     "quality": {
-      "grade": "фураж",
-      "protein_min": null,
-      "moisture_max": 14.0,
-      "foreign_matter_max": 2.0,
       "lab": "seller"
     },
+    "grades": [
+      {
+        "grade": "фураж",
+        "amount_per_t": 9400.0,
+        "indicators": [
+          {
+            "name": "moisture",
+            "limit": "max",
+            "value": 14.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "foreign_matter",
+            "limit": "max",
+            "value": 2.0,
+            "unit": "pct",
+            "raw_name": null
+          }
+        ]
+      }
+    ],
     "buyer": "ТОВ \"Зерно Поле 03\""
   },
   "text_path": "data/texts/synthetic_003.txt"

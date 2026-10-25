@@ -9,7 +9,6 @@
     "quantity_t": 15.0,
     "tolerance": null,
     "price": {
-      "amount_per_t": 4100.0,
       "currency": "UAH",
       "vat_included": true
     },
@@ -43,12 +42,30 @@
       }
     ],
     "quality": {
-      "grade": null,
-      "protein_min": null,
-      "moisture_max": 14.0,
-      "foreign_matter_max": 2.0,
       "lab": "independent"
     },
+    "grades": [
+      {
+        "grade": null,
+        "amount_per_t": 4100.0,
+        "indicators": [
+          {
+            "name": "moisture",
+            "limit": "max",
+            "value": 14.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "foreign_matter",
+            "limit": "max",
+            "value": 2.0,
+            "unit": "pct",
+            "raw_name": null
+          }
+        ]
+      }
+    ],
     "buyer": "Державне підприємство «Лугинське лісове господарство»"
   },
   "evidence": {

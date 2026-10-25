@@ -9,7 +9,6 @@
     "quantity_t": 10.0,
     "tolerance": null,
     "price": {
-      "amount_per_t": 6000.0,
       "currency": "UAH",
       "vat_included": false
     },
@@ -50,6 +49,13 @@
       }
     ],
     "quality": null,
+    "grades": [
+      {
+        "grade": null,
+        "amount_per_t": 6000.0,
+        "indicators": null
+      }
+    ],
     "buyer": "Державна установа «Криворізька виправна колонія (№80)»"
   },
   "evidence": {

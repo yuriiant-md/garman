@@ -9,7 +9,6 @@
     "quantity_t": 6.0,
     "tolerance": null,
     "price": {
-      "amount_per_t": 8000.0,
       "currency": "UAH",
       "vat_included": false
     },
@@ -64,6 +63,13 @@
       }
     ],
     "quality": null,
+    "grades": [
+      {
+        "grade": null,
+        "amount_per_t": 8000.0,
+        "indicators": null
+      }
+    ],
     "buyer": "Комунальне підприємство «Декоративні культури» Дніпропетровської обласної ради»"
   },
   "evidence": {

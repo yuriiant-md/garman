@@ -34,7 +34,7 @@ def test_deal_accepts_valid_nested_data() -> None:
         crop="wheat",
         quantity_t=1000,
         tolerance={"pct": 5, "option": "buyer"},
-        price={"amount_per_t": 9200, "currency": "UAH", "vat_included": True},
+        price={"currency": "UAH", "vat_included": True},
         basis="CPT",
         delivery={
             "place": "Odesa",
@@ -51,21 +51,20 @@ def test_deal_accepts_valid_nested_data() -> None:
                 "cap_pct": 10,
             }
         ],
-        quality={
-            "grade": "3",
-            "protein_min": 12.5,
-            "moisture_max": 14,
-            "foreign_matter_max": 2,
-            "lab": "independent",
-        },
+        quality={"lab": "independent"},
+        grades=[
+            {
+                "grade": "3",
+                "amount_per_t": 9200,
+                "indicators": [{"name": "protein", "limit": "min", "value": 12.5, "unit": "pct"}],
+            }
+        ],
         buyer="ТОВ Покупець",
     )
 
     assert deal.crop.value == "wheat"
     assert deal.tolerance == Tolerance(pct=5, option=Party.BUYER)
-    assert deal.price == Price(
-        amount_per_t=9200, currency=Currency.UAH, vat_included=True
-    )
+    assert deal.price == Price(currency=Currency.UAH, vat_included=True)
     assert deal.delivery.date_from == date(2026, 10, 20)
     assert deal.payment == Payment(
         days=5,
@@ -81,13 +80,14 @@ def test_deal_accepts_valid_nested_data() -> None:
             cap_pct=10,
         )
     ]
-    assert deal.quality == Quality(
-        grade="3",
-        protein_min=12.5,
-        moisture_max=14,
-        foreign_matter_max=2,
-        lab=Lab.INDEPENDENT,
-    )
+    assert deal.quality == Quality(lab=Lab.INDEPENDENT)
+    assert deal.grades == [
+        GradeTerms(
+            grade="3",
+            amount_per_t=9200,
+            indicators=[QualityIndicator(name="protein", limit="min", value=12.5, unit="pct")],
+        )
+    ]
 
 
 def test_deal_defaults_missing_fields_to_none() -> None:
@@ -104,11 +104,9 @@ def test_deal_defaults_missing_fields_to_none() -> None:
     "data",
     [
         {"quantity_t": 0},
-        {"price": {"amount_per_t": 0, "currency": "UAH"}},
-        {"price": {"amount_per_t": 9200}},
         {"tolerance": {"pct": 101}},
         {"penalties": [{"amount": 0}]},
-        {"quality": {"moisture_max": -1}},
+        {"quality": {"lab": "elevator"}},
         {"crop": "rice"},
     ],
 )
@@ -144,8 +142,13 @@ def test_every_enum_accepts_other(enum_type: type[StrEnum]) -> None:
         ("екстра", "екстра"),
     ],
 )
-def test_quality_normalizes_grade_to_vocabulary(raw: str, expected: str) -> None:
-    assert Quality(grade=raw).grade == expected
+def test_grade_is_normalized_to_vocabulary(raw: str, expected: str) -> None:
+    assert GradeTerms(grade=raw).grade == expected
+
+
+@pytest.mark.parametrize("model", [Price, Quality])
+def test_price_and_quality_no_longer_hold_per_grade_values(model: type) -> None:
+    assert not {"amount_per_t", "grade", "protein_min"} & set(model.model_fields)
 
 
 def test_deal_keeps_each_grade_with_its_own_price_and_indicators() -> None:

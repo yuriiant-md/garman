@@ -20,6 +20,8 @@ from src.schemas.deal import (
     Currency,
     DaysType,
     Deal,
+    GradeTerms,
+    IndicatorName,
     Lab,
     Party,
     PaymentTrigger,
@@ -225,9 +227,9 @@ FOREIGN_MATTER_WORDS = (
     r"impurit",
 )
 QUALITY_WORDS = {
-    "quality.protein_min": PROTEIN_WORDS,
-    "quality.moisture_max": MOISTURE_WORDS,
-    "quality.foreign_matter_max": FOREIGN_MATTER_WORDS,
+    IndicatorName.PROTEIN: PROTEIN_WORDS,
+    IndicatorName.MOISTURE: MOISTURE_WORDS,
+    IndicatorName.FOREIGN_MATTER: FOREIGN_MATTER_WORDS,
 }
 LAB_PATTERNS = {
     Lab.BUYER: (rf"лаб\w*\.?\s+{BUYER_WORD}", r"buyer['’]?s\s+lab"),
@@ -411,11 +413,23 @@ def _check_fields(deal: Deal, text: ParsedText) -> Iterator[tuple[str, bool]]:
             for index, penalty in enumerate(deal.penalties or []):
                 for field, present in _check_penalty(penalty, text):
                     yield f"penalties[{index}].{field}", present
+        elif name == "grades":
+            for index, grade in enumerate(deal.grades or []):
+                yield from _check_grade(f"grades[{index}]", grade, text)
         elif isinstance(value, dict):
             for field, child in value.items():
                 yield f"{name}.{field}", _check_value(f"{name}.{field}", child, text, value)
         else:
             yield name, _check_value(name, value, text, {})
+
+
+def _check_grade(path: str, grade: GradeTerms, text: ParsedText) -> Iterator[tuple[str, bool]]:
+    for field, value in grade.model_dump(exclude_none=True, exclude={"indicators"}).items():
+        yield f"{path}.{field}", GRADE_CHECKS[field](text, value, {})
+    for indicator in grade.indicators or []:
+        check = INDICATOR_CHECKS.get(indicator.name)
+        present = check is not None and check(text, indicator.value, {})
+        yield f"{path}.indicators.{indicator.name}", present
 
 
 def _check_value(path: str, value: object, text: ParsedText, group: dict[str, object]) -> bool:
@@ -520,7 +534,7 @@ def _number_near(keywords: tuple[str, ...], window: int = FIELD_WINDOW, suffix: 
     return check
 
 
-def _quality_number(path: str) -> Check:
+def _quality_number(path: IndicatorName) -> Check:
     """The number must follow its own keyword with no other quality keyword in between."""
     rivals = tuple(word for other, words in QUALITY_WORDS.items() if other != path for word in words)
 
@@ -622,7 +636,6 @@ FIELD_CHECKS: dict[str, Check] = {
     "quantity_t": _number_with(TONNE),
     "tolerance.pct": _number_near(TOLERANCE_WORDS, suffix=PERCENT),
     "tolerance.option": _phrase(OPTION_PATTERNS),
-    "price.amount_per_t": _number_near(PRICE_WORDS, window=PRICE_WINDOW),
     "price.currency": _phrase(CURRENCY_PATTERNS),
     "price.vat_included": _phrase(VAT_INCLUDED_PATTERNS),
     "basis": _phrase(BASIS_PATTERNS),
@@ -634,10 +647,14 @@ FIELD_CHECKS: dict[str, Check] = {
     "payment.days_type": _days_type,
     "payment.trigger": _phrase(PAYMENT_TRIGGER_PATTERNS),
     "payment.vat_after_registration": _phrase(VAT_AFTER_REGISTRATION_PATTERNS),
-    "quality.grade": _grade,
-    "quality.protein_min": _quality_number("quality.protein_min"),
-    "quality.moisture_max": _quality_number("quality.moisture_max"),
-    "quality.foreign_matter_max": _quality_number("quality.foreign_matter_max"),
     "quality.lab": _phrase(LAB_PATTERNS),
     "buyer": _name,
+}
+GRADE_CHECKS: dict[str, Check] = {
+    "grade": _grade,
+    "amount_per_t": _number_near(PRICE_WORDS, window=PRICE_WINDOW),
+}
+# Synthetic deals carry only these indicators; any other one is reported missing.
+INDICATOR_CHECKS: dict[IndicatorName, Check] = {
+    name: _quality_number(name) for name in QUALITY_WORDS
 }

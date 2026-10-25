@@ -23,7 +23,11 @@ from src.schemas.deal import (
     DaysType,
     Deal,
     Delivery,
+    GradeTerms,
+    IndicatorName,
+    IndicatorUnit,
     Lab,
+    Limit,
     Party,
     Payment,
     PaymentTrigger,
@@ -32,6 +36,7 @@ from src.schemas.deal import (
     PenaltyUnit,
     Price,
     Quality,
+    QualityIndicator,
     Tolerance,
 )
 
@@ -115,17 +120,29 @@ def make_dirtiness(rng: random.Random) -> Dirtiness:
 
 
 def make_deal(rng: random.Random, index: int) -> Deal:
-    """Build a realistic wheat deal; some fields stay null on purpose."""
+    """Build a realistic wheat deal with at most one grade; some fields stay null on purpose.
+    The draws keep their order, so a seed gives the same deal as before grades existed."""
+    crop = Crop.WHEAT if rng.random() < 0.9 else None
+    quantity_t = rng.choice(QUANTITIES_T) if rng.random() < 0.85 else None
+    tolerance = _tolerance(rng) if rng.random() < 0.5 else None
+    price, amount_per_t = _price(rng) if rng.random() < 0.9 else (None, None)
+    basis = rng.choice(GENERATED_BASES) if rng.random() < 0.8 else None
+    delivery = _delivery(rng)
+    payment = _payment(rng) if rng.random() < 0.7 else None
+    penalties = _penalties(rng) if rng.random() < 0.45 else None
+    quality, grade = _quality(rng) if rng.random() < 0.55 else (None, GradeTerms())
+    priced = grade.model_copy(update={"amount_per_t": amount_per_t})
     return Deal(
-        crop=Crop.WHEAT if rng.random() < 0.9 else None,
-        quantity_t=rng.choice(QUANTITIES_T) if rng.random() < 0.85 else None,
-        tolerance=_tolerance(rng) if rng.random() < 0.5 else None,
-        price=_price(rng) if rng.random() < 0.9 else None,
-        basis=rng.choice(GENERATED_BASES) if rng.random() < 0.8 else None,
-        delivery=_delivery(rng),
-        payment=_payment(rng) if rng.random() < 0.7 else None,
-        penalties=_penalties(rng) if rng.random() < 0.45 else None,
-        quality=_quality(rng) if rng.random() < 0.55 else None,
+        crop=crop,
+        quantity_t=quantity_t,
+        tolerance=tolerance,
+        price=price,
+        basis=basis,
+        delivery=delivery,
+        payment=payment,
+        penalties=penalties,
+        quality=quality,
+        grades=None if priced == GradeTerms() else [priced],
         buyer=f'ТОВ "Зерно Поле {index:02d}"',
     )
 
@@ -137,12 +154,10 @@ def _tolerance(rng: random.Random) -> Tolerance:
     )
 
 
-def _price(rng: random.Random) -> Price:
-    return Price(
-        amount_per_t=rng.choice(WHEAT_PRICES_UAH),
-        currency=Currency.UAH,
-        vat_included=rng.choice((True, False)),
-    )
+def _price(rng: random.Random) -> tuple[Price, float]:
+    """The shared price terms and the price per tonne that goes to the grade."""
+    amount_per_t = rng.choice(WHEAT_PRICES_UAH)
+    return Price(currency=Currency.UAH, vat_included=rng.choice((True, False))), amount_per_t
 
 
 def _delivery(rng: random.Random) -> Delivery | None:
@@ -187,15 +202,22 @@ def _penalty(rng: random.Random, trigger: PenaltyTrigger) -> Penalty:
     )
 
 
-def _quality(rng: random.Random) -> Quality:
+def _quality(rng: random.Random) -> tuple[Quality, GradeTerms]:
+    """The shared lab and the grade with its limits; feed wheat has no protein limit."""
     grade = rng.choice(WHEAT_GRADES)
-    return Quality(
-        grade=grade,
-        protein_min=rng.choice(PROTEIN_MIN_PCT[grade]) if grade in PROTEIN_MIN_PCT else None,
-        moisture_max=rng.choice(MOISTURE_MAX_PCT),
-        foreign_matter_max=rng.choice(FOREIGN_MATTER_MAX_PCT),
-        lab=rng.choice((Lab.BUYER, Lab.SELLER, Lab.INDEPENDENT)),
+    protein = rng.choice(PROTEIN_MIN_PCT[grade]) if grade in PROTEIN_MIN_PCT else None
+    limits = (
+        (IndicatorName.PROTEIN, Limit.MIN, protein),
+        (IndicatorName.MOISTURE, Limit.MAX, rng.choice(MOISTURE_MAX_PCT)),
+        (IndicatorName.FOREIGN_MATTER, Limit.MAX, rng.choice(FOREIGN_MATTER_MAX_PCT)),
     )
+    indicators = [
+        QualityIndicator(name=name, limit=limit, value=value, unit=IndicatorUnit.PCT)
+        for name, limit, value in limits
+        if value is not None
+    ]
+    lab = rng.choice((Lab.BUYER, Lab.SELLER, Lab.INDEPENDENT))
+    return Quality(lab=lab), GradeTerms(grade=grade, indicators=indicators)
 
 
 def build_prompt(deal: Deal, dirtiness: Dirtiness, missing: list[str] | None = None) -> str:

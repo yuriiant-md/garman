@@ -9,7 +9,6 @@
     "quantity_t": 40.0,
     "tolerance": null,
     "price": {
-      "amount_per_t": 4868.42,
       "currency": "UAH",
       "vat_included": false
     },
@@ -71,12 +70,15 @@
       }
     ],
     "quality": {
-      "grade": "3",
-      "protein_min": null,
-      "moisture_max": null,
-      "foreign_matter_max": null,
       "lab": "independent"
     },
+    "grades": [
+      {
+        "grade": "3",
+        "amount_per_t": 4868.42,
+        "indicators": null
+      }
+    ],
     "buyer": "ІЛЛШЕЦЬКИИ АГРАРНИЙ ФАХОВИИ КОЛЕДЖ"
   },
   "evidence": {

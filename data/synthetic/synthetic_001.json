@@ -16,7 +16,6 @@
     "quantity_t": 2500.0,
     "tolerance": null,
     "price": {
-      "amount_per_t": 9250.0,
       "currency": "UAH",
       "vat_included": false
     },
@@ -35,6 +34,13 @@
     },
     "penalties": null,
     "quality": null,
+    "grades": [
+      {
+        "grade": null,
+        "amount_per_t": 9250.0,
+        "indicators": null
+      }
+    ],
     "buyer": "ТОВ \"Зерно Поле 01\""
   },
   "text_path": "data/texts/synthetic_001.txt"

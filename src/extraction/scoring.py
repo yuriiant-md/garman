@@ -1,8 +1,9 @@
 """Score one extracted Deal against its golden Deal by the counting rules in README.md.
 
-The unit is a leaf field (`price.amount_per_t`); an empty nested object equals one whose fields
-are all null. Strings are compared after normalization and with a similarity threshold, because
-golden Prozorro values keep OCR noise verbatim while a model may write the name correctly.
+The unit is a leaf field (`payment.trigger`); an empty nested object equals one whose fields
+are all null. List items (penalties, grades, quality indicators) are paired first. Strings are
+compared after normalization and with a similarity threshold, because golden Prozorro values
+keep OCR noise verbatim while a model may write the name correctly.
 """
 
 import math

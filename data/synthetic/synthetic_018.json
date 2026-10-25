@@ -31,6 +31,7 @@
     },
     "penalties": null,
     "quality": null,
+    "grades": null,
     "buyer": "ТОВ \"Зерно Поле 18\""
   },
   "text_path": "data/texts/synthetic_018.txt"

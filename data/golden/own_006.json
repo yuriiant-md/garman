@@ -12,7 +12,6 @@
       "option": null
     },
     "price": {
-      "amount_per_t": 6830.00,
       "currency": "UAH",
       "vat_included": true
     },
@@ -46,12 +45,30 @@
       }
     ],
     "quality": {
-      "grade": "4",
-      "protein_min": null,
-      "moisture_max": 14.0,
-      "foreign_matter_max": 2.0,
       "lab": "other"
     },
+    "grades": [
+      {
+        "grade": "4",
+        "amount_per_t": 6830.0,
+        "indicators": [
+          {
+            "name": "moisture",
+            "limit": "max",
+            "value": 14.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "foreign_matter",
+            "limit": "max",
+            "value": 2.0,
+            "unit": "pct",
+            "raw_name": null
+          }
+        ]
+      }
+    ],
     "buyer": null
   },
   "evidence": {

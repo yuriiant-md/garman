@@ -10,7 +10,7 @@ COMPLETE_DEAL = {
     "crop": "barley",
     "quantity_t": 10.0,
     "tolerance": None,
-    "price": {"amount_per_t": 6000.0, "currency": "UAH", "vat_included": False},
+    "price": {"currency": "UAH", "vat_included": False},
     "basis": "other",
     "delivery": {
         "place": None,
@@ -34,8 +34,21 @@ COMPLETE_DEAL = {
         },
     ],
     "quality": None,
+    "grades": [
+        {
+            "grade": "3",
+            "amount_per_t": 6000.0,
+            "indicators": [
+                {
+                    "name": "moisture", "limit": "max", "value": 14.0, "unit": "pct",
+                    "raw_name": None,
+                },
+            ],
+        },
+    ],
     "buyer": "Державна установа «Виправна колонія»",
 }
+MOISTURE = COMPLETE_DEAL["grades"][0]["indicators"][0]
 
 
 def write_golden(root: Path, deal: dict | None = None, **overrides: object) -> Path:
@@ -86,8 +99,18 @@ def test_reports_unknown_and_missing_keys_inside_penalty(tmp_path):
     assert any(error.startswith("deal.penalties[0].cap_pct: missing") for error in errors)
 
 
+def test_reports_missing_key_of_an_indicator_inside_a_grade(tmp_path):
+    indicator = {key: value for key, value in MOISTURE.items() if key != "raw_name"}
+    grades = [{**COMPLETE_DEAL["grades"][0], "indicators": [indicator]}]
+
+    errors = check_file(write_golden(tmp_path, changed_deal(grades=grades)), tmp_path)
+
+    missing = "deal.grades[0].indicators[0].raw_name: missing"
+    assert any(error.startswith(missing) for error in errors)
+
+
 def test_reports_schema_violation_with_field_path(tmp_path):
-    price = {"amount_per_t": 6000.0, "currency": "грн", "vat_included": False}
+    price = {"currency": "грн", "vat_included": False}
 
     errors = check_file(write_golden(tmp_path, changed_deal(price=price)), tmp_path)
 

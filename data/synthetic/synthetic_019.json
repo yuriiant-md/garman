@@ -19,7 +19,6 @@
       "option": "buyer"
     },
     "price": {
-      "amount_per_t": 9600.0,
       "currency": "UAH",
       "vat_included": false
     },
@@ -41,6 +40,13 @@
       }
     ],
     "quality": null,
+    "grades": [
+      {
+        "grade": null,
+        "amount_per_t": 9600.0,
+        "indicators": null
+      }
+    ],
     "buyer": "ТОВ \"Зерно Поле 19\""
   },
   "text_path": "data/texts/synthetic_019.txt"

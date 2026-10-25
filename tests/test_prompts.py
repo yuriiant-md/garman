@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from src.extraction.prompts import load_prompt
+from src.schemas.deal import IndicatorName
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -74,3 +75,18 @@ def test_prompt_v2_gets_the_run_date_and_keeps_the_null_and_other_rules():
     assert "2026-10-20" in prompt.text
     assert "null" in prompt.text
     assert "other" in prompt.text
+
+
+@pytest.mark.parametrize(
+    "removed", ["protein_min", "moisture_max", "foreign_matter_max", "price.amount_per_t"]
+)
+def test_prompt_v2_names_no_field_the_schema_dropped(removed):
+    assert removed not in load_prompt(ROOT / "prompts" / "extract_v2.md").text
+
+
+def test_prompt_v2_explains_grades_and_every_indicator_name():
+    text = load_prompt(ROOT / "prompts" / "extract_v2.md").text
+
+    assert "**grades**" in text
+    assert text.count("- `amount_per_t`:") == 1  # described once, under grades, not under price
+    assert all(f"→ {name.value}" in text for name in IndicatorName)

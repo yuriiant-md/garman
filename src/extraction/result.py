@@ -1,13 +1,13 @@
 """One extraction attempt and everything needed to reproduce and score it."""
 
 import time
-from collections.abc import Mapping
 from enum import StrEnum
+from typing import Any, NotRequired, TypedDict, Unpack
 
 from pydantic import BaseModel, ConfigDict
 
 from src.extraction.prompts import Prompt
-from src.extraction.sampling import Sampling
+from src.extraction.sampling import Sampling, SamplingParams
 from src.schemas.deal import Deal
 
 
@@ -36,14 +36,42 @@ class ExtractionResult(BaseModel):
     output_tokens: int = 0
 
 
+class AnswerFields(TypedDict, total=False):
+    """What an extractor knows about the answer itself; the rest of a result make_result fills."""
+
+    deal: Deal | None
+    raw_output: str | None
+    error: str | None
+    attempts: int
+    input_tokens: int
+    output_tokens: int
+
+
+class Record(TypedDict):
+    """One line of a results *.jsonl file as metrics and run summaries read it: an
+    ExtractionResult in JSON form with its document and the start of its run."""
+
+    doc_id: str
+    run_at: str
+    model: str
+    prompt_version: str
+    sampling: str
+    status: str
+    deal: dict[str, Any] | None
+    attempts: NotRequired[int]  # missing in results saved before the fix attempt existed
+    latency_s: float
+    input_tokens: int
+    output_tokens: int
+
+
 def make_result(
     model: str,
     prompt: Prompt,
     sampling: Sampling,
-    params: Mapping[str, float],
+    params: SamplingParams,
     started: float,
     status: ExtractionStatus,
-    **fields: object,
+    **fields: Unpack[AnswerFields],
 ) -> ExtractionResult:
     """The result every extractor logs: `params` are the sampling values it sent, and `started`
     is the time.perf_counter() reading taken before its first request."""

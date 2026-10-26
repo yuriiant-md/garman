@@ -221,8 +221,9 @@ class QualityIndicator(BaseModel):
 
     def key(self) -> tuple[object, ...]:
         """One limit per indicator; "other" indicators differ by their written names."""
-        written = self.raw_name.casefold() if self.name == IndicatorName.OTHER else None
-        return self.name, self.limit, written
+        if self.name != IndicatorName.OTHER or not self.raw_name:  # "other" always has raw_name
+            return self.name, self.limit, None
+        return self.name, self.limit, self.raw_name.casefold()
 
 
 class GradeTerms(BaseModel):

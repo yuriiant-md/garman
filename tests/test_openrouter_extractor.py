@@ -195,6 +195,15 @@ def test_both_attempts_are_paid_for_in_tokens():
     assert (result.input_tokens, result.output_tokens) == (2400, 600)
 
 
+def test_answer_without_usage_counts_no_tokens_instead_of_stopping_the_run():
+    no_usage = SimpleNamespace(**{**vars(answer(json.dumps({"crop": "wheat"}))), "usage": None})
+
+    result, _ = extract(no_usage)
+
+    assert result.status is ExtractionStatus.OK
+    assert (result.input_tokens, result.output_tokens) == (0, 0)
+
+
 def test_answer_that_is_still_invalid_after_the_fix_is_failed_with_the_last_answer():
     last = json.dumps({"delivery": {"date_from": "2026-12-20", "date_to": "2026-11-01"}})
 

@@ -19,7 +19,7 @@ from pathlib import Path
 import yaml
 from pydantic import ValidationError
 
-from src.extraction.result import ExtractionStatus
+from src.extraction.result import ExtractionStatus, Record
 from src.extraction.scoring import Counts, score_deal
 from src.schemas.deal import Deal
 
@@ -54,7 +54,6 @@ FIELD_LEGEND = (
     "списку (неустойка, клас, показник якості) модель додала, хоча в golden їх немає."
 )
 
-Record = Mapping[str, object]
 Prices = Mapping[str, tuple[float, float]]  # model id -> USD per 1M input and output tokens
 ConfigKey = tuple[str, str, str, str]  # model, prompt version, sampling, start of the run
 
@@ -298,7 +297,7 @@ def latest_run_dir(base: Path) -> Path | None:
     return next((path for path in reversed(folders) if any(path.glob("*.jsonl"))), None)
 
 
-def load_records(results_dir: Path) -> list[dict[str, object]]:
+def load_records(results_dir: Path) -> list[Record]:
     return [
         json.loads(line)
         for path in sorted(results_dir.glob("*.jsonl"))

@@ -12,6 +12,7 @@ No retries: a local model that ran out of time once will run out again. A timeou
 import json
 import time
 from dataclasses import dataclass
+from typing import Any, TypedDict, cast
 
 import httpx
 import ollama
@@ -19,11 +20,12 @@ import ollama
 from src.extraction.messages import user_message
 from src.extraction.prompts import Prompt
 from src.extraction.result import ExtractionResult, ExtractionStatus, make_result
-from src.extraction.sampling import Sampling, sampling_options
+from src.extraction.sampling import Sampling, SamplingParams, sampling_options
 from src.extraction.validation import repair_request, require_every_key, validate_deal
 from src.schemas.deal import Deal
 
-DEAL_FORMAT = require_every_key(Deal.model_json_schema())
+# require_every_key turns a dict into a dict
+DEAL_FORMAT = cast(dict[str, Any], require_every_key(Deal.model_json_schema()))
 # The grammar only forbids tokens; what each field means reaches the model through the prompt.
 # Without it Lapa nulled whole objects it could have filled. Claude sees the same schema as its
 # tool definition.
@@ -42,6 +44,12 @@ class OllamaConfig:
     think: bool | None = None  # False for models that reason first (Qwen3); None: not sent
 
 
+class ThinkArgs(TypedDict, total=False):
+    """think goes into the request only when the config sets it."""
+
+    think: bool
+
+
 class OllamaExtractor:
     def __init__(self, config: OllamaConfig, client: ollama.Client | None = None) -> None:
         self.config = config
@@ -57,10 +65,9 @@ class OllamaExtractor:
         try:
             responses = self._ask_with_one_fix(messages, params)
         except httpx.TimeoutException:  # the ollama client lets httpx timeouts through unwrapped
-            error = f"timed out after {self.config.timeout_s:g} s"
             return make_result(
                 self.config.model, prompt, sampling, params, started, ExtractionStatus.ERROR,
-                error=error,
+                error=f"timed out after {self.config.timeout_s:g} s",
             )
         response = responses[-1]
         raw = response.message.content or ""
@@ -83,8 +90,8 @@ class OllamaExtractor:
             output_tokens=sum(r.eval_count or 0 for r in responses),
         )
 
-    def _ask(self, messages: list[dict[str, str]], params: dict[str, float]) -> ollama.ChatResponse:
-        extra = {} if self.config.think is None else {"think": self.config.think}
+    def _ask(self, messages: list[dict[str, str]], params: SamplingParams) -> ollama.ChatResponse:
+        extra: ThinkArgs = {} if self.config.think is None else {"think": self.config.think}
         return self._client.chat(
             model=self.config.model,
             messages=messages,
@@ -94,13 +101,13 @@ class OllamaExtractor:
         )
 
     def _ask_with_one_fix(
-        self, messages: list[dict[str, str]], params: dict[str, float]
+        self, messages: list[dict[str, str]], params: SamplingParams
     ) -> list[ollama.ChatResponse]:
         """The answers in order: one, or two when the first was invalid and was sent back."""
         first = self._ask(messages, params)
         raw = first.message.content or ""
-        deal, error = validate_deal(raw)
-        if deal is not None:
+        _, error = validate_deal(raw)
+        if error is None:
             return [first]
         fix = [
             *messages,

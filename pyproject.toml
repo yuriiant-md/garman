@@ -14,8 +14,20 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "mypy>=2.4.0",
     "pytest>=9.1.1",
+    "types-pyyaml>=6.0.12.20260906",
 ]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
+
+[tool.mypy]
+python_version = "3.14"
+files = ["src", "scripts", "main.py"]
+explicit_package_bases = true
+
+[[tool.mypy.overrides]]
+# One-off generators of the finished dev set (data/synthetic/); new code goes into src/
+module = ["scripts.synthetic_checks", "scripts.synthetic_render"]
+ignore_errors = true

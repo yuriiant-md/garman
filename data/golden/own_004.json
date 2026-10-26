@@ -12,7 +12,6 @@
       "option": "buyer"
     },
     "price": {
-      "amount_per_t": 5701.75,
       "currency": "UAH",
       "vat_included": false
     },
@@ -53,12 +52,86 @@
       }
     ],
     "quality": {
-      "grade": "4",
-      "protein_min": null,
-      "moisture_max": 14.0,
-      "foreign_matter_max": 2.0,
       "lab": "other"
     },
+    "grades": [
+      {
+        "grade": "4",
+        "amount_per_t": 5701.75,
+        "indicators": [
+          {
+            "name": "test_weight",
+            "limit": "min",
+            "value": 720.0,
+            "unit": "g_per_l",
+            "raw_name": null
+          },
+          {
+            "name": "moisture",
+            "limit": "max",
+            "value": 14.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "foreign_matter",
+            "limit": "max",
+            "value": 2.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "grain_admixture",
+            "limit": "max",
+            "value": 10.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "sprouted",
+            "limit": "max",
+            "value": 3.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "other",
+            "limit": "max",
+            "value": 4.0,
+            "unit": "pct",
+            "raw_name": "Зерна злакових культур, що за характером пошкоджень не віднесені до смітної домішки"
+          },
+          {
+            "name": "bug_damaged",
+            "limit": "max",
+            "value": 4.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "smut",
+            "limit": "max",
+            "value": 8.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "other",
+            "limit": "max",
+            "value": 0.0,
+            "unit": "pct",
+            "raw_name": "Сажка всіх видів, ріжки"
+          },
+          {
+            "name": "fusarium",
+            "limit": "max",
+            "value": 0.0,
+            "unit": "pct",
+            "raw_name": null
+          }
+        ]
+      }
+    ],
     "buyer": null
   },
   "evidence": {
@@ -70,7 +143,8 @@
     "delivery": "п. 5.1, 5.2",
     "payment": "п. 6.1 (100% за 3 банківських дні після документів); про ПДВ пункту немає",
     "penalties": "п. 7.2, 7.3, 7.6",
-    "quality": "п. 1.1 (клас), 2.1 (показники), 2.3 (лабораторія місця поставки)",
-    "buyer": "преамбула: назву покупця приховано автором → null"
+    "quality": "п. 2.3: лабораторія в місці поставки → other",
+    "buyer": "преамбула: назву покупця приховано автором → null",
+    "grades": "п. 1.1 (клас), 4.1 (ціна «разом»), 2.1 (показники)"
   }
 }

@@ -15,7 +15,11 @@ from src.schemas.deal import (
     DaysType,
     Deal,
     Delivery,
+    GradeTerms,
+    IndicatorName,
+    IndicatorUnit,
     Lab,
+    Limit,
     Party,
     Payment,
     PaymentTrigger,
@@ -64,7 +68,6 @@ FIELD_LABELS = {
     "quantity_t": "обсяг у тоннах",
     "tolerance.pct": "толеранс у відсотках",
     "tolerance.option": "хто обирає толеранс",
-    "price.amount_per_t": "ціна за тонну",
     "price.currency": "валюта ціни",
     "price.vat_included": "ціна з ПДВ чи без",
     "basis": "базис поставки",
@@ -76,13 +79,22 @@ FIELD_LABELS = {
     "payment.days_type": "банківські чи календарні дні оплати",
     "payment.trigger": "від чого рахується строк оплати",
     "payment.vat_after_registration": "ПДВ після реєстрації податкової накладної",
-    "quality.grade": "клас",
-    "quality.protein_min": "протеїн",
-    "quality.moisture_max": "вологість",
-    "quality.foreign_matter_max": "сміттєва домішка",
     "quality.lab": "чия лабораторія",
+    "grades.grade": "клас",
+    "grades.amount_per_t": "ціна за тонну",
+    "grades.indicators.protein": "протеїн",
+    "grades.indicators.moisture": "вологість",
+    "grades.indicators.foreign_matter": "сміттєва домішка",
     "buyer": "назва покупця",
 }
+# "grades[0].grade" has the label of "grades.grade"
+GRADE_INDEX = re.compile(r"(?<=^grades)\[\d+\]")
+INDICATOR_WORDS = {  # the indicators synthetic deals carry, as the checker looks for them
+    IndicatorName.PROTEIN: "протеїн",
+    IndicatorName.MOISTURE: "вологість",
+    IndicatorName.FOREIGN_MATTER: "сміттєва домішка",
+}
+LIMIT_WORDS = {Limit.MIN: "не менше", Limit.MAX: "не більше"}
 PENALTY_FIELD_LABELS = {
     "payer": "хто платить",
     "trigger": "за яке порушення",
@@ -99,12 +111,12 @@ def render_conditions(deal: Deal) -> list[str]:
         f"культура: {CROP_NAMES[deal.crop]}" if deal.crop in CROP_NAMES else None,
         f"обсяг: {_num(deal.quantity_t)} т" if deal.quantity_t is not None else None,
         _tolerance_line(deal.tolerance),
-        _price_line(deal.price),
+        *_price_lines(deal.price, deal.grades or []),
         f"базис: {deal.basis.value}" if deal.basis else None,
         *_delivery_lines(deal.delivery),
         *_payment_lines(deal.payment),
         *(_penalty_line(penalty) for penalty in deal.penalties or []),
-        _quality_line(deal.quality),
+        _quality_line(deal.quality, deal.grades or []),
         f"покупець: {deal.buyer}" if deal.buyer else None,
     )
     return [line for line in lines if line]
@@ -116,7 +128,7 @@ def describe_missing(path: str) -> str:
     if penalty:
         field = PENALTY_FIELD_LABELS.get(penalty[2], penalty[2])
         return f"неустойка №{int(penalty[1]) + 1}: {field} ({path})"
-    label = FIELD_LABELS.get(path)
+    label = FIELD_LABELS.get(GRADE_INDEX.sub("", path))
     return f"{label} ({path})" if label else path
 
 
@@ -136,12 +148,20 @@ def _tolerance_line(tolerance: Tolerance | None) -> str | None:
     return f"толеранс{pct}{option}" if pct or option else None
 
 
-def _price_line(price: Price | None) -> str | None:
-    if price is None or price.amount_per_t is None:
-        return None
-    currency = CURRENCY_WORDS.get(price.currency, "")
-    vat = {True: " з ПДВ", False: " без ПДВ"}.get(price.vat_included, "")
-    return f"ціна: {_num(price.amount_per_t)} {currency}/т{vat}"
+def _price_lines(price: Price | None, grades: list[GradeTerms]) -> tuple[str, ...]:
+    """One line per priced grade; the class is named only when there are several grades."""
+    currency = CURRENCY_WORDS.get(price.currency, "") if price else ""
+    vat = {True: " з ПДВ", False: " без ПДВ"}.get(price.vat_included, "") if price else ""
+    return tuple(
+        f"ціна{_grade_suffix(grade, len(grades))}: {_num(grade.amount_per_t)} {currency}/т{vat}"
+        for grade in grades
+        if grade.amount_per_t is not None
+    )
+
+
+def _grade_suffix(grade: GradeTerms, grades: int) -> str:
+    phrase = _grade_phrase(grade.grade)
+    return f" ({phrase})" if grades > 1 and phrase else ""
 
 
 def _delivery_lines(delivery: Delivery | None) -> tuple[str | None, ...]:
@@ -212,18 +232,22 @@ def _penalty_size(penalty: Penalty) -> str:
     return f"{_num(amount)}%"
 
 
-def _quality_line(quality: Quality | None) -> str | None:
-    if quality is None:
-        return None
+def _quality_line(quality: Quality | None, grades: list[GradeTerms]) -> str | None:
     parts = (
-        _grade_phrase(quality.grade),
-        _limit("протеїн не менше", quality.protein_min),
-        _limit("вологість не більше", quality.moisture_max),
-        _limit("сміттєва домішка не більше", quality.foreign_matter_max),
-        f"за даними {LAB_PHRASES[quality.lab]}" if quality.lab in LAB_PHRASES else None,
+        *(part for grade in grades for part in _grade_parts(grade)),
+        f"за даними {LAB_PHRASES[quality.lab]}" if quality and quality.lab in LAB_PHRASES else None,
     )
     filled = [part for part in parts if part]
     return f"якість: {', '.join(filled)}" if filled else None
+
+
+def _grade_parts(grade: GradeTerms) -> tuple[str | None, ...]:
+    """The class, then each percent limit the checker knows: "протеїн не менше 11%"."""
+    return _grade_phrase(grade.grade), *(
+        _limit(f"{INDICATOR_WORDS[item.name]} {LIMIT_WORDS[item.limit]}", item.value)
+        for item in grade.indicators or []
+        if item.name in INDICATOR_WORDS and item.unit == IndicatorUnit.PCT
+    )
 
 
 def _grade_phrase(grade: str | None) -> str | None:

@@ -12,9 +12,8 @@
       "option": "buyer"
     },
     "price": {
-      "amount_per_t": null,
       "currency": "UAH",
-      "vat_included": null
+      "vat_included": true
     },
     "basis": "DAP",
     "delivery": {
@@ -53,24 +52,251 @@
       }
     ],
     "quality": {
-      "grade": null,
-      "protein_min": null,
-      "moisture_max": 14.0,
-      "foreign_matter_max": 2.0,
       "lab": "other"
     },
+    "grades": [
+      {
+        "grade": "2",
+        "amount_per_t": 7100.0,
+        "indicators": [
+          {
+            "name": "test_weight",
+            "limit": "min",
+            "value": 770.0,
+            "unit": "g_per_l",
+            "raw_name": null
+          },
+          {
+            "name": "moisture",
+            "limit": "max",
+            "value": 14.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "protein",
+            "limit": "min",
+            "value": 12.5,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "gluten",
+            "limit": "min",
+            "value": 23.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "gluten_deformation",
+            "limit": "max",
+            "value": 90.0,
+            "unit": "units",
+            "raw_name": null
+          },
+          {
+            "name": "bug_damaged",
+            "limit": "max",
+            "value": 1.5,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "foreign_matter",
+            "limit": "max",
+            "value": 2.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "grain_admixture",
+            "limit": "max",
+            "value": 6.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "smut",
+            "limit": "max",
+            "value": 3.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "other",
+            "limit": "max",
+            "value": 0.0,
+            "unit": "pct",
+            "raw_name": "Сажка всіх видів, ріжки"
+          },
+          {
+            "name": "fusarium",
+            "limit": "max",
+            "value": 0.0,
+            "unit": "pct",
+            "raw_name": null
+          }
+        ]
+      },
+      {
+        "grade": "3",
+        "amount_per_t": 7000.0,
+        "indicators": [
+          {
+            "name": "test_weight",
+            "limit": "min",
+            "value": 730.0,
+            "unit": "g_per_l",
+            "raw_name": null
+          },
+          {
+            "name": "foreign_matter",
+            "limit": "max",
+            "value": 2.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "bug_damaged",
+            "limit": "max",
+            "value": 1.5,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "grain_admixture",
+            "limit": "max",
+            "value": 6.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "sprouted",
+            "limit": "max",
+            "value": 1.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "falling_number",
+            "limit": "min",
+            "value": 220.0,
+            "unit": "seconds",
+            "raw_name": null
+          },
+          {
+            "name": "smut",
+            "limit": "max",
+            "value": 6.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "other",
+            "limit": "max",
+            "value": 0.0,
+            "unit": "pct",
+            "raw_name": "Сажка всіх видів, ріжки"
+          },
+          {
+            "name": "fusarium",
+            "limit": "max",
+            "value": 0.0,
+            "unit": "pct",
+            "raw_name": null
+          }
+        ]
+      },
+      {
+        "grade": "4",
+        "amount_per_t": 6300.0,
+        "indicators": [
+          {
+            "name": "test_weight",
+            "limit": "min",
+            "value": 720.0,
+            "unit": "g_per_l",
+            "raw_name": null
+          },
+          {
+            "name": "moisture",
+            "limit": "max",
+            "value": 14.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "foreign_matter",
+            "limit": "max",
+            "value": 2.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "grain_admixture",
+            "limit": "max",
+            "value": 10.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "sprouted",
+            "limit": "max",
+            "value": 3.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "other",
+            "limit": "max",
+            "value": 4.0,
+            "unit": "pct",
+            "raw_name": "Зерна злакових культур, що за характером пошкоджень не віднесені до смітної домішки"
+          },
+          {
+            "name": "bug_damaged",
+            "limit": "max",
+            "value": 4.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "smut",
+            "limit": "max",
+            "value": 8.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "other",
+            "limit": "max",
+            "value": 0.0,
+            "unit": "pct",
+            "raw_name": "Сажка всіх видів, ріжки"
+          },
+          {
+            "name": "fusarium",
+            "limit": "max",
+            "value": 0.0,
+            "unit": "pct",
+            "raw_name": null
+          }
+        ]
+      }
+    ],
     "buyer": null
   },
   "evidence": {
     "crop": "п. 1.1",
     "quantity_t": "п. 3.1",
     "tolerance": "п. 3.1",
-    "price": "п. 4.1: три ціни для 2/3/4 класу → amount_per_t і vat_included null",
+    "price": "п. 4.1: кожен клас «… плюс ПДВ …, разом …» → vat_included true",
     "basis": "п. 4.1, 5.1",
     "delivery": "п. 5.1, 5.2",
     "payment": "п. 6.1 (3 дні після документів), 6.3–6.4 (ПДВ-частина після реєстрації ПН)",
     "penalties": "п. 7.2, 7.3, 7.6",
-    "quality": "п. 1.1 і 2.1: три класи → grade null; вологість і смітна домішка однакові для всіх класів; протеїн лише для 2 класу → null",
-    "buyer": "преамбула: назву покупця приховано автором → null"
+    "quality": "п. 2.3: виробничо-технологічна лабораторія в пункті призначення → other",
+    "buyer": "преамбула: назву покупця приховано автором → null",
+    "grades": "п. 1.1 (2/3/4 клас), 4.1 (ціна «разом» для кожного класу), 2.1 (показники кожного класу). Не взято, бо в текстовому шарі немає назви або значення: 2 клас — «мін. 250 c.» і «макс. 1%)» без назв (імовірно число падіння й пророслі); 3 клас — клейковина, протеїн, ІДК, вологість без значень"
   }
 }

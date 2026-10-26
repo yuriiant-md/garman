@@ -19,7 +19,6 @@
       "option": "seller"
     },
     "price": {
-      "amount_per_t": 9250.0,
       "currency": "UAH",
       "vat_included": false
     },
@@ -38,12 +37,37 @@
     },
     "penalties": null,
     "quality": {
-      "grade": "4",
-      "protein_min": 10.5,
-      "moisture_max": 13.5,
-      "foreign_matter_max": 2.0,
       "lab": "seller"
     },
+    "grades": [
+      {
+        "grade": "4",
+        "amount_per_t": 9250.0,
+        "indicators": [
+          {
+            "name": "protein",
+            "limit": "min",
+            "value": 10.5,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "moisture",
+            "limit": "max",
+            "value": 13.5,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "foreign_matter",
+            "limit": "max",
+            "value": 2.0,
+            "unit": "pct",
+            "raw_name": null
+          }
+        ]
+      }
+    ],
     "buyer": "ТОВ \"Зерно Поле 08\""
   },
   "text_path": "data/texts/synthetic_008.txt"

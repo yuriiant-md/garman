@@ -61,9 +61,15 @@ def status_error(error_class: type[anthropic.APIStatusError], code: int) -> Exce
     return error_class("boom", response=httpx2.Response(code, request=REQUEST), body=None)
 
 
-def extract(outcome: object) -> tuple[object, FakeClient]:
+HAIKU_55 = AnthropicConfig(
+    model="claude-haiku-5-5", timeout_s=60, max_retries=3, max_tokens=8192, effort="medium",
+    accepts_sampling=False,
+)
+
+
+def extract(outcome: object, config: AnthropicConfig = CONFIG) -> tuple[object, FakeClient]:
     client = FakeClient(outcome)
-    result = AnthropicExtractor(CONFIG, client=client).extract("пш 3кл 500т", PROMPT, PRECISE)
+    result = AnthropicExtractor(config, client=client).extract("пш 3кл 500т", PROMPT, PRECISE)
     return result, client
 
 
@@ -229,3 +235,30 @@ def test_configuration_errors_stop_the_run(error_class, code):
 )
 def test_claude_gets_temperature_or_top_p_never_both(sampling, expected):
     assert sampling_params(sampling) == expected
+
+
+def test_model_without_sampling_gets_the_effort_and_no_temperature_or_top_p():
+    result, client = extract(tool_reply({}), HAIKU_55)
+    call = client.calls[0]
+
+    assert call["model"] == "claude-haiku-5-5"
+    assert call["output_config"] == {"effort": "medium"}
+    assert call["extra_body"] is None
+    assert call["tool_choice"] == {"type": "tool", "name": DEAL_TOOL["name"]}
+    assert (result.temperature, result.top_p) == (None, None)
+
+
+def test_effort_request_arguments_exist_in_the_installed_sdk_signature():
+    _, client = extract(tool_reply({}), HAIKU_55)
+    accepted = inspect.signature(anthropic.resources.messages.Messages.create).parameters
+
+    assert set(client.calls[0]) <= set(accepted)
+
+
+def test_refusal_is_failed_without_a_fix_attempt():
+    refusal = reply([], "refusal")
+
+    result, client = extract(refusal, HAIKU_55)
+
+    assert (result.status, result.attempts, len(client.calls)) == (ExtractionStatus.FAILED, 1, 1)
+    assert "refusal" in result.error

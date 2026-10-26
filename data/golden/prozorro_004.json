@@ -9,7 +9,6 @@
     "quantity_t": null,
     "tolerance": null,
     "price": {
-      "amount_per_t": null,
       "currency": "UAH",
       "vat_included": null
     },
@@ -50,6 +49,7 @@
       }
     ],
     "quality": null,
+    "grades": null,
     "buyer": "Полтавська державна сшьсько! осподарська дослщна стангря iMCHi М. I. Вавилова 1нсгитуту свинарства i агропромислового виробництва НацюнальноУ академн' аграриях наук Укра'ши"
   },
   "evidence": {

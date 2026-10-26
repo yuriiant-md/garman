@@ -24,7 +24,7 @@ from src.extraction.scoring import Counts, score_deal
 from src.schemas.deal import Deal
 
 ROOT = Path(__file__).resolve().parents[2]
-RESULTS_DIR = ROOT / "results" / "stage1_2"  # Lapa's stage-1 runs: --results-dir results/stage1/…
+RESULTS_DIR = ROOT / "results" / "stage1_3"  # older runs (stage1_2/, stage1/): use the stage-1 tag
 REFERENCE_DIRS = (ROOT / "data" / "synthetic", ROOT / "data" / "golden")
 MODELS_PATH = ROOT / "configs" / "models.yaml"
 TOKENS_PER_PRICE_UNIT = 1_000_000  # prices in configs/models.yaml are per 1M tokens
@@ -42,15 +42,16 @@ RUN_LABEL_LENGTH = len("2026-10-23T14:05")  # date and minutes of a run's ISO st
 ZERO = Counts(filled=0, filled_correct=0, empty=0, fabricated=0, total=0, correct=0)
 HEADER = (
     "Модель", "Промпт", "Семплінг", "Прогін", "Набір", "Док.", "Точність заповнених, % (95% ДІ)",
-    "Вигадані, %", "Загальна, %", "Валідні, %", "Failed, %", "Виправлено, %", "p50, с", "p95, с",
-    "$ / 1000 док.",
+    "Вигадані, %", "Зайві елементи", "Загальна, %", "Валідні, %", "Failed, %", "Виправлено, %",
+    "p50, с", "p95, с", "$ / 1000 док.",
 )
 
 FIELD_HEADER = ("Поле", "Заповнено у golden", "null у golden")
 FIELD_TOTAL = "**Разом**"
 FIELD_LEGEND = (
     "Клітинка: точність по заповнених значеннях golden (правильні/заповнені) · вигад. — "
-    "скільки разів модель дала значення там, де в golden null."
+    "скільки разів модель дала значення там, де в golden null · зайв. — скільки елементів "
+    "списку (неустойка, клас, показник якості) модель додала, хоча в golden їх немає."
 )
 
 Record = Mapping[str, object]
@@ -90,6 +91,7 @@ class ConfigMetrics:
     filled_accuracy: float | None  # the main number: share of golden values the model got right
     filled_ci: tuple[float, float] | None
     fabricated_pct: float | None
+    extra_items: int  # list items golden does not have; not part of fabricated_pct
     overall_pct: float | None
     valid_pct: float
     failed_pct: float
@@ -189,6 +191,7 @@ def _config_metrics(
         filled_accuracy=share(total.filled_correct, total.filled),
         filled_ci=bootstrap_ci(doc_counts),
         fabricated_pct=share(total.fabricated, total.empty),
+        extra_items=total.extra,
         overall_pct=share(total.correct, total.total),
         valid_pct=100 * valid / len(records),
         failed_pct=100 * (len(records) - valid) / len(records),
@@ -351,8 +354,9 @@ def _row(metrics: ConfigMetrics) -> tuple[str, ...]:
         metrics.model, metrics.prompt_version, metrics.sampling, run_label(metrics.run_at),
         f"{metrics.split} · {metrics.source}", str(metrics.docs),
         _pct(metrics.filled_accuracy) + interval, _pct(metrics.fabricated_pct),
-        _pct(metrics.overall_pct), _pct(metrics.valid_pct), _pct(metrics.failed_pct),
-        _pct(metrics.fixed_pct), f"{metrics.latency_p50_s:.1f}", f"{metrics.latency_p95_s:.1f}",
+        str(metrics.extra_items), _pct(metrics.overall_pct), _pct(metrics.valid_pct),
+        _pct(metrics.failed_pct), _pct(metrics.fixed_pct), f"{metrics.latency_p50_s:.1f}",
+        f"{metrics.latency_p95_s:.1f}",
         NO_VALUE if cost is None else f"{cost:.2f}",
     )
 
@@ -369,13 +373,16 @@ def _field_cell(counts: Counts | None) -> str:
     shown = NO_VALUE if accuracy is None else (
         f"{accuracy:.1f} ({counts.filled_correct}/{counts.filled})"
     )
-    return f"{shown} · вигад. {counts.fabricated}"
+    extra = f" · зайв. {counts.extra}" if counts.extra else ""
+    return f"{shown} · вигад. {counts.fabricated}{extra}"
 
 
 def _group_table(group: FieldGroup, counts: Mapping[ConfigKey, Mapping[str, Counts]]) -> str:
     fields = tuple(dict.fromkeys(field for by_field in counts.values() for field in by_field))
     totals = {config: sum(by_field.values(), ZERO) for config, by_field in counts.items()}
-    widest_config = max(totals, key=lambda config: totals[config].total)  # base of golden columns
+    # Golden columns come from the configuration that scored the most golden fields; extra
+    # items are the model's, so they must not make a configuration look wider.
+    widest_config = max(totals, key=lambda config: totals[config].filled + totals[config].empty)
     widest = totals[widest_config]
     header = (
         *FIELD_HEADER,
@@ -420,7 +427,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Score stage-1 results against golden deals.")
     parser.add_argument(
         "--results-dir", type=Path,
-        help="Folder of one launch (results/stage1_2/<time>/); default: the latest one.",
+        help="Folder of one launch (results/stage1_3/<time>/); default: the latest one.",
     )
     parser.add_argument(
         "--references", type=Path, nargs="+", default=list(REFERENCE_DIRS),

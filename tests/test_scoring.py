@@ -2,7 +2,14 @@ from datetime import date
 
 import pytest
 
-from src.extraction.scoring import Counts, normalize_text, pair_penalties, score_deal, values_match
+from src.extraction.scoring import (
+    Counts,
+    drop_explanation,
+    normalize_text,
+    pair_penalties,
+    score_deal,
+    values_match,
+)
 from src.schemas.deal import Crop, Deal, Party, PaymentTrigger, Penalty
 
 LATE_DELIVERY = {
@@ -17,7 +24,7 @@ GOLDEN = {
     "crop": "wheat",
     "quantity_t": 2500,
     "tolerance": None,
-    "price": {"amount_per_t": 9250, "currency": "UAH", "vat_included": False},
+    "price": {"currency": "UAH", "vat_included": False},
     "basis": "FCA",
     "delivery": {"place": "Миколаїв", "date_from": "2024-11-09", "date_to": "2024-11-14"},
     "payment": {
@@ -26,10 +33,13 @@ GOLDEN = {
     },
     "penalties": [LATE_DELIVERY],
     "quality": None,
+    "grades": [{"grade": None, "amount_per_t": 9250}],
     "buyer": 'ТОВ "Зерно Поле 01"',
 }
-# 21 leaf fields outside penalties + 5 for the one penalty; tolerance and quality are null
-ALL_CORRECT = Counts(filled=19, filled_correct=19, empty=7, fabricated=0, total=26, correct=26)
+# 16 leaf fields outside the lists, 2 for the grade and 5 for the penalty; tolerance, quality.lab
+# and the grade's class are null
+ALL_CORRECT = Counts(filled=19, filled_correct=19, empty=4, fabricated=0, total=23, correct=23)
+LEAVES_AND_GRADE = 16 + 2
 
 
 def deal(**changes: object) -> Deal:
@@ -136,7 +146,7 @@ def test_penalties_pair_by_payer_trigger_and_unit_in_any_order():
 
     result = counts(expected, predicted)
 
-    assert result.total == 21 + 2 * 5
+    assert result.total == LEAVES_AND_GRADE + 2 * 5
     assert result.correct == result.total
 
 
@@ -165,18 +175,18 @@ def test_missing_penalty_makes_all_its_fields_wrong():
     result = counts(deal(), deal(penalties=None))
 
     assert result == Counts(
-        filled=19, filled_correct=14, empty=7, fabricated=0, total=26, correct=21
+        filled=19, filled_correct=14, empty=4, fabricated=0, total=23, correct=18
     )
 
 
-def test_extra_penalty_counts_its_values_as_fabricated():
+def test_extra_penalty_is_one_wrong_extra_item_outside_the_fabricated_share():
     extra = {**LATE_DELIVERY, "payer": "buyer", "cap_pct": None}
 
     result = counts(deal(penalties=None), deal(penalties=[extra]))
 
-    # all 5 fields of the extra penalty are wrong; the 4 with a value are fabricated
+    # golden has no penalty fields, so the base of the fabricated share stays the 4 golden nulls
     assert result == Counts(
-        filled=14, filled_correct=14, empty=12, fabricated=4, total=26, correct=21
+        filled=14, filled_correct=14, empty=4, fabricated=0, total=19, correct=18, extra=1
     )
 
 
@@ -185,31 +195,180 @@ def test_penalty_with_another_payer_is_one_missing_and_one_extra():
 
     result = counts(deal(), predicted)
 
-    assert result.total == 21 + 2 * 5
+    assert result.total == LEAVES_AND_GRADE + 5 + 1
     assert result.filled_correct == 14
+    assert result.extra == 1
 
 
 def test_null_and_empty_penalty_lists_are_equal():
-    assert counts(deal(penalties=None), deal(penalties=[])).correct == 21
+    assert counts(deal(penalties=None), deal(penalties=[])).correct == LEAVES_AND_GRADE
 
 
 def test_value_where_golden_has_null_is_fabricated():
     result = counts(deal(), deal(tolerance={"pct": 5}))
 
     assert result.fabricated == 1
-    assert result.correct == 25
+    assert result.correct == 22
 
 
 def test_failed_answer_makes_every_field_wrong_and_every_null_fabricated():
     assert counts(deal(), None) == Counts(
-        filled=19, filled_correct=0, empty=7, fabricated=7, total=26, correct=0
+        filled=19, filled_correct=0, empty=4, fabricated=4, total=23, correct=0
     )
 
 
 def test_counts_add_up_field_by_field():
-    left = Counts(filled=2, filled_correct=1, empty=3, fabricated=1, total=5, correct=3)
+    left = Counts(filled=2, filled_correct=1, empty=3, fabricated=1, total=5, correct=3, extra=1)
     right = Counts(filled=1, filled_correct=1, empty=0, fabricated=0, total=1, correct=1)
 
     assert left + right == Counts(
-        filled=3, filled_correct=2, empty=3, fabricated=1, total=6, correct=4
+        filled=3, filled_correct=2, empty=3, fabricated=1, total=6, correct=4, extra=1
+    )
+
+
+CURRENCY = {"currency": "UAH", "vat_included": True}
+MOISTURE = {"name": "moisture", "limit": "max", "value": 14, "unit": "pct"}
+GLUTEN = {"name": "gluten", "limit": "min", "value": 23, "unit": "pct"}
+RYE = {"name": "other", "limit": "max", "value": 4, "unit": "pct", "raw_name": "Зерна жита"}
+SECOND = {"grade": "2", "amount_per_t": 7100, "indicators": [MOISTURE, GLUTEN]}
+FOURTH = {"grade": "4", "amount_per_t": 6300, "indicators": [MOISTURE]}
+# GOLDEN without its grade and penalty: 16 leaf fields, 13 filled and 3 null
+PLAIN = {"price": CURRENCY, "penalties": None, "grades": None}
+
+
+def graded(*grades: dict[str, object]) -> Deal:
+    return deal(**{**PLAIN, "grades": list(grades)})
+
+
+def by_field(expected: Deal, predicted: Deal | None) -> dict[str, list[bool]]:
+    result: dict[str, list[bool]] = {}
+    for score in score_deal(expected, predicted):
+        result.setdefault(score.field, []).append(score.correct)
+    return result
+
+
+def test_grades_pair_by_class_in_any_order():
+    result = counts(graded(SECOND, FOURTH), graded(FOURTH, SECOND))
+
+    # each grade: its class and price, then one unit per indicator (2 + 1)
+    assert result == Counts(
+        filled=13 + 2 * 2 + 3, filled_correct=20, empty=3, fabricated=0, total=23, correct=23
+    )
+
+
+def test_indicator_is_one_unit_named_after_the_indicator():
+    fields = by_field(graded(SECOND), graded({**SECOND, "indicators": [MOISTURE, GLUTEN]}))
+
+    assert fields["grades.indicators.moisture"] == [True]
+    assert fields["grades.indicators.gluten"] == [True]
+    assert fields["grades.grade"] == fields["grades.amount_per_t"] == [True]
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        {**GLUTEN, "value": 18},
+        {**GLUTEN, "unit": "other"},
+    ],
+)
+def test_indicator_with_another_value_or_unit_is_wrong(answer):
+    predicted = graded({**SECOND, "indicators": [MOISTURE, answer]})
+
+    assert by_field(graded(SECOND), predicted)["grades.indicators.gluten"] == [False]
+
+
+def test_indicator_with_another_limit_is_one_missing_and_one_extra():
+    predicted = graded({**SECOND, "indicators": [MOISTURE, {**GLUTEN, "limit": "max"}]})
+
+    result = counts(graded(SECOND), predicted)
+
+    assert by_field(graded(SECOND), predicted)["grades.indicators.gluten"] == [False]
+    assert result.extra == 1
+    assert result.fabricated == 0
+
+
+def test_other_indicators_pair_by_a_similar_written_name():
+    golden = graded({**SECOND, "indicators": [RYE]})
+    predicted = graded({**SECOND, "indicators": [{**RYE, "raw_name": "зерна жита,"}]})
+
+    assert by_field(golden, predicted)["grades.indicators.other"] == [True]
+
+
+CEREALS = {
+    "name": "other", "limit": "max", "value": 4, "unit": "pct",
+    "raw_name": (
+        "Зерна злакових культур, що за характером пошкоджень не віднесені до смітної домішки"
+    ),
+}
+
+
+@pytest.mark.parametrize(
+    "written",
+    [
+        f"{CEREALS['raw_name']} (зерна жита, тритикале, ячменю)",  # the explanation the rule drops
+        f"{CEREALS['raw_name']} (жито) (тритикале)",
+    ],
+)
+def test_other_indicator_names_are_compared_without_the_explanation_in_brackets(written):
+    golden = graded({**SECOND, "indicators": [CEREALS]})
+    predicted = graded({**SECOND, "indicators": [{**CEREALS, "raw_name": written}]})
+
+    assert by_field(golden, predicted)["grades.indicators.other"] == [True]
+
+
+def test_brackets_do_not_make_other_names_equal():
+    golden = graded({**SECOND, "indicators": [RYE]})
+    predicted = graded({**SECOND, "indicators": [{**RYE, "raw_name": "Зерна ячменю (жита)"}]})
+
+    assert by_field(golden, predicted)["grades.indicators.other"] == [False]
+
+
+@pytest.mark.parametrize(
+    ("written", "kept"),
+    [
+        ("Зерна злакових культур (жита, ячменю)", "Зерна злакових культур"),
+        ("Сажка (всіх видів), ріжки (будь-які)", "Сажка, ріжки"),
+        ("(в тому числі ушкоджені під час сушіння", "(в тому числі ушкоджені під час сушіння"),
+    ],
+)
+def test_only_a_closed_bracket_is_dropped_as_an_explanation(written, kept):
+    # an unclosed bracket is OCR noise around the name itself, so it stays
+    assert drop_explanation(written) == kept
+
+
+def test_missing_grade_makes_its_class_price_and_indicators_wrong():
+    result = counts(graded(SECOND, FOURTH), graded(SECOND))
+
+    # FOURTH: grade, price and moisture are wrong
+    assert (result.filled, result.filled_correct, result.extra) == (20, 17, 0)
+
+
+def test_extra_grade_is_one_extra_item_and_its_indicators_are_not_scored():
+    result = counts(graded(SECOND), graded(SECOND, FOURTH))
+
+    assert result == Counts(
+        filled=13 + 2 + 2, filled_correct=17, empty=3, fabricated=0, total=21, correct=20, extra=1
+    )
+
+
+def test_grade_without_class_pairs_with_an_answer_without_class():
+    unnamed = {"grade": None, "amount_per_t": 9200}
+
+    fields = by_field(graded(unnamed), graded(unnamed))
+
+    assert fields["grades.grade"] == fields["grades.amount_per_t"] == [True]
+
+
+def test_deals_without_grades_score_no_grade_fields():
+    fields = by_field(deal(**PLAIN), deal(**{**PLAIN, "grades": []}))
+
+    assert not any(field.startswith("grades") for field in fields)
+
+
+def test_failed_answer_makes_every_grade_field_and_indicator_wrong():
+    result = counts(graded(SECOND), None)
+
+    # golden nulls (3) count as fabricated, as for any failed answer
+    assert result == Counts(
+        filled=13 + 2 + 2, filled_correct=0, empty=3, fabricated=3, total=20, correct=0
     )

@@ -1,6 +1,6 @@
 ---
 version: v2
-date: 2026-10-20
+date: 2026-10-25
 ---
 
 # Task
@@ -37,9 +37,8 @@ Today is {today}.
 
 **tolerance**: only the allowed deviation of the **quantity** ("±5%"); `option` is the party that chooses it ("на вибір покупця", "на усмотрение продавца"). A limit on impurities is quality, not tolerance. No tolerance in the document → null; never assume a usual ±5%.
 
-**price**
-- `amount_per_t`: the price per tonne; convert a price per kilogram (7,20 грн/кг → 7200.0). If the per-tonne price is given both without and with VAT ("X грн плюс ПДВ Y, разом Z"), take the price with VAT (Z). If only the contract total is given with VAT, keep the per-tonne price without VAT. A price per seed unit → null.
-- `vat_included`: true for a price with VAT ("з ПДВ", "с НДС", "в т.ч. ПДВ", "разом з ПДВ"); false for a price "без ПДВ" / "без НДС" or when VAT is not mentioned at all; null when `amount_per_t` is null.
+**price**: what the prices of all classes share; the price per tonne itself is in `grades`.
+- `vat_included`: true for prices with VAT ("з ПДВ", "с НДС", "в т.ч. ПДВ", "разом з ПДВ"); false for prices "без ПДВ" / "без НДС" or when VAT is not mentioned at all; null when no class has an `amount_per_t`.
 - `currency`: the currency of the prices in the document (UAH, USD, EUR), even when the price is not per tonne.
 
 **basis**: only an Incoterms term named in the document: EXW, FCA, CPT, DAP, FOB or DAT. Another named term (DDP, CIF, CFR, …) → "other". A delivery condition stated without a term ("за рахунок постачальника", "самовивіз зі складу", "ціна включає доставку") → "other". Only a delivery address → null. Never pick a term that the document does not name.
@@ -61,9 +60,19 @@ Today is {today}.
 - `unit` and `amount`: a one-time fine in percent ("штраф 20% від вартості партії", no "per day"), whatever the breach → one_time_pct, amount 20; percent per day ("0,1% від суми за кожен день прострочення") → pct_per_day, amount 0.1; a multiple of the NBU discount rate per day → nbu_rate_multiple, amount 1 for "облікової ставки НБУ" and 2 for "подвійної облікової ставки НБУ"; "% річних", a rate per hour or a fixed sum per tonne → other.
 - `cap_pct`: only an explicitly written maximum ("але не більше 10%").
 
-**quality**
-- `grade`: the class as written, as a string: "3-го класу" / "3 кл" / "III" → "3"; also for corn and barley. Feed grade is a class too: "фуражна", "фураж", "фуражного зерна" → "фураж", even when the crop is not named. If the deal allows several classes ("2-го та/або 3-го класу"), set `grade` to null, and `price.amount_per_t` to null when the prices differ by class.
-- `protein_min`, `moisture_max`, `foreign_matter_max`: only numbers the document states ("смітна", "сміттєва", "сорная домішка" → `foreign_matter_max`). A reference to a standard (ДСТУ) without numbers → null. With several classes, fill a limit only if it is the same for all of them.
+**grades**: one element per class of the goods, each with its own price and quality limits. A deal with one class, or with a price or quality limits but no class, has one element. A deal that allows several classes ("2-го та/або 3-го класу") has one element per class. No class, no price per tonne and no quality limits → null.
+- `grade`: the class as written, as a string: "3-го класу" / "3 кл" / "III" → "3"; also for corn and barley. Feed grade is a class too: "фуражна", "фураж", "фуражного зерна" → "фураж", even when the crop is not named. null when the price or the limits are given without a class.
+- `amount_per_t`: the price per tonne of this class; convert a price per kilogram (7,20 грн/кг → 7200.0). If the per-tonne price is given both without and with VAT ("X грн плюс ПДВ Y, разом Z"), take the price with VAT (Z). If only the contract total is given with VAT, keep the per-tonne price without VAT. A price per seed unit → null.
+- `indicators`: every quality limit the document lists for this class, one element per row of its quality table or list; null when it lists none.
+  - `name`: вологість → moisture; сміттєва, смітна, сорна домішка → foreign_matter; зернова домішка → grain_admixture; протеїн, білок → protein; клейковина → gluten; ІДК → gluten_deformation; число падіння → falling_number; натура, натурна вага → test_weight; зерна, пошкоджені клопом-черепашкою → bug_damaged; пророслі зерна → sprouted; сажкове зерно → smut; фузаріозне зерно → fusarium; биті зерна → broken; пошкоджені зерна → damaged; амброзія, насіння амброзії → ragweed. Russian and English names count the same (влажность, moisture; сорная примесь, foreign matter; белок, protein). Any other limit → other, with `raw_name` set to its name as written, without the explanation in brackets; for a known name `raw_name` is null.
+  - `limit`: "не менше", "мін.", "min" → min; "не більше", "макс.", "max" → max. "Не допускається" → max with `value` 0 and `unit` pct.
+  - `unit`: pct for %, g_per_l for г/л, seconds for the falling number, units for ІДК, pcs_per_kg for шт/кг.
+  - A limit inside another one ("зернова домішка не більше 8%, в т.ч. пророслі зерна не більше 2%") is a separate indicator: grain_admixture 8 and sprouted 2.
+  - Take a limit only when both its name and its value can be read. A value without a name, or a name without a value, is not a limit, even if you could guess it.
+  - Each class has only the limits listed for it: never copy a limit from another class, and never take one from a standard (ДСТУ) that the document only refers to.
+  - General requirements without a threshold ("здоровий", "нормальний запах", "без самозігрівання") are not indicators.
+
+**quality**: what all classes share.
 - `lab`: whose laboratory determines the quality: the buyer's / seller's laboratory → buyer / seller; a state inspection or an independent testing centre → independent; the laboratory of the elevator or terminal at the place of delivery → other; only a producer's certificate → null.
 
 **buyer**: the buyer's (customer's) company name from the preamble or the signature, without "в особі …". A person's name is not a buyer. A hidden name (empty quotes, a placeholder) → null.

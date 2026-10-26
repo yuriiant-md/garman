@@ -34,12 +34,37 @@
     },
     "penalties": null,
     "quality": {
-      "grade": "2",
-      "protein_min": 12.0,
-      "moisture_max": 14.0,
-      "foreign_matter_max": 2.0,
       "lab": "seller"
     },
+    "grades": [
+      {
+        "grade": "2",
+        "amount_per_t": null,
+        "indicators": [
+          {
+            "name": "protein",
+            "limit": "min",
+            "value": 12.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "moisture",
+            "limit": "max",
+            "value": 14.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "foreign_matter",
+            "limit": "max",
+            "value": 2.0,
+            "unit": "pct",
+            "raw_name": null
+          }
+        ]
+      }
+    ],
     "buyer": "ТОВ \"Зерно Поле 05\""
   },
   "text_path": "data/texts/synthetic_005.txt"

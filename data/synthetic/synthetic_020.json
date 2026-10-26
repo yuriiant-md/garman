@@ -19,7 +19,6 @@
       "option": "buyer"
     },
     "price": {
-      "amount_per_t": 9550.0,
       "currency": "UAH",
       "vat_included": true
     },
@@ -41,12 +40,30 @@
       }
     ],
     "quality": {
-      "grade": "фураж",
-      "protein_min": null,
-      "moisture_max": 13.5,
-      "foreign_matter_max": 1.0,
       "lab": "independent"
     },
+    "grades": [
+      {
+        "grade": "фураж",
+        "amount_per_t": 9550.0,
+        "indicators": [
+          {
+            "name": "moisture",
+            "limit": "max",
+            "value": 13.5,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "foreign_matter",
+            "limit": "max",
+            "value": 1.0,
+            "unit": "pct",
+            "raw_name": null
+          }
+        ]
+      }
+    ],
     "buyer": "ТОВ \"Зерно Поле 20\""
   },
   "text_path": "data/texts/synthetic_020.txt"

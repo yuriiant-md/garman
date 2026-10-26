@@ -9,7 +9,6 @@
     "quantity_t": 20.0,
     "tolerance": null,
     "price": {
-      "amount_per_t": 4000.0,
       "currency": "UAH",
       "vat_included": false
     },
@@ -38,6 +37,13 @@
       }
     ],
     "quality": null,
+    "grades": [
+      {
+        "grade": null,
+        "amount_per_t": 4000.0,
+        "indicators": null
+      }
+    ],
     "buyer": "Інститут свинарстваі агропромислового виробництва Національної академії аграрних наук України"
   },
   "evidence": {

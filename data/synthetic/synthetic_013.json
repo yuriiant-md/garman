@@ -19,7 +19,6 @@
       "option": "seller"
     },
     "price": {
-      "amount_per_t": 8850.0,
       "currency": "UAH",
       "vat_included": false
     },
@@ -33,6 +32,13 @@
     "payment": null,
     "penalties": null,
     "quality": null,
+    "grades": [
+      {
+        "grade": null,
+        "amount_per_t": 8850.0,
+        "indicators": null
+      }
+    ],
     "buyer": "ТОВ \"Зерно Поле 13\""
   },
   "text_path": "data/texts/synthetic_013.txt"

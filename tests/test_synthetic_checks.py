@@ -9,7 +9,7 @@ FULL_DEAL = Deal(
     crop="wheat",
     quantity_t=500,
     tolerance={"pct": 5, "option": "buyer"},
-    price={"amount_per_t": 9200, "currency": "UAH", "vat_included": True},
+    price={"currency": "UAH", "vat_included": True},
     basis="CPT",
     delivery={"place": "Одеса", "date_from": "2026-11-05", "date_to": "2026-11-12"},
     payment={
@@ -27,26 +27,39 @@ FULL_DEAL = Deal(
             "cap_pct": 10,
         }
     ],
-    quality={
-        "grade": "3",
-        "protein_min": 11.5,
-        "moisture_max": 14,
-        "foreign_matter_max": 2,
-        "lab": "buyer",
-    },
+    quality={"lab": "buyer"},
+    grades=[
+        {
+            "grade": "3",
+            "amount_per_t": 9200,
+            "indicators": [
+                {"name": "protein", "limit": "min", "value": 11.5, "unit": "pct"},
+                {"name": "moisture", "limit": "max", "value": 14, "unit": "pct"},
+                {"name": "foreign_matter", "limit": "max", "value": 2, "unit": "pct"},
+            ],
+        }
+    ],
     buyer='ТОВ "Зерно Поле 01"',
 )
+
+
+MOISTURE_14 = {"name": "moisture", "limit": "max", "value": 14, "unit": "pct"}
+
+
+def priced(**price: object) -> Deal:
+    """A deal with only a price: 9200 per tonne in UAH, plus the given price fields."""
+    return Deal(price={"currency": "UAH", **price}, grades=[{"amount_per_t": 9200}])
 
 
 def test_value_outside_its_field_context_is_missing() -> None:
     deal = Deal(
         tolerance=Tolerance(pct=5, option="seller"),
         payment={"days": 5},
-        quality={"grade": "3"},
+        grades=[{"grade": "3"}],
     )
     text = "Продавець ФГ Колос. Пшениця, толеранс 5% на вибір покупця, вологість 13,5%."
 
-    assert missing_values(deal, text) == ["tolerance.option", "payment.days", "quality.grade"]
+    assert missing_values(deal, text) == ["tolerance.option", "payment.days", "grades[0].grade"]
 
 
 def test_messenger_recap_with_every_field_passes() -> None:
@@ -110,9 +123,7 @@ def test_inflected_place_name_is_found() -> None:
 
 
 def test_vat_excluded_is_not_mistaken_for_vat_included() -> None:
-    deal = Deal(price={"amount_per_t": 9200, "currency": "UAH", "vat_included": True})
-
-    assert missing_values(deal, "9200 грн/т без ПДВ") == ["price.vat_included"]
+    assert missing_values(priced(vat_included=True), "9200 грн/т без ПДВ") == ["price.vat_included"]
 
 
 def test_penalty_details_must_sit_next_to_their_trigger() -> None:
@@ -148,14 +159,11 @@ def test_other_enum_value_cannot_be_confirmed_by_text() -> None:
     assert missing_values(deal, "базис: інший базис") == ["basis"]
 
 
-PRICE_UAH = {"amount_per_t": 9200, "currency": "UAH"}
-
-
 @pytest.mark.parametrize(
     ("deal", "text", "expected"),
     [
         pytest.param(
-            Deal(price={**PRICE_UAH, "vat_included": True}),
+            priced(vat_included=True),
             "9200 грн/т, не включаючи ПДВ",
             ["price.vat_included"],
             id="vat-not-included",
@@ -186,9 +194,9 @@ PRICE_UAH = {"amount_per_t": 9200, "currency": "UAH"}
             id="details-of-another-penalty-in-one-sentence",
         ),
         pytest.param(
-            Deal(quality={"moisture_max": 14}),
+            Deal(grades=[{"indicators": [MOISTURE_14]}]),
             "протеїн не менше 14%, вологість не більше 13,5%",
-            ["quality.moisture_max"],
+            ["grades[0].indicators.moisture"],
             id="protein-number-is-not-moisture",
         ),
         pytest.param(
@@ -227,10 +235,8 @@ def test_value_stated_for_another_field_is_missing(
     ("deal", "text"),
     [
         pytest.param(Deal(tolerance=Tolerance(pct=5)), "толеранс 5 відсотків", id="percent-word"),
-        pytest.param(Deal(price=PRICE_UAH), "Price 9,200 UAH/t", id="english-thousands"),
-        pytest.param(
-            Deal(price={**PRICE_UAH, "vat_included": False}), "9200 грн/т плюс ПДВ", id="plus-vat"
-        ),
+        pytest.param(priced(), "Price 9,200 UAH/t", id="english-thousands"),
+        pytest.param(priced(vat_included=False), "9200 грн/т плюс ПДВ", id="plus-vat"),
         pytest.param(
             Deal(payment={"trigger": "after_delivery"}), "оплата після розвантаження", id="unloading"
         ),
@@ -267,13 +273,11 @@ def test_value_stated_for_another_field_is_missing(
             "За прострочення оплати пеня 0,1% за кожен день, 10% максимум.",
             id="cap-after-number",
         ),
-        pytest.param(Deal(quality={"grade": "3"}), "пшениця третього класу", id="ordinal-grade"),
+        pytest.param(Deal(grades=[{"grade": "3"}]), "пшениця третього класу", id="ordinal-grade"),
         pytest.param(
             Deal(tolerance=Tolerance(option="buyer")), "толеранс на розсуд покупця", id="at-discretion"
         ),
-        pytest.param(
-            Deal(price=PRICE_UAH), "беремо по 9200 за тонну, у гривнях", id="per-tonne-price"
-        ),
+        pytest.param(priced(), "беремо по 9200 за тонну, у гривнях", id="per-tonne-price"),
     ],
 )
 def test_natural_phrasing_is_accepted(deal: Deal, text: str) -> None:

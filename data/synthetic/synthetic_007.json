@@ -19,7 +19,6 @@
       "option": "buyer"
     },
     "price": {
-      "amount_per_t": 8850.0,
       "currency": "UAH",
       "vat_included": false
     },
@@ -38,12 +37,37 @@
     },
     "penalties": null,
     "quality": {
-      "grade": "2",
-      "protein_min": 12.5,
-      "moisture_max": 13.5,
-      "foreign_matter_max": 1.0,
       "lab": "independent"
     },
+    "grades": [
+      {
+        "grade": "2",
+        "amount_per_t": 8850.0,
+        "indicators": [
+          {
+            "name": "protein",
+            "limit": "min",
+            "value": 12.5,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "moisture",
+            "limit": "max",
+            "value": 13.5,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "foreign_matter",
+            "limit": "max",
+            "value": 1.0,
+            "unit": "pct",
+            "raw_name": null
+          }
+        ]
+      }
+    ],
     "buyer": "ТОВ \"Зерно Поле 07\""
   },
   "text_path": "data/texts/synthetic_007.txt"

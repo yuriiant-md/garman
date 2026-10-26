@@ -9,7 +9,6 @@
     "quantity_t": 15.0,
     "tolerance": null,
     "price": {
-      "amount_per_t": 4100.0,
       "currency": "UAH",
       "vat_included": true
     },
@@ -43,12 +42,51 @@
       }
     ],
     "quality": {
-      "grade": null,
-      "protein_min": null,
-      "moisture_max": 14.0,
-      "foreign_matter_max": 2.0,
       "lab": "independent"
     },
+    "grades": [
+      {
+        "grade": null,
+        "amount_per_t": 4100.0,
+        "indicators": [
+          {
+            "name": "moisture",
+            "limit": "max",
+            "value": 14.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "grain_admixture",
+            "limit": "max",
+            "value": 10.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "foreign_matter",
+            "limit": "max",
+            "value": 2.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "ragweed",
+            "limit": "max",
+            "value": 0.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "other",
+            "limit": "max",
+            "value": 0.0,
+            "unit": "pct",
+            "raw_name": "ГМО"
+          }
+        ]
+      }
+    ],
     "buyer": "Державне підприємство «Лугинське лісове господарство»"
   },
   "evidence": {
@@ -60,9 +98,8 @@
     "payment.trigger": "дод. угода №1, п. 4",
     "penalties[0]": "п. 8.2 (пеня)",
     "penalties[1]": "п. 8.2 (штраф)",
-    "quality.moisture_max": "дод. угода №1, п. 3",
-    "quality.foreign_matter_max": "дод. угода №1, п. 3 (смітна домішка)",
     "quality.lab": "п. 4.4 б) (ДІСХ)",
-    "buyer": "преамбула"
+    "buyer": "преамбула",
+    "grades": "ціна — дод. угода №1, п. 1; показники — дод. угода №1, п. 3 «Сторони погодили такі якісні показники»: «смі гієна домішка» — сміттєва (шум OCR); «11 асі пня амброзії не допускається» — насіння амброзії → ragweed max 0; ГМО з того самого переліку → other max 0"
   }
 }

@@ -24,7 +24,7 @@ from src.extraction.scoring import Counts
 from src.schemas.deal import Deal
 
 ROOT = Path(__file__).resolve().parents[1]
-DEAL = {"crop": "wheat", "quantity_t": 100, "buyer": "Зерно Поле"}  # 3 filled of 21 fields
+DEAL = {"crop": "wheat", "quantity_t": 100, "buyer": "Зерно Поле"}  # 3 filled of 16 fields
 REFERENCES = {
     "synthetic_001": Reference(deal=Deal.model_validate(DEAL), split="dev"),
     "synthetic_002": Reference(deal=Deal.model_validate(DEAL), split="dev"),
@@ -113,7 +113,7 @@ def test_metrics_score_each_configuration_per_split_dev_first():
     assert (dev.split, dev.source, dev.docs) == ("dev", "synthetic", 2)
     assert (test.split, test.source, test.docs) == ("test", "prozorro", 1)
     assert dev.filled_accuracy == pytest.approx(100 * 5 / 6)
-    assert dev.overall_pct == pytest.approx(100 * 41 / 42)
+    assert dev.overall_pct == pytest.approx(100 * 31 / 32)  # 2 docs × 16 fields, 1 wrong
     assert test.filled_accuracy == pytest.approx(100.0)
 
 
@@ -144,7 +144,7 @@ def test_failed_documents_stay_in_accuracy_and_count_as_failed():
     (metrics,) = compute_metrics(records, REFERENCES, PRICES)
 
     assert metrics.filled_accuracy == pytest.approx(50.0)
-    assert metrics.fabricated_pct == pytest.approx(50.0)  # 18 golden nulls of the failed doc
+    assert metrics.fabricated_pct == pytest.approx(50.0)  # 13 golden nulls of the failed doc
     assert (metrics.valid_pct, metrics.failed_pct) == (50.0, 50.0)
 
 
@@ -176,7 +176,7 @@ def test_fabricated_share_counts_values_where_golden_is_null():
     (metrics,) = compute_metrics([record("synthetic_001", deal={**DEAL, "basis": "FCA"})],
                                  REFERENCES, PRICES)
 
-    assert metrics.fabricated_pct == pytest.approx(100 / 18)
+    assert metrics.fabricated_pct == pytest.approx(100 / 13)
 
 
 def test_latency_percentiles_and_cost_per_configuration():
@@ -385,7 +385,50 @@ def test_field_table_total_row_matches_the_main_accuracy():
                   if (row.split, row.source) == ("test", "all"))
 
     assert all_row.filled_accuracy == pytest.approx(100 * 5 / 6)
-    assert "| **Разом** | 6 | 36 | 83.3 (5/6) · вигад. 1 |" in table.splitlines()
+    assert "| **Разом** | 6 | 26 | 83.3 (5/6) · вигад. 1 |" in table.splitlines()
+
+
+PENALTY = {"payer": "seller", "trigger": "late_delivery", "amount": 0.1, "unit": "pct_per_day"}
+
+
+def test_extra_list_items_are_counted_apart_from_the_fabricated_share():
+    answer = {**DEAL, "penalties": [PENALTY, {**PENALTY, "trigger": "under_delivery"}]}
+
+    (metrics,) = compute_metrics([record("synthetic_001", deal=answer)], REFERENCES, PRICES)
+
+    assert metrics.extra_items == 2
+    assert metrics.fabricated_pct == 0.0  # the 13 golden nulls stay empty
+
+
+def test_table_shows_extra_items_after_the_fabricated_share():
+    records = [record("synthetic_001", deal={**DEAL, "penalties": [PENALTY]})]
+
+    table = format_table(compute_metrics(records, REFERENCES, PRICES))
+
+    assert "| Вигадані, % | Зайві елементи | Загальна, % |" in table.splitlines()[0]
+    assert "| 0.0 | 1 | 94.1 |" in table  # 16 golden fields right, 1 extra penalty wrong
+
+
+def test_field_table_shows_extra_items_on_the_row_of_their_list():
+    records = [record("prozorro_001", deal={**DEAL, "penalties": [PENALTY]}), record("own_001")]
+
+    lines = format_field_tables(records, REFERENCES, (CONTRACTS,)).splitlines()
+
+    assert "| penalties | 0 | 0 | — · вигад. 0 · зайв. 1 |" in lines
+    assert "| **Разом** | 6 | 26 | 100.0 (6/6) · вигад. 0 · зайв. 1 |" in lines
+
+
+def test_golden_columns_count_golden_fields_not_extra_items():
+    crowded = {**DEAL, "penalties": [PENALTY] * 30}  # more units than two full documents
+    records = [
+        record("prozorro_001"),
+        record("own_001"),
+        record("prozorro_001", model="gpt-4o", deal=crowded),
+    ]
+
+    lines = format_field_tables(records, REFERENCES, (CONTRACTS,)).splitlines()
+
+    assert any(line.startswith("| **Разом** | 6 | 26 |") for line in lines)
 
 
 def test_field_table_of_a_group_without_results_is_left_out():

@@ -19,7 +19,6 @@
       "option": "seller"
     },
     "price": {
-      "amount_per_t": 8400.0,
       "currency": "UAH",
       "vat_included": false
     },
@@ -53,12 +52,37 @@
       }
     ],
     "quality": {
-      "grade": "3",
-      "protein_min": 11.0,
-      "moisture_max": 13.5,
-      "foreign_matter_max": 2.0,
       "lab": "independent"
     },
+    "grades": [
+      {
+        "grade": "3",
+        "amount_per_t": 8400.0,
+        "indicators": [
+          {
+            "name": "protein",
+            "limit": "min",
+            "value": 11.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "moisture",
+            "limit": "max",
+            "value": 13.5,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "foreign_matter",
+            "limit": "max",
+            "value": 2.0,
+            "unit": "pct",
+            "raw_name": null
+          }
+        ]
+      }
+    ],
     "buyer": "ТОВ \"Зерно Поле 14\""
   },
   "text_path": "data/texts/synthetic_014.txt"

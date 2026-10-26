@@ -16,7 +16,6 @@
     "quantity_t": 1000.0,
     "tolerance": null,
     "price": {
-      "amount_per_t": 9650.0,
       "currency": "UAH",
       "vat_included": true
     },
@@ -30,6 +29,13 @@
     "payment": null,
     "penalties": null,
     "quality": null,
+    "grades": [
+      {
+        "grade": null,
+        "amount_per_t": 9650.0,
+        "indicators": null
+      }
+    ],
     "buyer": "ТОВ \"Зерно Поле 15\""
   },
   "text_path": "data/texts/synthetic_015.txt"

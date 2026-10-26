@@ -9,7 +9,6 @@
     "quantity_t": 45.0,
     "tolerance": null,
     "price": {
-      "amount_per_t": 6500.0,
       "currency": "UAH",
       "vat_included": false
     },
@@ -57,12 +56,15 @@
       }
     ],
     "quality": {
-      "grade": "фураж",
-      "protein_min": null,
-      "moisture_max": null,
-      "foreign_matter_max": null,
       "lab": null
     },
+    "grades": [
+      {
+        "grade": "фураж",
+        "amount_per_t": 6500.0,
+        "indicators": null
+      }
+    ],
     "buyer": "Відділ культури, спорту, сім’ї та молоді виконавчого комітету Глобинської міської ради"
   },
   "evidence": {
@@ -77,7 +79,7 @@
     "penalties[1]": "п. 7.3 («за кожну годину»)",
     "penalties[2]": "п. 7.4",
     "penalties[3]": "п. 7.6",
-    "quality.grade": "п. 1.1",
+    "grades.grade": "п. 1.1",
     "buyer": "преамбула"
   }
 }

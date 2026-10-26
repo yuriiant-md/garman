@@ -27,7 +27,16 @@ from scripts.generate_synthetic import (
 )
 from scripts.synthetic_checks import missing_values
 from scripts.synthetic_render import render_conditions
-from src.schemas.deal import FEED_GRADE, Crop, Deal, Party, PenaltyTrigger, PenaltyUnit
+from src.schemas.deal import (
+    FEED_GRADE,
+    Crop,
+    Deal,
+    GradeTerms,
+    IndicatorName,
+    Party,
+    PenaltyTrigger,
+    PenaltyUnit,
+)
 
 SEEDS = range(300)
 DIRTY = Dirtiness(length="short", language="uk", typos="none", abbreviations=False)
@@ -70,14 +79,21 @@ def test_generated_deals_are_wheat_with_concrete_enum_values() -> None:
 
     assert {deal.crop for deal in deals} <= {Crop.WHEAT, None}
     assert all("other" not in _leaf_values(deal.model_dump(mode="json")) for deal in deals)
-    assert {deal.quality.grade for deal in deals if deal.quality} <= GRADE_VOCABULARY
+    grades = {grade.grade for deal in deals for grade in deal.grades or () if grade.grade}
+    assert grades <= GRADE_VOCABULARY
+    assert all(len(deal.grades or ()) <= 1 for deal in deals)  # one class per synthetic deal
+
+
+def _protein(grade: GradeTerms) -> float | None:
+    found = [item.value for item in grade.indicators or () if item.name == IndicatorName.PROTEIN]
+    return found[0] if found else None
 
 
 def test_higher_grade_requires_more_protein() -> None:
-    qualities = [deal.quality for deal in _deals() if deal.quality]
+    graded = [grade for deal in _deals() for grade in deal.grades or () if grade.grade]
     protein = {
-        grade: {quality.protein_min for quality in qualities if quality.grade == grade}
-        for grade in ("2", "3", "4", FEED_GRADE)
+        name: {_protein(grade) for grade in graded if grade.grade == name}
+        for name in ("2", "3", "4", FEED_GRADE)
     }
 
     assert max(protein["4"]) < min(protein["3"])

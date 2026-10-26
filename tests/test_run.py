@@ -7,6 +7,7 @@ import openai
 import pytest
 
 from src.extraction import metrics, run
+from src.extraction.anthropic_extractor import AnthropicConfig, AnthropicExtractor
 from src.extraction.openrouter_extractor import OpenRouterExtractor
 from src.extraction.prompts import Prompt
 from src.extraction.result import ExtractionResult, ExtractionStatus
@@ -23,6 +24,7 @@ from src.extraction.run import (
     run_dir_path,
     run_extraction,
     summarize,
+    takes_sampling,
     text_paths,
 )
 from src.extraction.sampling import Sampling, load_sampling
@@ -228,6 +230,48 @@ def test_gpt_is_built_as_the_openrouter_extractor(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
 
     assert isinstance(build_extractor("gpt"), OpenRouterExtractor)
+
+
+def test_project_configs_load_haiku_55_with_its_effort_and_without_sampling():
+    path = ROOT / "configs" / "models.yaml"
+
+    config = load_anthropic_config(path, section="haiku55")
+
+    assert config == AnthropicConfig(
+        model="claude-haiku-5-5", timeout_s=60, max_retries=3, max_tokens=8192,
+        effort="medium", accepts_sampling=False,
+    )
+    assert load_prices(path, section="haiku55") == (0.1, 0.5)
+    assert load_anthropic_config(path).accepts_sampling  # Haiku 4.5 keeps precise and varied
+    assert load_anthropic_config(path).effort is None
+
+
+def test_haiku_55_is_built_as_a_claude_extractor_and_names_its_results(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+
+    extractor = build_extractor("haiku55")
+
+    assert isinstance(extractor, AnthropicExtractor)
+    assert extractor.config.model == configured_model("haiku55") == "claude-haiku-5-5"
+    assert takes_sampling("claude") and not takes_sampling("haiku55")
+
+
+def test_a_model_without_sampling_runs_only_with_the_default_sampling(
+    tmp_path, monkeypatch, capsys
+):
+    make_texts(tmp_path / "texts")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setattr("src.extraction.run.ROOT", tmp_path)
+    monkeypatch.setattr("src.extraction.run.build_extractor", lambda model: StubExtractor())
+    run_dir = tmp_path / "chosen"
+    texts = ["--texts-dir", str(tmp_path / "texts"), "--run-dir", str(run_dir)]
+
+    refused = main(["--model", "haiku55", "--sampling", "precise", *texts])
+    accepted = main(["--model", "haiku55", "--sampling", "default", *texts])
+
+    assert (refused, accepted) == (2, 0)
+    assert "--sampling default" in capsys.readouterr().err
+    assert [p.name for p in run_dir.glob("*.jsonl")] == ["claude-haiku-5-5__v2__default.jsonl"]
 
 
 def test_runs_without_a_run_dir_land_where_make_metrics_looks():

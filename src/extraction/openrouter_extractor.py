@@ -33,12 +33,15 @@ ROUTING = {"provider": {"require_parameters": True}}
 
 
 def strict_schema(node: object) -> object:
-    """Copy of a JSON schema that OpenAI strict mode accepts: no extra keys in any object, and no
-    `default`, which its list of supported keywords does not name."""
+    """Copy of a JSON schema that OpenAI strict mode accepts: no extra keys in any object, no
+    `default`, which its list of supported keywords does not name, and nothing next to a `$ref`:
+    a field that is a plain enum (QualityIndicator.limit) loses its description there."""
     if isinstance(node, list):
         return [strict_schema(item) for item in node]
     if not isinstance(node, dict):
         return node
+    if "$ref" in node:
+        return {"$ref": node["$ref"]}
     copy = {key: strict_schema(value) for key, value in node.items() if key != "default"}
     if "properties" in copy:
         copy["additionalProperties"] = False

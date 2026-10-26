@@ -85,6 +85,23 @@ def test_strict_schema_drops_default_which_strict_mode_does_not_list():
     assert '"default"' not in json.dumps(DEAL_SCHEMA)
 
 
+def nodes(node: object) -> list[dict[str, object]]:
+    """Every object inside a JSON schema, the root included."""
+    if isinstance(node, list):
+        return [found for item in node for found in nodes(item)]
+    if not isinstance(node, dict):
+        return []
+    return [node, *(found for value in node.values() for found in nodes(value))]
+
+
+def test_strict_schema_puts_nothing_next_to_a_ref():
+    # OpenAI: "$ref cannot have keywords {'description'}" (QualityIndicator.limit)
+    refs = [node for node in nodes(DEAL_SCHEMA) if "$ref" in node]
+
+    assert refs
+    assert all(list(ref) == ["$ref"] for ref in refs)
+
+
 def test_response_format_asks_for_the_strict_deal_schema():
     assert RESPONSE_FORMAT["type"] == "json_schema"
     assert RESPONSE_FORMAT["json_schema"]["strict"] is True

@@ -1,0 +1,129 @@
+{
+  "id": "own_016",
+  "split": "test",
+  "source": "own",
+  "contract_no": "K2603-0075",
+  "text_path": "data/texts/own_016.txt",
+  "deal": {
+    "crop": "corn",
+    "quantity_t": 200.0,
+    "tolerance": {
+      "pct": 10.0,
+      "option": "seller"
+    },
+    "price": {
+      "currency": "UAH",
+      "vat_included": true
+    },
+    "basis": "DAT",
+    "delivery": {
+      "place": "ТОВ “Термінал , 67550, Україна, Одеська обл., Лиманський район, смт. Нові Біляри, вул. Морська, будинок 1, корпус А",
+      "date_from": "2026-03-04",
+      "date_to": "2026-03-15",
+      "period_raw": null
+    },
+    "payment": {
+      "days": 3,
+      "days_type": "other",
+      "trigger": "after_documents",
+      "vat_after_registration": true
+    },
+    "penalties": [
+      {
+        "payer": "buyer",
+        "trigger": "late_payment",
+        "amount": 2.0,
+        "unit": "nbu_rate_multiple",
+        "cap_pct": null
+      },
+      {
+        "payer": "seller",
+        "trigger": "under_delivery",
+        "amount": 30.0,
+        "unit": "one_time_pct",
+        "cap_pct": null
+      },
+      {
+        "payer": "seller",
+        "trigger": "other",
+        "amount": 3.0,
+        "unit": "other",
+        "cap_pct": null
+      }
+    ],
+    "quality": {
+      "lab": "other"
+    },
+    "grades": [
+      {
+        "grade": "3",
+        "amount_per_t": 10500.0,
+        "indicators": [
+          {
+            "name": "moisture",
+            "limit": "max",
+            "value": 14.5,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "foreign_matter",
+            "limit": "max",
+            "value": 2.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "broken",
+            "limit": "max",
+            "value": 5.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "damaged",
+            "limit": "max",
+            "value": 5.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "other",
+            "limit": "max",
+            "value": 2.0,
+            "unit": "pct",
+            "raw_name": "ушкоджені під час сушіння"
+          },
+          {
+            "name": "ragweed",
+            "limit": "max",
+            "value": 5.0,
+            "unit": "pcs_per_kg",
+            "raw_name": null
+          },
+          {
+            "name": "fusarium",
+            "limit": "max",
+            "value": 0.0,
+            "unit": "pct",
+            "raw_name": null
+          }
+        ]
+      }
+    ],
+    "buyer": null
+  },
+  "evidence": {
+    "crop": "п. 1.1",
+    "quantity_t": "п. 3.1",
+    "tolerance": "п. 3.1 («за вибором Постачальника» → seller)",
+    "price": "п. 4.1 (ціна «разом» — з ПДВ)",
+    "basis": "п. 4.1, 5.1",
+    "delivery": "п. 5.1 (назву терміналу частково приховано автором), 5.2",
+    "payment": "п. 6.1 (3 робочих дні після документів → other), 6.3–6.4",
+    "penalties": "п. 7.2, 7.3, 7.6 (3 USD/т за фумігаційні гази)",
+    "quality": "п. 2.3: лабораторія в пункті призначення → other",
+    "buyer": "преамбула: назву покупця приховано автором → null",
+    "grades": "п. 1.1 (клас), 4.1 (ціна «разом»), 2.1 (показники); «в тому числі ушкоджені під час сушіння макс. 2%» — окремий показник, як own_001"
+  }
+}

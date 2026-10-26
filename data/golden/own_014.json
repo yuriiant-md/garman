@@ -1,0 +1,143 @@
+{
+  "id": "own_014",
+  "split": "test",
+  "source": "own",
+  "contract_no": "K2507-0468",
+  "text_path": "data/texts/own_014.txt",
+  "deal": {
+    "crop": "barley",
+    "quantity_t": 30.0,
+    "tolerance": {
+      "pct": 10.0,
+      "option": "buyer"
+    },
+    "price": {
+      "currency": "UAH",
+      "vat_included": true
+    },
+    "basis": "FCA",
+    "delivery": {
+      "place": "Товариство з обмеженою відповідальністю адреса: 20815, Черкаська обл., Черкаська р-н, м. ТИМОШІВКА, вул. Героїв Майдану, 53-Б",
+      "date_from": "2025-07-22",
+      "date_to": "2025-07-24",
+      "period_raw": null
+    },
+    "payment": {
+      "days": 3,
+      "days_type": "other",
+      "trigger": "after_documents",
+      "vat_after_registration": true
+    },
+    "penalties": [
+      {
+        "payer": "buyer",
+        "trigger": "late_payment",
+        "amount": 2.0,
+        "unit": "nbu_rate_multiple",
+        "cap_pct": null
+      },
+      {
+        "payer": "seller",
+        "trigger": "under_delivery",
+        "amount": 30.0,
+        "unit": "one_time_pct",
+        "cap_pct": null
+      },
+      {
+        "payer": "seller",
+        "trigger": "other",
+        "amount": 25.0,
+        "unit": "other",
+        "cap_pct": null
+      },
+      {
+        "payer": "seller",
+        "trigger": "other",
+        "amount": 3.0,
+        "unit": "other",
+        "cap_pct": null
+      }
+    ],
+    "quality": {
+      "lab": "other"
+    },
+    "grades": [
+      {
+        "grade": "3",
+        "amount_per_t": 9225.0,
+        "indicators": [
+          {
+            "name": "test_weight",
+            "limit": "min",
+            "value": 620.0,
+            "unit": "g_per_l",
+            "raw_name": null
+          },
+          {
+            "name": "moisture",
+            "limit": "max",
+            "value": 14.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "foreign_matter",
+            "limit": "max",
+            "value": 2.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "fusarium",
+            "limit": "max",
+            "value": 0.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "other",
+            "limit": "max",
+            "value": 0.0,
+            "unit": "pct",
+            "raw_name": "Сажка всіх видів, ріжки"
+          },
+          {
+            "name": "other",
+            "limit": "max",
+            "value": 0.0,
+            "unit": "pct",
+            "raw_name": "Егілопс циліндричний"
+          },
+          {
+            "name": "grain_admixture",
+            "limit": "max",
+            "value": 10.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "other",
+            "limit": "max",
+            "value": 2.0,
+            "unit": "pct",
+            "raw_name": "Зерна пшениці незалежно від характеру пошкоджень"
+          }
+        ]
+      }
+    ],
+    "buyer": null
+  },
+  "evidence": {
+    "crop": "п. 1.1",
+    "quantity_t": "п. 3.1",
+    "tolerance": "п. 3.1 («за вибором Покупця» → buyer)",
+    "price": "п. 4.1 (ціна «разом» — з ПДВ)",
+    "basis": "п. 4.1, 5.1",
+    "delivery": "п. 5.1 (місце після «FCA –», назву постачальника приховано автором), 5.2",
+    "payment": "п. 6.1 (86% передоплати протягом 3 робочих днів від надання документів → after_documents, other, як own_005/007), 6.3–6.4",
+    "penalties": "п. 7.3 (неустойка покупця), 7.5 (штраф 30% і 25% річних за неповернення передоплати), 7.10 (3 USD/т за фумігаційні гази); 7.4 простій — без розміру, не санкція",
+    "quality": "п. 2.3: лабораторія в місці вивантаження за рахунок Покупця → other",
+    "buyer": "преамбула: назву покупця приховано автором → null",
+    "grades": "п. 1.1 («ячмінь фуражний, 3-го класу» → номер класу \"3\"), 4.1 (ціна «разом»), 2.1 (показники); «Егілопс циліндричний (Aegilops cylindrica)» → raw_name без дужок; «всі інші показники – відповідно до ДСТУ» і зараженість у п. 2.2 — не показники"
+  }
+}

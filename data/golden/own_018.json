@@ -1,0 +1,136 @@
+{
+  "id": "own_018",
+  "split": "test",
+  "source": "own",
+  "contract_no": "K2402-0278",
+  "text_path": "data/texts/own_018.txt",
+  "deal": {
+    "crop": "wheat",
+    "quantity_t": 2000.0,
+    "tolerance": {
+      "pct": 3.0,
+      "option": "seller"
+    },
+    "price": {
+      "currency": "UAH",
+      "vat_included": true
+    },
+    "basis": "DAT",
+    "delivery": {
+      "place": "ТОВ “Термінал , 67550, Україна, Одеська обл., Лиманський район, смт. Нові Біляри, вул. Морська, будинок 1, корпус А",
+      "date_from": "2024-02-07",
+      "date_to": "2024-02-20",
+      "period_raw": null
+    },
+    "payment": {
+      "days": 3,
+      "days_type": "other",
+      "trigger": "after_documents",
+      "vat_after_registration": true
+    },
+    "penalties": [
+      {
+        "payer": "buyer",
+        "trigger": "late_payment",
+        "amount": 2.0,
+        "unit": "nbu_rate_multiple",
+        "cap_pct": null
+      },
+      {
+        "payer": "seller",
+        "trigger": "late_delivery",
+        "amount": 2.0,
+        "unit": "nbu_rate_multiple",
+        "cap_pct": null
+      },
+      {
+        "payer": "seller",
+        "trigger": "under_delivery",
+        "amount": 30.0,
+        "unit": "one_time_pct",
+        "cap_pct": null
+      },
+      {
+        "payer": "seller",
+        "trigger": "other",
+        "amount": 3.0,
+        "unit": "other",
+        "cap_pct": null
+      }
+    ],
+    "quality": {
+      "lab": "other"
+    },
+    "grades": [
+      {
+        "grade": "4",
+        "amount_per_t": 6500.0,
+        "indicators": [
+          {
+            "name": "test_weight",
+            "limit": "min",
+            "value": 720.0,
+            "unit": "g_per_l",
+            "raw_name": null
+          },
+          {
+            "name": "moisture",
+            "limit": "max",
+            "value": 14.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "foreign_matter",
+            "limit": "max",
+            "value": 2.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "bug_damaged",
+            "limit": "max",
+            "value": 4.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "smut",
+            "limit": "max",
+            "value": 8.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "other",
+            "limit": "max",
+            "value": 0.0,
+            "unit": "pct",
+            "raw_name": "Сажка всіх видів, ріжки"
+          },
+          {
+            "name": "fusarium",
+            "limit": "max",
+            "value": 0.0,
+            "unit": "pct",
+            "raw_name": null
+          }
+        ]
+      }
+    ],
+    "buyer": null
+  },
+  "evidence": {
+    "crop": "п. 1.1 (рік урожаю не вказано — у схемі такого поля немає)",
+    "quantity_t": "п. 3.1 («2 000,000 метричних тонн» → 2000.0)",
+    "tolerance": "п. 3.1 («+/-3%, за вибором Постачальника» → seller)",
+    "price": "п. 4.1 (ціна «разом» — з ПДВ)",
+    "basis": "п. 4.1, 5.1",
+    "delivery": "п. 5.1 (назву терміналу частково приховано автором), 5.2",
+    "payment": "п. 6.1 (3 робочих дні після документів → other), 6.3–6.4",
+    "penalties": "п. 7.2 (пеня покупця), 7.3 (неустойка постачальника «подвійної облікової ставки НБУ … за кожен день» за несвоєчасну поставку → late_delivery), 7.4 (штраф 30%), 7.7 (3 USD/т за фумігаційні гази)",
+    "quality": "п. 2.3: лабораторія в пункті призначення → other",
+    "buyer": "преамбула: назву покупця приховано автором → null",
+    "grades": "п. 1.1 (клас), 4.1 (ціна «разом»), 2.1 (показники; зернової домішки в таблиці цього договору немає)"
+  }
+}

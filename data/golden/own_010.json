@@ -1,0 +1,101 @@
+{
+  "id": "own_010",
+  "split": "test",
+  "source": "own",
+  "contract_no": "FOB-2026/03",
+  "text_path": "data/texts/own_010.txt",
+  "deal": {
+    "crop": "barley",
+    "quantity_t": 25000.0,
+    "tolerance": {
+      "pct": 10.0,
+      "option": "seller"
+    },
+    "price": {
+      "currency": "USD",
+      "vat_included": false
+    },
+    "basis": "FOB",
+    "delivery": {
+      "place": "один безпечний глибоководний порт Великої Одеси (Одеса, Чорноморськ або Південний) за вибором Продавця",
+      "date_from": "2026-12-01",
+      "date_to": "2026-12-31",
+      "period_raw": null
+    },
+    "payment": {
+      "days": null,
+      "days_type": null,
+      "trigger": "after_documents",
+      "vat_after_registration": null
+    },
+    "penalties": [
+      {
+        "payer": "buyer",
+        "trigger": "other",
+        "amount": 0.05,
+        "unit": "pct_per_day",
+        "cap_pct": null
+      }
+    ],
+    "quality": {
+      "lab": "independent"
+    },
+    "grades": [
+      {
+        "grade": "фураж",
+        "amount_per_t": 205.0,
+        "indicators": [
+          {
+            "name": "moisture",
+            "limit": "max",
+            "value": 14.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "test_weight",
+            "limit": "min",
+            "value": 600.0,
+            "unit": "g_per_l",
+            "raw_name": null
+          },
+          {
+            "name": "grain_admixture",
+            "limit": "max",
+            "value": 5.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "foreign_matter",
+            "limit": "max",
+            "value": 3.0,
+            "unit": "pct",
+            "raw_name": null
+          },
+          {
+            "name": "other",
+            "limit": "max",
+            "value": 0.0,
+            "unit": "pct",
+            "raw_name": "Живі шкідники"
+          }
+        ]
+      }
+    ],
+    "buyer": "Alpine Commodities SA"
+  },
+  "evidence": {
+    "crop": "п. 1.1: ячмінь фуражний",
+    "quantity_t": "п. 1.2",
+    "tolerance": "п. 1.2: ±10% за вибором Продавця",
+    "price": "п. 4.1: 205,00 дол. США/т; ПДВ не згадано (експорт) → vat_included false",
+    "basis": "п. 3.1",
+    "delivery": "п. 3.1 (місце після FOB), 3.2 (період відвантаження)",
+    "payment": "п. 5.1: акредитив, платіж за пред'явлення документів → after_documents, днів немає; 7 банківських днів — строк відкриття акредитива, не оплати",
+    "penalties": "п. 5.3: пеня за несвоєчасне відкриття акредитива → trigger other; п. 7.1–7.2 — збитки без розміру, не санкції",
+    "quality": "п. 2.2: сертифікат незалежного інспектора, затвердженого Gafta → independent",
+    "buyer": "преамбула",
+    "grades": "п. 1.1 (фуражний → фураж), 4.1 (ціна), 2.1 (показники); «Живі шкідники — відсутні» → other max 0; «Запах і колір» — не показник"
+  }
+}

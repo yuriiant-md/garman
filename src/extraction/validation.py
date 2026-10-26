@@ -14,8 +14,9 @@ def require_every_key(node: object) -> object:
     if not isinstance(node, dict):
         return node
     copy = {key: require_every_key(value) for key, value in node.items()}
-    if "properties" in copy:
-        copy["required"] = list(copy["properties"])
+    properties = copy.get("properties")
+    if isinstance(properties, dict):
+        copy["required"] = list(properties)
     return copy
 
 

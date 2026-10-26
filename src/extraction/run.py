@@ -17,7 +17,7 @@ import sys
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, cast
 
 import anthropic
 import ollama
@@ -29,7 +29,7 @@ from src.extraction.metrics import RESULTS_DIR, cost_per_1000_docs, cost_usd
 from src.extraction.ollama_extractor import OllamaConfig, OllamaExtractor
 from src.extraction.openrouter_extractor import OpenRouterConfig, OpenRouterExtractor
 from src.extraction.prompts import Prompt, load_prompt
-from src.extraction.result import ExtractionResult, ExtractionStatus
+from src.extraction.result import ExtractionResult, ExtractionStatus, Record
 from src.extraction.sampling import DEFAULT_SAMPLING, Sampling, load_sampling
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -100,17 +100,20 @@ def run_extraction(
     sampling: Sampling,
     output: Path,
     started: datetime,
-) -> list[dict[str, object]]:
+) -> list[Record]:
     """Lines go to a .partial file as each document finishes; it becomes `output` only when the
     whole run succeeds, so the metrics never see half a run. Every line carries `run_at`."""
     output.parent.mkdir(parents=True, exist_ok=True)
     partial = output.with_name(output.name + PARTIAL_SUFFIX)
     run_at = started.isoformat(timespec="seconds")
-    records = []
+    records: list[Record] = []
     with partial.open("w", encoding="utf-8") as file:
         for path in paths:
             result = extractor.extract(path.read_text(encoding="utf-8"), prompt, sampling)
-            record = {"doc_id": path.stem, "run_at": run_at, **result.model_dump(mode="json")}
+            # model_dump is untyped; it holds exactly the ExtractionResult fields
+            record = cast(
+                Record, {"doc_id": path.stem, "run_at": run_at, **result.model_dump(mode="json")}
+            )
             print(f"{path.stem}: {result.status} in {result.latency_s:.1f} s")
             file.write(json.dumps(record, ensure_ascii=False) + "\n")
             file.flush()
@@ -120,7 +123,7 @@ def run_extraction(
 
 
 def summarize(
-    records: list[dict[str, object]], price_input: float, price_output: float
+    records: list[Record], price_input: float, price_output: float
 ) -> dict[str, object]:
     counts = Counter(record["status"] for record in records)
     input_tokens = sum(record["input_tokens"] for record in records)

@@ -8,21 +8,31 @@ mean the request itself is wrong (bad key, bad schema, unknown model) stop the r
 import json
 import time
 from dataclasses import dataclass
+from typing import Literal, TypedDict
 
 import anthropic
+from anthropic.types import (
+    MessageParam,
+    OutputConfigParam,
+    ToolParam,
+    ToolResultBlockParam,
+    ToolUseBlockParam,
+)
 
 from src.extraction.messages import user_message
 from src.extraction.prompts import Prompt
 from src.extraction.result import ExtractionResult, ExtractionStatus, make_result
 from src.extraction.retry import is_retryable
-from src.extraction.sampling import Sampling
+from src.extraction.sampling import Sampling, SamplingParams
 from src.extraction.validation import repair_request, validate_deal
 from src.schemas.deal import Deal
+
+type Effort = Literal["low", "medium", "high", "xhigh", "max"]  # OutputConfigParam.effort
 
 # A forced tool call instead of output_config.format: strict schemas compile into a grammar that
 # allows 24 optional and 16 nullable fields in total, and every Deal field is both (33 of each).
 # Without strict the schema guides the model but is not enforced, so validate_deal decides.
-DEAL_TOOL = {
+DEAL_TOOL: ToolParam = {
     "name": "record_deal",
     "description": "Record the deal terms found in the text; use null for terms it does not state.",
     "input_schema": Deal.model_json_schema(),
@@ -35,11 +45,17 @@ class AnthropicConfig:
     timeout_s: float
     max_retries: int
     max_tokens: int
-    effort: str | None = None  # output_config.effort, sent only when set: Haiku 4.5 rejects it
+    effort: Effort | None = None  # output_config.effort, sent only when set: Haiku 4.5 rejects it
     accepts_sampling: bool = True  # Haiku 5.5 rejects any temperature/top_p but the defaults
 
 
-def sampling_params(sampling: Sampling) -> dict[str, float]:
+class OutputArgs(TypedDict, total=False):
+    """output_config goes into the request only when an effort is set."""
+
+    output_config: OutputConfigParam
+
+
+def sampling_params(sampling: Sampling) -> SamplingParams:
     """Claude 4.x accepts temperature or top_p, not both; temperature wins when both are set."""
     if sampling.temperature is not None:
         return {"temperature": sampling.temperature}
@@ -63,7 +79,7 @@ def read_answer(response: anthropic.types.Message) -> tuple[str, Deal | None, st
     return raw, deal, error
 
 
-def fix_messages(response: anthropic.types.Message, error: str) -> list[dict[str, object]]:
+def fix_messages(response: anthropic.types.Message, error: str) -> list[MessageParam]:
     """The invalid answer and the request to fix it, to be appended to the conversation.
 
     A tool call must be answered by a tool_result, so the error goes back as a failed one.
@@ -76,8 +92,10 @@ def fix_messages(response: anthropic.types.Message, error: str) -> list[dict[str
             {"role": "assistant", "content": text or "(empty answer)"},
             {"role": "user", "content": request},
         ]
-    tool_use = {"type": "tool_use", "id": call.id, "name": call.name, "input": call.input}
-    tool_result = {
+    tool_use: ToolUseBlockParam = {
+        "type": "tool_use", "id": call.id, "name": call.name, "input": call.input
+    }
+    tool_result: ToolResultBlockParam = {
         "type": "tool_result",
         "tool_use_id": call.id,
         "is_error": True,
@@ -97,7 +115,7 @@ class AnthropicExtractor:
         )
 
     def extract(self, text: str, prompt: Prompt, sampling: Sampling) -> ExtractionResult:
-        params = sampling_params(sampling) if self.config.accepts_sampling else {}
+        params: SamplingParams = sampling_params(sampling) if self.config.accepts_sampling else {}
         started = time.perf_counter()
         try:
             responses = self._ask_with_one_fix(text, prompt, params)
@@ -117,9 +135,11 @@ class AnthropicExtractor:
         )
 
     def _ask(
-        self, prompt: Prompt, params: dict[str, float], messages: list[dict[str, object]]
+        self, prompt: Prompt, params: SamplingParams, messages: list[MessageParam]
     ) -> anthropic.types.Message:
-        effort = {"output_config": {"effort": self.config.effort}} if self.config.effort else {}
+        effort: OutputArgs = (
+            {"output_config": {"effort": self.config.effort}} if self.config.effort else {}
+        )
         return self._client.messages.create(
             model=self.config.model,
             max_tokens=self.config.max_tokens,
@@ -134,13 +154,13 @@ class AnthropicExtractor:
         )
 
     def _ask_with_one_fix(
-        self, text: str, prompt: Prompt, params: dict[str, float]
+        self, text: str, prompt: Prompt, params: SamplingParams
     ) -> list[anthropic.types.Message]:
         """The answers in order: one, or two when the first was invalid and was sent back."""
-        messages = [{"role": "user", "content": user_message(text)}]
+        messages: list[MessageParam] = [{"role": "user", "content": user_message(text)}]
         first = self._ask(prompt, params, messages)
-        _, deal, error = read_answer(first)
-        if deal is not None or first.stop_reason == "refusal":  # asking again will not help
+        _, _, error = read_answer(first)
+        if error is None or first.stop_reason == "refusal":  # asking again will not help
             return [first]
         fix = [*messages, *fix_messages(first, error)]
         return [first, self._ask(prompt, params, fix)]
@@ -150,7 +170,7 @@ class AnthropicExtractor:
         responses: list[anthropic.types.Message],
         prompt: Prompt,
         sampling: Sampling,
-        params: dict[str, float],
+        params: SamplingParams,
         started: float,
     ) -> ExtractionResult:
         response = responses[-1]

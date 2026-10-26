@@ -12,15 +12,17 @@ mean the request itself is wrong (bad key, rejected schema, unknown model) stop 
 import os
 import time
 from dataclasses import dataclass
+from typing import cast
 
 import openai
-from openai.types.chat import ChatCompletion
+from openai.types.chat import ChatCompletion, ChatCompletionMessageParam
+from openai.types.shared_params import ResponseFormatJSONSchema
 
 from src.extraction.messages import user_message
 from src.extraction.prompts import Prompt
 from src.extraction.result import ExtractionResult, ExtractionStatus, make_result
 from src.extraction.retry import is_retryable
-from src.extraction.sampling import Sampling, sampling_options
+from src.extraction.sampling import Sampling, SamplingParams, sampling_options
 from src.extraction.validation import repair_request, require_every_key, validate_deal
 from src.schemas.deal import Deal
 
@@ -43,8 +45,9 @@ def strict_schema(node: object) -> object:
     return copy
 
 
-DEAL_SCHEMA = strict_schema(require_every_key(Deal.model_json_schema()))
-RESPONSE_FORMAT = {
+# strict_schema and require_every_key turn a dict into a dict
+DEAL_SCHEMA = cast(dict[str, object], strict_schema(require_every_key(Deal.model_json_schema())))
+RESPONSE_FORMAT: ResponseFormatJSONSchema = {
     "type": "json_schema",
     "json_schema": {"name": "deal", "strict": True, "schema": DEAL_SCHEMA},
 }
@@ -84,7 +87,7 @@ class OpenRouterExtractor:
     def extract(self, text: str, prompt: Prompt, sampling: Sampling) -> ExtractionResult:
         params = sampling_options(sampling)  # OpenAI accepts temperature and top_p together
         started = time.perf_counter()
-        messages = [
+        messages: list[ChatCompletionMessageParam] = [
             {"role": "system", "content": prompt.text},
             {"role": "user", "content": user_message(text)},
         ]
@@ -105,7 +108,9 @@ class OpenRouterExtractor:
             error=error,
         )
 
-    def _ask(self, messages: list[dict[str, str]], params: dict[str, float]) -> ChatCompletion:
+    def _ask(
+        self, messages: list[ChatCompletionMessageParam], params: SamplingParams
+    ) -> ChatCompletion:
         return self._client.chat.completions.create(
             model=self.config.model,
             messages=messages,
@@ -116,14 +121,14 @@ class OpenRouterExtractor:
         )
 
     def _ask_with_one_fix(
-        self, messages: list[dict[str, str]], params: dict[str, float]
+        self, messages: list[ChatCompletionMessageParam], params: SamplingParams
     ) -> list[ChatCompletion]:
         """The answers in order: one, or two when the first was invalid and was sent back."""
         first = self._ask(messages, params)
-        raw, deal, error = read_answer(first)
-        if deal is not None:
+        raw, _, error = read_answer(first)
+        if error is None:
             return [first]
-        fix = [
+        fix: list[ChatCompletionMessageParam] = [
             *messages,
             {"role": "assistant", "content": raw},
             {"role": "user", "content": repair_request(error)},
@@ -135,7 +140,7 @@ class OpenRouterExtractor:
         responses: list[ChatCompletion],
         prompt: Prompt,
         sampling: Sampling,
-        params: dict[str, float],
+        params: SamplingParams,
         started: float,
     ) -> ExtractionResult:
         raw, deal, error = read_answer(responses[-1])
@@ -151,6 +156,13 @@ class OpenRouterExtractor:
             raw_output=raw,
             error=error,
             attempts=len(responses),
-            input_tokens=sum(r.usage.prompt_tokens for r in responses),
-            output_tokens=sum(r.usage.completion_tokens for r in responses),
+            input_tokens=sum(tokens(response)[0] for response in responses),
+            output_tokens=sum(tokens(response)[1] for response in responses),
         )
+
+
+def tokens(response: ChatCompletion) -> tuple[int, int]:
+    """Input and output tokens. OpenRouter may leave usage out: such an answer then counts as
+    free rather than stopping the whole run."""
+    usage = response.usage
+    return (0, 0) if usage is None else (usage.prompt_tokens, usage.completion_tokens)

@@ -20,7 +20,7 @@ Stage 1 grew in three steps. The first matrix compared Claude Haiku 4.5 with the
 | `make install` | installs the dependencies (`uv sync`) | no |
 | `make test` | unit tests on stub models: offline, a few seconds; they check the code, not the quality of the models | no |
 | `make smoke` | live quick check: 14 configurations on the first 2 texts of each source (6 texts), saved in `results/smoke/<start time>/`; about $1 and 20 minutes | yes |
-| `make run` | live full run: 14 configurations on all 48 texts, saved in `results/stage1_3/<start time>/` together with the two metrics tables; about $9 and 2.5 hours (estimate: 1.7× the text of the stage 1.2 run) | yes |
+| `make run` | live full run: 14 configurations on all 48 texts, saved in `results/stage1_3/<start time>/` together with the two metrics tables; about $12 and 3 hours (the paid models: $11.9 and ≈ 50 minutes in our stage 1.3 run; Qwen: about 2 hours more, estimated from stage 1.2) | yes |
 | `make metrics` | prints the metrics table of the latest saved folder in `results/stage1_3/`; calls no model and writes nothing | no |
 
 ### 1. Install
@@ -47,7 +47,7 @@ ollama pull qwen3:14b
 make run        # = uv run --env-file .env python main.py
 ```
 
-`make run` asks the models for every configuration of stage 1.3 on all 48 texts — 3 models (Claude Haiku 4.5, GPT-4o, Qwen3 14B) × 2 prompts × 2 samplings (`precise`, `varied`), plus Claude Haiku 5.5 × 2 prompts with the `default` sampling = 14 configurations. Haiku 5.5 rejects any temperature and top_p but its own, so it gets neither `precise` nor `varied`: `default` sends no sampling parameters at all. Nothing is cached: every run makes live API and Ollama calls. The full stage 1.2 run (12 configurations) cost $5 ($1.8 for Claude Haiku 4.5, $3.2 for GPT-4o) and took about 1.5 hours on an Apple Silicon Mac: 10 minutes for Claude, 6 for GPT-4o and 80 for Qwen; Haiku 5.5 adds about $0.11 and 3 minutes. The numbers differ a little from run to run: the paid models are not fully deterministic even at temperature 0, and prompt v2 contains the run date (`{today}`).
+`make run` asks the models for every configuration of stage 1.3 on all 48 texts — 3 models (Claude Haiku 4.5, GPT-4o, Qwen3 14B) × 2 prompts × 2 samplings (`precise`, `varied`), plus Claude Haiku 5.5 × 2 prompts with the `default` sampling = 14 configurations. Haiku 5.5 rejects any temperature and top_p but its own, so it gets neither `precise` nor `varied`: `default` sends no sampling parameters at all. Nothing is cached: every run makes live API and Ollama calls. The full stage 1.2 run (12 configurations) cost $5 ($1.8 for Claude Haiku 4.5, $3.2 for GPT-4o) and took about 1.5 hours on an Apple Silicon Mac: 10 minutes for Claude, 6 for GPT-4o and 80 for Qwen. The stage 1.3 run of the paid models (10 configurations on 48 texts, `main.py --models claude haiku55 gpt`) cost $11.9 ($4.1 for Claude Haiku 4.5, $0.19 for Claude Haiku 5.5, $7.7 for GPT-4o) and took about 50 minutes of requests: 23 for Haiku 4.5, 20 for GPT-4o, 6 for Haiku 5.5. The numbers differ a little from run to run: the paid models are not fully deterministic even at temperature 0, and prompt v2 contains the run date (`{today}`).
 
 To run only some models, name them with `--models`: `uv run --env-file .env python main.py --models claude haiku55 gpt` runs the 10 configurations of the paid models without Qwen, which takes most of the time. `--models` also works with `--per-source` (below).
 
@@ -65,7 +65,7 @@ For a quick check use `make smoke` (= `python main.py --per-source 2`): the same
 make metrics    # = uv run python -m src.extraction.metrics
 ```
 
-This only re-reads results that are already saved, so it needs neither an API key nor Ollama — it reproduces nothing by itself, the numbers come from step 3. It scores the saved runs of the latest folder in `results/stage1_3/` against the golden labels and prints the metrics table (nothing is written, so a saved table never changes afterwards). Pick another launch with `--results-dir <folder>`; add `--output <file> --by-field-output <file>` to write the tables. Our first stage 1.3 run, Claude Haiku 5.5 only, is in `results/stage1_3/2026-10-25T13-25-34/`.
+This only re-reads results that are already saved, so it needs neither an API key nor Ollama — it reproduces nothing by itself, the numbers come from step 3. It scores the saved runs of the latest folder in `results/stage1_3/` against the golden labels and prints the metrics table (nothing is written, so a saved table never changes afterwards). Pick another launch with `--results-dir <folder>`; add `--output <file> --by-field-output <file>` to write the tables. The full stage 1.3 run — 10 configurations of Claude Haiku 4.5, Claude Haiku 5.5 and GPT-4o, without the local model — is in `results/stage1_3/2026-10-26T16-10-58/` (`REPORT.md`, section 5); the first one, Claude Haiku 5.5 only, is in `results/stage1_3/2026-10-25T13-25-34/`.
 
 The earlier matrices were scored with the schema before grades. Their answers keep the price per tonne in `price` and the grade and quality limits in `quality`, fields the current schema no longer has, so the current code reads them as empty and counts them wrong. Re-read them with the code of the `stage-1` tag. Our stage 1.2 run is in `results/stage1_2/2026-10-24T18-41-35/`; the first matrix (Claude and Lapa, 8 configurations) is in `results/stage1/2026-10-23T11-46-35/` (`2026-10-23T10-56-10/` is an earlier run of 4 configurations with the `precise` sampling only):
 
@@ -126,7 +126,7 @@ The rules were written before the first run; the rules for grades and quality in
 | Prompts with a version header, ≥ 2 versions, `CHANGELOG` | `prompts/extract_v1.md`, `prompts/extract_v2.md`, `prompts/CHANGELOG.md` | done: v1 is the baseline, v2 is built from the v1 errors on dev |
 | Every answer is validated by the schema and by content checks (a late-payment penalty paid by the seller, more than 50 000 t — what a 5 000 ha farm can sell; a placeholder buyer becomes `null` without a fix); invalid → one fix attempt → `failed` | `src/extraction/validation.py` (the fix request), `checks.py` (content checks), `anthropic_extractor.py`, `openrouter_extractor.py` and `ollama_extractor.py` (the second call); tests — `tests/test_validation.py`, `tests/test_checks.py` and the extractor tests | done; the "Виправлено, %" column of the metrics table counts the answers saved by it |
 | Every result logs the model, prompt version and sampling | record fields — `src/extraction/result.py`; the records — `results/stage1_3/*/*.jsonl` (and `results/stage1_2/`, `results/stage1/`) | done |
-| `REPORT.md`: table, error analysis, production choice | `REPORT.md` (in Ukrainian) | done: Claude Haiku 4.5 + prompt v2 + `precise` |
+| `REPORT.md`: table, error analysis, production choice | `REPORT.md` (in Ukrainian) | done: Claude Haiku 5.5 + prompt v2 (stage 1.3; stage 1.2 chose Claude Haiku 4.5 + v2 + `precise`) |
 | One command to run: `make run` (= `python main.py`) | `Makefile`, `main.py` | done |
 
 ### Folders and files

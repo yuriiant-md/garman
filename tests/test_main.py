@@ -28,9 +28,9 @@ def test_every_configuration_runs_on_all_texts_into_one_folder_with_the_metrics(
     code = stage1.main([])
 
     assert code == 0
-    # Haiku 5.5 takes no sampling, so it runs once per prompt; the others run both samplings
-    assert len(runs) == 3 * len(stage1.PROMPTS) * len(stage1.SAMPLINGS) + len(stage1.PROMPTS)
-    haiku_55 = {option(argv, "--sampling") for argv in runs if option(argv, "--model") == "haiku55"}
+    # Haiku 5.5 takes no sampling, so it runs once per prompt; Haiku 4.5 and GPT-4o run both
+    assert len(runs) == 2 * len(stage1.PROMPTS) * len(stage1.SAMPLINGS) + len(stage1.PROMPTS)
+    haiku_55 = {option(argv, "--sampling") for argv in runs if option(argv, "--model") == "haiku-5.5"}
     assert haiku_55 == {stage1.DEFAULT_SAMPLING}
     assert all(argv[argv.index("--split") + 1] == "all" for argv in runs)
     assert all(argv[argv.index("--run-dir") + 1] == run_dir for argv in runs)
@@ -84,19 +84,19 @@ def test_a_configuration_that_cannot_run_is_reported_and_the_metrics_are_still_s
     monkeypatch, capsys
 ):
     tables: list[list[str]] = []
-    monkeypatch.setattr("src.extraction.run.main", lambda argv: 2 if "qwen" in argv else 0)
+    monkeypatch.setattr("src.extraction.run.main", lambda argv: 2 if "gpt-4o" in argv else 0)
     monkeypatch.setattr("src.extraction.metrics.main", lambda argv: tables.append(argv) or 0)
 
     code = stage1.main([])
 
     assert code == 1
     assert len(tables) == 1
-    assert "qwen" in capsys.readouterr().err
+    assert "gpt-4o" in capsys.readouterr().err
 
 
 def test_stage_one_three_adds_haiku_55_in_its_own_folder():
     # results/stage1_2/ keep the runs of the schema before grades; the new matrix must not mix
-    assert stage1.MODELS == ("claude", "haiku55", "gpt", "qwen")
+    assert stage1.MODELS == ("haiku-5.5", "haiku-4.5", "gpt-4o")  # the main model first
     assert stage1.RESULTS_DIR == stage1.ROOT / "results" / "stage1_3"
 
 
@@ -106,11 +106,11 @@ def test_models_option_runs_only_the_chosen_models(monkeypatch, tmp_path):
     monkeypatch.setattr("src.extraction.metrics.main", lambda argv: 0)
     monkeypatch.setattr("main.RESULTS_DIR", tmp_path)
 
-    code = stage1.main(["--models", "haiku55"])
+    code = stage1.main(["--models", "haiku-5.5"])
 
     assert code == 0
     assert [(option(argv, "--model"), option(argv, "--sampling")) for argv in runs] == [
-        ("haiku55", "default"), ("haiku55", "default")
+        ("haiku-5.5", "default"), ("haiku-5.5", "default")
     ]
     assert {Path(option(argv, "--prompt")).stem for argv in runs} == {"extract_v1", "extract_v2"}
 

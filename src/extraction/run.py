@@ -5,8 +5,7 @@ named with the model, the prompt version and the sampling, so earlier launches s
 Each line carries the same `run_at`.
 
     uv run --env-file .env python -m src.extraction.run --split dev
-    uv run --env-file .env python -m src.extraction.run --model gpt   # GPT-4o through OpenRouter
-    uv run python -m src.extraction.run --model qwen   # local model through Ollama, no API key
+    uv run --env-file .env python -m src.extraction.run --model gpt-4o   # GPT-4o through OpenRouter
 """
 
 import argparse
@@ -20,13 +19,11 @@ from pathlib import Path
 from typing import Protocol, cast
 
 import anthropic
-import ollama
 import openai
 import yaml
 
 from src.extraction.anthropic_extractor import AnthropicConfig, AnthropicExtractor
 from src.extraction.metrics import RESULTS_DIR, cost_per_1000_docs, cost_usd
-from src.extraction.ollama_extractor import OllamaConfig, OllamaExtractor
 from src.extraction.openrouter_extractor import OpenRouterConfig, OpenRouterExtractor
 from src.extraction.prompts import Prompt, load_prompt
 from src.extraction.result import ExtractionResult, ExtractionStatus, Record
@@ -38,19 +35,15 @@ MODELS_PATH = ROOT / "configs" / "models.yaml"
 DEFAULT_PROMPT = ROOT / "prompts" / "extract_v2.md"
 DEV_PREFIX = "synthetic_"  # dev = synthetic texts; everything else (golden set) is test
 SPLITS = ("dev", "test", "all")
+MAIN_MODEL = "haiku-5.5"  # the production choice, REPORT.md section 6
+# --model keys, named after their models; each is a section of models.yaml
+MODELS = (MAIN_MODEL, "haiku-4.5", "gpt-4o")
 API_KEY_VARIABLES = {  # --model -> key
-    "claude": "ANTHROPIC_API_KEY", "haiku55": "ANTHROPIC_API_KEY", "gpt": "OPENROUTER_API_KEY"
+    "haiku-5.5": "ANTHROPIC_API_KEY", "haiku-4.5": "ANTHROPIC_API_KEY", "gpt-4o": "OPENROUTER_API_KEY"
 }
+PRECISE_SAMPLING = "precise"  # without --sampling, for a model that takes temperature/top_p
 PARTIAL_SUFFIX = ".partial"
 RUN_STAMP_FORMAT = "%Y-%m-%dT%H-%M-%S"  # colons are not allowed in file names on some systems
-MODEL_SECTIONS = {  # --model -> section of models.yaml
-    "claude": "anthropic",
-    "haiku55": "haiku55",
-    "gpt": "openrouter",
-    "lapa": "ollama",
-    "qwen": "qwen",
-}
-LOCAL_MODELS = ("lapa", "qwen")  # served by Ollama, so they need no API key
 
 
 class Extractor(Protocol):
@@ -138,7 +131,7 @@ def summarize(
     }
 
 
-def load_anthropic_config(path: Path = MODELS_PATH, section: str = "anthropic") -> AnthropicConfig:
+def load_anthropic_config(path: Path = MODELS_PATH, section: str = MAIN_MODEL) -> AnthropicConfig:
     values = yaml.safe_load(path.read_text(encoding="utf-8"))[section]
     return AnthropicConfig(
         model=values["model"],
@@ -152,22 +145,18 @@ def load_anthropic_config(path: Path = MODELS_PATH, section: str = "anthropic") 
 
 def takes_sampling(model: str, path: Path = MODELS_PATH) -> bool:
     """False for a model that rejects temperature/top_p: it runs with the default sampling only."""
-    values = yaml.safe_load(path.read_text(encoding="utf-8"))[MODEL_SECTIONS[model]]
+    values = yaml.safe_load(path.read_text(encoding="utf-8"))[model]
     return bool(values.get("sampling", True))
 
 
-def load_ollama_config(path: Path = MODELS_PATH, section: str = "ollama") -> OllamaConfig:
-    values = yaml.safe_load(path.read_text(encoding="utf-8"))[section]
-    return OllamaConfig(
-        model=values["model"],
-        timeout_s=float(values["timeout_s"]),
-        num_ctx=int(values["num_ctx"]),
-        think=values.get("think"),
-    )
+def default_sampling(model: str) -> str:
+    """Without --sampling: precise (as good as varied in REPORT.md, and reproducible) for a model
+    that takes temperature/top_p, the default sampling for one that rejects them."""
+    return PRECISE_SAMPLING if takes_sampling(model) else DEFAULT_SAMPLING
 
 
 def load_openrouter_config(path: Path = MODELS_PATH) -> OpenRouterConfig:
-    values = yaml.safe_load(path.read_text(encoding="utf-8"))["openrouter"]
+    values = yaml.safe_load(path.read_text(encoding="utf-8"))["gpt-4o"]
     return OpenRouterConfig(
         model=values["model"],
         timeout_s=float(values["timeout_s"]),
@@ -176,39 +165,39 @@ def load_openrouter_config(path: Path = MODELS_PATH) -> OpenRouterConfig:
     )
 
 
-def load_prices(path: Path = MODELS_PATH, section: str = "anthropic") -> tuple[float, float]:
+def load_prices(path: Path = MODELS_PATH, section: str = MAIN_MODEL) -> tuple[float, float]:
     values = yaml.safe_load(path.read_text(encoding="utf-8"))[section]
     return float(values["price_input_per_mtok"]), float(values["price_output_per_mtok"])
 
 
 def configured_model(model: str) -> str:
     """The model id from configs/models.yaml for a --model choice; it names the results file."""
-    if model in LOCAL_MODELS:
-        return load_ollama_config(section=MODEL_SECTIONS[model]).model
-    if model == "gpt":
+    if model == "gpt-4o":
         return load_openrouter_config().model
-    return load_anthropic_config(section=MODEL_SECTIONS[model]).model
+    return load_anthropic_config(section=model).model
 
 
 def build_extractor(model: str) -> Extractor:
     """Built only when some document needs the model: API clients require their keys."""
-    if model in LOCAL_MODELS:
-        return OllamaExtractor(load_ollama_config(section=MODEL_SECTIONS[model]))
-    if model == "gpt":
+    if model == "gpt-4o":
         return OpenRouterExtractor(load_openrouter_config())
-    return AnthropicExtractor(load_anthropic_config(section=MODEL_SECTIONS[model]))
+    return AnthropicExtractor(load_anthropic_config(section=model))
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Extract Deal JSON from stage-1 texts.")
-    parser.add_argument("--model", choices=tuple(MODEL_SECTIONS), default="claude")
+    parser.add_argument("--model", choices=MODELS, default=MAIN_MODEL)
     parser.add_argument("--split", choices=SPLITS, default="dev")
     parser.add_argument(
         "--per-source", type=int, help="Only the first N texts of each source (a quick check)."
     )
     parser.add_argument("--texts-dir", type=Path, default=TEXTS_DIR)
     parser.add_argument("--prompt", type=Path, default=DEFAULT_PROMPT)
-    parser.add_argument("--sampling", default="precise", help="Name from configs/sampling.yaml.")
+    parser.add_argument(
+        "--sampling",
+        help=f"Name from configs/sampling.yaml; default: {PRECISE_SAMPLING}, or "
+        f"{DEFAULT_SAMPLING} for a model that rejects temperature and top_p.",
+    )
     parser.add_argument(
         "--run-dir", type=Path, help="Folder for the run; default: a new one named with the time."
     )
@@ -222,7 +211,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"No {args.split} texts in {args.texts_dir}; see data/README.md.", file=sys.stderr)
         return 2
     try:
-        sampling = load_sampling(args.sampling)
+        sampling = load_sampling(args.sampling or default_sampling(args.model))
     except KeyError as error:
         print(error.args[0], file=sys.stderr)
         return 2
@@ -249,14 +238,7 @@ def main(argv: list[str] | None = None) -> int:
     except (anthropic.AnthropicError, openai.OpenAIError) as error:
         print(f"Stopped: {error}", file=sys.stderr)
         return 1
-    except ConnectionError as error:
-        print(f"Stopped: Ollama is not reachable ({error}); start it with `ollama serve`.",
-              file=sys.stderr)
-        return 1
-    except ollama.ResponseError as error:
-        print(f"Stopped: Ollama error {error.status_code}: {error.error}", file=sys.stderr)
-        return 1
-    summary = summarize(records, *load_prices(section=MODEL_SECTIONS[args.model]))
+    summary = summarize(records, *load_prices(section=args.model))
     shown = output.relative_to(ROOT) if output.is_relative_to(ROOT) else output  # --run-dir /tmp/x
     print(f"Saved {len(records)} results to {shown}")
     print(json.dumps(summary, indent=2))

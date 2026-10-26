@@ -33,8 +33,8 @@ class SamplingParams(TypedDict, total=False):
 
 
 def sampling_options(sampling: Sampling) -> SamplingParams:
-    """The values that are set, both as configured: for Ollama and OpenAI, which accept
-    temperature and top_p together (Claude takes one of them, see anthropic_extractor)."""
+    """The values that are set, both as configured: for OpenAI, which accepts temperature and
+    top_p together (Claude takes one of them, see anthropic_extractor)."""
     values = {"temperature": sampling.temperature, "top_p": sampling.top_p}
     kept = {name: value for name, value in values.items() if value is not None}
     return cast(SamplingParams, kept)  # the keys above are exactly those of SamplingParams

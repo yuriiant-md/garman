@@ -127,13 +127,15 @@ def test_golden_sources_get_their_own_rows_and_one_row_for_all_of_them():
 
 
 def test_all_row_is_per_configuration():
-    records = [record("own_001"), record("prozorro_001"), record("prozorro_001", model="lapa")]
+    records = [
+        record("own_001"), record("prozorro_001"), record("prozorro_001", model="openai/gpt-4o")
+    ]
 
     rows = compute_metrics(records, REFERENCES, PRICES)
 
-    # lapa ran only on Prozorro, so it gets no `all` row of its own
+    # GPT-4o ran only on Prozorro, so it gets no `all` row of its own
     assert [(row.model, row.source) for row in rows] == [
-        ("claude-haiku-4-5", "prozorro"), ("lapa", "prozorro"),
+        ("claude-haiku-4-5", "prozorro"), ("openai/gpt-4o", "prozorro"),
         ("claude-haiku-4-5", "own"), ("claude-haiku-4-5", "all"),
     ]
 
@@ -278,7 +280,7 @@ def test_price_table_maps_model_ids_from_the_config_to_prices():
     prices = load_price_table(ROOT / "configs" / "models.yaml")
 
     assert prices["claude-haiku-4-5"] == (1.0, 5.0)
-    assert prices["lapa-v0.1.2-q4km"] == (0.0, 0.0)
+    assert prices["claude-haiku-5-5"] == (0.1, 0.5)
 
 
 def test_table_shows_interval_and_a_dash_for_missing_values():

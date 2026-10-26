@@ -4,23 +4,23 @@ English · [Українська](README.uk.md)
 
 A Telegram bot for farmers: it extracts the terms of a grain trader's contract, finds risks with a reference to the contract clause or the law, and helps compare offers. This is a course project that grows in stages; stage 1 is ready for review: extracting deal terms from "dirty" texts and comparing paid models with a local one.
 
-Stage 1 grew in three steps. The first matrix compared Claude Haiku 4.5 with the local Lapa 12B; Lapa got about 27% accuracy on filled fields of the real contracts, so stage 1.2 replaced it with Qwen3 14B and added GPT-4o through OpenRouter as a second paid model. Stage 1.3 changed the schema: a contract may name several grades, each with its own price per tonne and its own quality limits (test weight, gluten, falling number, …), and added Claude Haiku 5.5 as a fourth model. `make run` now runs the stage 1.3 matrix into `results/stage1_3/`. The earlier matrices stay in `results/stage1/` and `results/stage1_2/`; they were scored with the schema before grades, so they are re-read with the code of the `stage-1` tag (step 4).
+Stage 1 grew in three steps. The first matrix compared Claude Haiku 4.5 with the local Lapa 12B; Lapa got about 27% accuracy on filled fields of the real contracts, so stage 1.2 replaced it with Qwen3 14B and added GPT-4o through OpenRouter as a second paid model. Stage 1.3 changed the schema: a contract may name several grades, each with its own price per tonne and its own quality limits (test weight, gluten, falling number, …), and added Claude Haiku 5.5, which became the main model (`REPORT.md`, section 6). Since stage 1.3 the code has no local model: the course no longer requires one, and the local runs stay in `results/` as history. `make run` now runs the stage 1.3 matrix into `results/stage1_3/`. The earlier matrices stay in `results/stage1/` and `results/stage1_2/`; they were scored with the schema before grades, so they are re-read with the code of the `stage-1` tag (step 4).
 
 ## Reproduce stage 1
 
 ### Requirements
 
 - macOS or Linux with `make` and [uv](https://docs.astral.sh/uv/getting-started/installation/). uv installs Python 3.14 by itself on the first `make install`.
-- To reproduce our numbers (step 3) you **need** an Anthropic API key for Claude Haiku 4.5 and 5.5, an [OpenRouter](https://openrouter.ai) API key for GPT-4o and [Ollama](https://ollama.com) with Qwen3 14B (a 9.3 GB download, about 12 GB of free memory while it runs). Without them only steps 1, 2 and 4 work: install, unit tests and viewing saved runs.
+- To reproduce our numbers (step 3) you **need** an Anthropic API key for Claude Haiku 5.5 and 4.5 and an [OpenRouter](https://openrouter.ai) API key for GPT-4o. Without them only steps 1, 2 and 4 work: install, unit tests and viewing saved runs.
 
 ### Make commands
 
-| Command | What it does | Needs key and Ollama |
+| Command | What it does | Needs a key |
 | --- | --- | --- |
 | `make install` | installs the dependencies (`uv sync`) | no |
 | `make test` | unit tests on stub models: offline, a few seconds; they check the code, not the quality of the models | no |
-| `make smoke` | live quick check: 14 configurations on the first 2 texts of each source (6 texts), saved in `results/smoke/<start time>/`; about $1 and 20 minutes | yes |
-| `make run` | live full run: 14 configurations on all 48 texts, saved in `results/stage1_3/<start time>/` together with the two metrics tables; about $12 and 3 hours (the paid models: $11.9 and ≈ 50 minutes in our stage 1.3 run; Qwen: about 2 hours more, estimated from stage 1.2) | yes |
+| `make smoke` | live quick check: 10 configurations on the first 2 texts of each source (6 texts), saved in `results/smoke/<start time>/`; about $1.6 and 8 minutes | yes |
+| `make run` | live full run: 10 configurations on all 48 texts, saved in `results/stage1_3/<start time>/` together with the two metrics tables; about $12 and 50 minutes of requests (our stage 1.3 run: $11.9) | yes |
 | `make metrics` | prints the metrics table of the latest saved folder in `results/stage1_3/`; calls no model and writes nothing | no |
 
 ### 1. Install
@@ -37,27 +37,26 @@ make install    # = uv sync
 make test       # = uv run pytest -q
 ```
 
-The tests run offline in a few seconds on stub models: no API key, no Ollama, no network. They check the code (parsing, validation, the fix attempt, the metrics arithmetic), not the quality of the models — the numbers come from step 3.
+The tests run offline in a few seconds on stub models: no API key, no network. They check the code (parsing, validation, the fix attempt, the metrics arithmetic), not the quality of the models — the numbers come from step 3.
 
 ### 3. Run stage 1
 
 ```bash
 cp .env.example .env    # put your keys in it: ANTHROPIC_API_KEY=... and OPENROUTER_API_KEY=...
-ollama pull qwen3:14b
 make run        # = uv run --env-file .env python main.py
 ```
 
-`make run` asks the models for every configuration of stage 1.3 on all 48 texts — 3 models (Claude Haiku 4.5, GPT-4o, Qwen3 14B) × 2 prompts × 2 samplings (`precise`, `varied`), plus Claude Haiku 5.5 × 2 prompts with the `default` sampling = 14 configurations. Haiku 5.5 rejects any temperature and top_p but its own, so it gets neither `precise` nor `varied`: `default` sends no sampling parameters at all. Nothing is cached: every run makes live API and Ollama calls. The full stage 1.2 run (12 configurations) cost $5 ($1.8 for Claude Haiku 4.5, $3.2 for GPT-4o) and took about 1.5 hours on an Apple Silicon Mac: 10 minutes for Claude, 6 for GPT-4o and 80 for Qwen. The stage 1.3 run of the paid models (10 configurations on 48 texts, `main.py --models claude haiku55 gpt`) cost $11.9 ($4.1 for Claude Haiku 4.5, $0.19 for Claude Haiku 5.5, $7.7 for GPT-4o) and took about 50 minutes of requests: 23 for Haiku 4.5, 20 for GPT-4o, 6 for Haiku 5.5. The numbers differ a little from run to run: the paid models are not fully deterministic even at temperature 0, and prompt v2 contains the run date (`{today}`).
+`make run` asks the models for every configuration of stage 1.3 on all 48 texts — the main model Claude Haiku 5.5 × 2 prompts with the `default` sampling, plus the two models it is compared with (Claude Haiku 4.5, GPT-4o) × 2 prompts × 2 samplings (`precise`, `varied`) = 10 configurations. Haiku 5.5 rejects any temperature and top_p but its own, so it gets neither `precise` nor `varied`: `default` sends no sampling parameters at all. Nothing is cached: every run makes live API calls. The full stage 1.2 run (12 configurations) cost $5 ($1.8 for Claude Haiku 4.5, $3.2 for GPT-4o) and took about 1.5 hours on an Apple Silicon Mac: 10 minutes for Claude, 6 for GPT-4o and 80 for Qwen. The stage 1.3 run (the same 10 configurations on 48 texts) cost $11.9 ($4.1 for Claude Haiku 4.5, $0.19 for Claude Haiku 5.5, $7.7 for GPT-4o) and took about 50 minutes of requests: 23 for Haiku 4.5, 20 for GPT-4o, 6 for Haiku 5.5. The numbers differ a little from run to run: the paid models are not fully deterministic even at temperature 0, and prompt v2 contains the run date (`{today}`).
 
-To run only some models, name them with `--models`: `uv run --env-file .env python main.py --models claude haiku55 gpt` runs the 10 configurations of the paid models without Qwen, which takes most of the time. `--models` also works with `--per-source` (below).
+To run only some models, name them with `--models`; the keys name the models: `haiku-5.5` (the main one), `haiku-4.5`, `gpt-4o`. `uv run --env-file .env python main.py --models haiku-5.5` runs only the main model: 2 configurations, about $0.2 and 6 minutes. `--models` also works with `--per-source` (below).
 
 GPT-4o gets the schema as strict structured output (`response_format` with `strict: true`), so it cannot answer outside it; both Claude models get it as a forced tool call, which the API does not compile strictly for a schema of this size. OpenAI has deprecated GPT-4o, so it is a reference point here, not a candidate for production.
 
 Each launch is saved to a new folder named with its start time, e.g. `results/stage1_3/2026-10-27T14-05-33/`. It holds one file per configuration, named with the model, the prompt version and the sampling (`claude-haiku-4-5__v2__precise.jsonl`, `claude-haiku-5-5__v2__default.jsonl`, `openai_gpt-4o__v2__precise.jsonl`; every line also carries `run_at`), and the two tables built from them: `metrics.md` and `metrics_by_field.md` (accuracy, fabricated values and extra list items per field and configuration, on the test golden set). Earlier folders are never touched, so launches can be compared folder by folder.
 
-A configuration whose model is needed but missing (no key in `.env`, Ollama not running) is skipped with the reason; the others still run, and `make run` ends with exit code 1 and the list of what it did not finish.
+A configuration whose model is needed but missing (no key in `.env`) is skipped with the reason; the others still run, and `make run` ends with exit code 1 and the list of what it did not finish.
 
-For a quick check use `make smoke` (= `python main.py --per-source 2`): the same 14 configurations on the first 2 texts of each source (6 texts), about $1 and 20 minutes, most of it Qwen. It saves into `results/smoke/<start time>/`, which git ignores and `make metrics` does not read. The numbers of 6 texts prove nothing — it only shows that everything works together. Run it before the full run to see that your keys, Ollama and the whole chain work.
+For a quick check use `make smoke` (= `python main.py --per-source 2`): the same 10 configurations on the first 2 texts of each source (6 texts), about $1.6 and 8 minutes. It saves into `results/smoke/<start time>/`, which git ignores and `make metrics` does not read. The numbers of 6 texts prove nothing — it only shows that everything works together. Run it before the full run to see that your keys and the whole chain work.
 
 ### 4. View saved runs
 
@@ -65,7 +64,7 @@ For a quick check use `make smoke` (= `python main.py --per-source 2`): the same
 make metrics    # = uv run python -m src.extraction.metrics
 ```
 
-This only re-reads results that are already saved, so it needs neither an API key nor Ollama — it reproduces nothing by itself, the numbers come from step 3. It scores the saved runs of the latest folder in `results/stage1_3/` against the golden labels and prints the metrics table (nothing is written, so a saved table never changes afterwards). Pick another launch with `--results-dir <folder>`; add `--output <file> --by-field-output <file>` to write the tables. The full stage 1.3 run — 10 configurations of Claude Haiku 4.5, Claude Haiku 5.5 and GPT-4o, without the local model — is in `results/stage1_3/2026-10-26T16-10-58/` (`REPORT.md`, section 5); the first one, Claude Haiku 5.5 only, is in `results/stage1_3/2026-10-25T13-25-34/`.
+This only re-reads results that are already saved, so it needs no API key — it reproduces nothing by itself, the numbers come from step 3. It scores the saved runs of the latest folder in `results/stage1_3/` against the golden labels and prints the metrics table (nothing is written, so a saved table never changes afterwards). Pick another launch with `--results-dir <folder>`; add `--output <file> --by-field-output <file>` to write the tables. The full stage 1.3 run — 10 configurations of Claude Haiku 4.5, Claude Haiku 5.5 and GPT-4o, without the local model — is in `results/stage1_3/2026-10-26T16-10-58/` (`REPORT.md`, section 5); the first one, Claude Haiku 5.5 only, is in `results/stage1_3/2026-10-25T13-25-34/`.
 
 The earlier matrices were scored with the schema before grades. Their answers keep the price per tonne in `price` and the grade and quality limits in `quality`, fields the current schema no longer has, so the current code reads them as empty and counts them wrong. Re-read them with the code of the `stage-1` tag. Our stage 1.2 run is in `results/stage1_2/2026-10-24T18-41-35/`; the first matrix (Claude and Lapa, 8 configurations) is in `results/stage1/2026-10-23T11-46-35/` (`2026-10-23T10-56-10/` is an earlier run of 4 configurations with the `precise` sampling only):
 
@@ -78,15 +77,15 @@ git checkout main    # back to the current code
 ### Separate commands
 
 ```bash
-uv run --env-file .env python -m src.extraction.run --split all                 # one configuration: Claude, prompt v2, precise
-uv run --env-file .env python -m src.extraction.run --model gpt --split all     # GPT-4o, prompt v2, precise
-uv run --env-file .env python -m src.extraction.run --model haiku55 --sampling default --split all   # Haiku 5.5, prompt v2
-uv run python -m src.extraction.run --model qwen --prompt prompts/extract_v1.md   # Qwen, prompt v1, dev texts
+uv run --env-file .env python -m src.extraction.run --split all                  # one configuration: the main model Haiku 5.5, prompt v2
+uv run --env-file .env python -m src.extraction.run --model gpt-4o --split all   # GPT-4o, prompt v2, precise
+uv run --env-file .env python -m src.extraction.run --model haiku-4.5 --sampling varied --split all   # Haiku 4.5, prompt v2, varied
+uv run --env-file .env python -m src.extraction.run --model haiku-4.5 --prompt prompts/extract_v1.md   # Haiku 4.5, prompt v1, precise, dev texts
 uv run python -m src.extraction.metrics                                          # the metrics table only (= make metrics)
 uv run python -m scripts.check_golden                                            # validate the golden labels
 ```
 
-`--split` is `dev` (synthetic texts), `test` (golden set) or `all`; `--sampling` is a name from `configs/sampling.yaml` (Haiku 5.5 takes only `default`). Every run is saved to a new file; none is reused.
+`--model` is `haiku-5.5` (the default), `haiku-4.5` or `gpt-4o`; `--split` is `dev` (synthetic texts), `test` (golden set) or `all`; `--sampling` is a name from `configs/sampling.yaml`, by default `precise`, or `default` for Haiku 5.5, which takes no other. Every run is saved to a new file; none is reused.
 
 Building the golden set from Prozorro contracts (details in `data/README.md`):
 
@@ -120,11 +119,11 @@ The rules were written before the first run; the rules for grades and quality in
 | 10 hand-labelled texts (golden set) | `data/golden/`: `prozorro_001–010.json` and `own_001–018.json`, labelling rules — `data/golden/RULES.md` | done: all 28 checked and approved by the author |
 | Schema: ≥ 6 fields, ≥ 1 enum, a nested object or a list | `src/schemas/deal.py` (11 fields, 12 enums, 5 nested objects, the lists `penalties` and `grades`, each grade with its own list of quality indicators), tests — `tests/test_deal.py` | done |
 | Provider model through an API with structured output, retry and timeout | `src/extraction/anthropic_extractor.py` (Claude Haiku 4.5 and 5.5: the schema as a forced tool call), `src/extraction/openrouter_extractor.py` (GPT-4o: strict structured output), settings — `configs/models.yaml` | done |
-| Local model through a shared interface | `src/extraction/ollama_extractor.py` (Qwen3 14B; Lapa 12B in the first matrix); the `Extractor` interface — `src/extraction/run.py` | done |
+| Local model through a shared interface | stage 1: `src/extraction/ollama_extractor.py` in tag `stage-1` (Qwen3 14B; Lapa 12B in the first matrix), its runs in `results/stage1_2/` and `results/stage1/`; the `Extractor` interface — `src/extraction/run.py` | done in stage 1; since stage 1.3 the code has no local model — the course no longer requires one |
 | temperature and top_p in a config, ≥ 2 configurations | `configs/sampling.yaml` (`precise`, `varied`; `default` sends none) | done: both samplings run in every `make run` for the models that accept them; Haiku 5.5 rejects them and runs `default` only |
 | Metrics: per-field accuracy, % valid, p50/p95 latency, cost per 1000 documents | `src/extraction/metrics.py` (table), `src/extraction/scoring.py` (comparison with the golden deal); tests — `tests/test_metrics.py`, `tests/test_scoring.py` | done; numbers — `results/stage1_3/<start time>/metrics.md` and `metrics_by_field.md` |
 | Prompts with a version header, ≥ 2 versions, `CHANGELOG` | `prompts/extract_v1.md`, `prompts/extract_v2.md`, `prompts/CHANGELOG.md` | done: v1 is the baseline, v2 is built from the v1 errors on dev |
-| Every answer is validated by the schema and by content checks (a late-payment penalty paid by the seller, more than 50 000 t — what a 5 000 ha farm can sell; a placeholder buyer becomes `null` without a fix); invalid → one fix attempt → `failed` | `src/extraction/validation.py` (the fix request), `checks.py` (content checks), `anthropic_extractor.py`, `openrouter_extractor.py` and `ollama_extractor.py` (the second call); tests — `tests/test_validation.py`, `tests/test_checks.py` and the extractor tests | done; the "Виправлено, %" column of the metrics table counts the answers saved by it |
+| Every answer is validated by the schema and by content checks (a late-payment penalty paid by the seller, more than 50 000 t — what a 5 000 ha farm can sell; a placeholder buyer becomes `null` without a fix); invalid → one fix attempt → `failed` | `src/extraction/validation.py` (the fix request), `checks.py` (content checks), `anthropic_extractor.py` and `openrouter_extractor.py` (the second call); tests — `tests/test_validation.py`, `tests/test_checks.py` and the extractor tests | done; the "Виправлено, %" column of the metrics table counts the answers saved by it |
 | Every result logs the model, prompt version and sampling | record fields — `src/extraction/result.py`; the records — `results/stage1_3/*/*.jsonl` (and `results/stage1_2/`, `results/stage1/`) | done |
 | `REPORT.md`: table, error analysis, production choice | `REPORT.md` (in Ukrainian) | done: Claude Haiku 5.5 + prompt v2 (stage 1.3; stage 1.2 chose Claude Haiku 4.5 + v2 + `precise`) |
 | One command to run: `make run` (= `python main.py`) | `Makefile`, `main.py` | done |
@@ -154,7 +153,6 @@ src/schemas/
 src/extraction/
   anthropic_extractor.py   Claude Haiku 4.5 and 5.5 through the Anthropic API
   openrouter_extractor.py  GPT-4o through OpenRouter (OpenAI SDK)
-  ollama_extractor.py      local models through Ollama: Qwen3 14B (Lapa 12B in the first matrix)
   run.py                   the shared Extractor interface, one configuration, one saved run
   messages.py              the same user message with the document for both models
   prompts.py               reads a prompt with its version and file hash

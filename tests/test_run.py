@@ -15,7 +15,6 @@ from src.extraction.run import (
     build_extractor,
     configured_model,
     load_anthropic_config,
-    load_ollama_config,
     load_openrouter_config,
     load_prices,
     main,
@@ -170,36 +169,25 @@ def test_cost_per_1000_docs_ignores_error_results_without_tokens():
 
 
 def test_project_configs_load_the_provider_and_both_samplings():
-    config = load_anthropic_config(ROOT / "configs" / "models.yaml")
+    config = load_anthropic_config(ROOT / "configs" / "models.yaml", section="haiku-4.5")
 
     assert config.model == "claude-haiku-4-5"
     assert config.timeout_s > 0 and config.max_retries >= 1
-    assert load_prices(ROOT / "configs" / "models.yaml") == (1.0, 5.0)
+    assert load_prices(ROOT / "configs" / "models.yaml", section="haiku-4.5") == (1.0, 5.0)
     assert load_sampling("precise").temperature == 0
     assert load_sampling("varied").temperature > 0
 
 
-def test_project_configs_load_the_local_model_without_token_prices():
-    config = load_ollama_config(ROOT / "configs" / "models.yaml")
-
-    assert config.model == "lapa-v0.1.2-q4km"
-    assert config.timeout_s > 0 and config.num_ctx >= 8192
-    assert load_prices(ROOT / "configs" / "models.yaml", section="ollama") == (0.0, 0.0)
-
-
-def test_project_configs_load_qwen_with_thinking_off_and_a_context_for_long_contracts():
+def test_local_models_are_no_longer_offered():
+    # Lapa and Qwen ran in stages 1.1 and 1.2: their answers stay in results/, their code in tag stage-1
     path = ROOT / "configs" / "models.yaml"
 
-    config = load_ollama_config(path, section="qwen")
-
-    assert config.model == "qwen3:14b"
-    assert config.think is False
-    assert config.num_ctx >= 16384  # own_005 alone is about 16k tokens
-    assert load_prices(path, section="qwen") == (0.0, 0.0)
-
-
-def test_lapa_config_does_not_send_think():
-    assert load_ollama_config(ROOT / "configs" / "models.yaml").think is None
+    for model in ("lapa", "qwen"):
+        with pytest.raises(SystemExit):
+            parse_args(["--model", model])
+    for section in ("ollama", "qwen"):
+        with pytest.raises(KeyError):
+            load_prices(path, section=section)
 
 
 def test_project_configs_load_gpt_through_openrouter_with_its_token_prices():
@@ -209,14 +197,15 @@ def test_project_configs_load_gpt_through_openrouter_with_its_token_prices():
 
     assert config.model == "openai/gpt-4o"
     assert config.timeout_s > 0 and config.max_retries >= 1 and config.max_tokens > 0
-    assert load_prices(path, section="openrouter") == (2.5, 10.0)
+    assert load_prices(path, section="gpt-4o") == (2.5, 10.0)
 
 
 def test_results_are_named_after_the_chosen_model():
-    assert configured_model("qwen") == "qwen3:14b"
-    assert configured_model("lapa") == "lapa-v0.1.2-q4km"
-    assert configured_model("claude") == "claude-haiku-4-5"
-    assert configured_model("gpt") == "openai/gpt-4o"
+    # the --model keys name the models, so one cannot be taken for another
+    assert run.MODELS == ("haiku-5.5", "haiku-4.5", "gpt-4o")
+    assert configured_model("haiku-5.5") == "claude-haiku-5-5"
+    assert configured_model("haiku-4.5") == "claude-haiku-4-5"
+    assert configured_model("gpt-4o") == "openai/gpt-4o"
 
 
 def test_a_slash_in_the_model_id_does_not_open_a_subfolder(tmp_path):
@@ -229,31 +218,39 @@ def test_a_slash_in_the_model_id_does_not_open_a_subfolder(tmp_path):
 def test_gpt_is_built_as_the_openrouter_extractor(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
 
-    assert isinstance(build_extractor("gpt"), OpenRouterExtractor)
+    assert isinstance(build_extractor("gpt-4o"), OpenRouterExtractor)
 
 
 def test_project_configs_load_haiku_55_with_its_effort_and_without_sampling():
     path = ROOT / "configs" / "models.yaml"
 
-    config = load_anthropic_config(path, section="haiku55")
+    config = load_anthropic_config(path, section="haiku-5.5")
 
     assert config == AnthropicConfig(
         model="claude-haiku-5-5", timeout_s=60, max_retries=3, max_tokens=8192,
         effort="medium", accepts_sampling=False,
     )
-    assert load_prices(path, section="haiku55") == (0.1, 0.5)
-    assert load_anthropic_config(path).accepts_sampling  # Haiku 4.5 keeps precise and varied
-    assert load_anthropic_config(path).effort is None
+    assert load_prices(path, section="haiku-5.5") == (0.1, 0.5)
+    haiku_45 = load_anthropic_config(path, section="haiku-4.5")
+    assert haiku_45.accepts_sampling and haiku_45.effort is None  # Haiku 4.5 keeps both samplings
+
+
+def test_haiku_55_is_the_main_model_by_default():
+    path = ROOT / "configs" / "models.yaml"
+
+    assert parse_args([]).model == run.MAIN_MODEL == "haiku-5.5"
+    assert load_anthropic_config(path).model == "claude-haiku-5-5"
+    assert load_prices(path) == (0.1, 0.5)
 
 
 def test_haiku_55_is_built_as_a_claude_extractor_and_names_its_results(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
 
-    extractor = build_extractor("haiku55")
+    extractor = build_extractor("haiku-5.5")
 
     assert isinstance(extractor, AnthropicExtractor)
-    assert extractor.config.model == configured_model("haiku55") == "claude-haiku-5-5"
-    assert takes_sampling("claude") and not takes_sampling("haiku55")
+    assert extractor.config.model == configured_model("haiku-5.5") == "claude-haiku-5-5"
+    assert takes_sampling("haiku-4.5") and not takes_sampling("haiku-5.5")
 
 
 def test_a_model_without_sampling_runs_only_with_the_default_sampling(
@@ -266,30 +263,32 @@ def test_a_model_without_sampling_runs_only_with_the_default_sampling(
     run_dir = tmp_path / "chosen"
     texts = ["--texts-dir", str(tmp_path / "texts"), "--run-dir", str(run_dir)]
 
-    refused = main(["--model", "haiku55", "--sampling", "precise", *texts])
-    accepted = main(["--model", "haiku55", "--sampling", "default", *texts])
+    refused = main(["--model", "haiku-5.5", "--sampling", "precise", *texts])
+    accepted = main(["--model", "haiku-5.5", "--sampling", "default", *texts])
 
     assert (refused, accepted) == (2, 0)
     assert "--sampling default" in capsys.readouterr().err
     assert [p.name for p in run_dir.glob("*.jsonl")] == ["claude-haiku-5-5__v2__default.jsonl"]
 
 
+def test_without_a_sampling_option_a_model_gets_precise_or_its_default(tmp_path, monkeypatch):
+    make_texts(tmp_path / "texts")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setattr("src.extraction.run.ROOT", tmp_path)
+    monkeypatch.setattr("src.extraction.run.build_extractor", lambda model: StubExtractor())
+    run_dir = tmp_path / "chosen"
+    texts = ["--texts-dir", str(tmp_path / "texts"), "--run-dir", str(run_dir)]
+
+    codes = [main(["--model", model, *texts]) for model in ("haiku-4.5", "haiku-5.5")]
+
+    assert codes == [0, 0]
+    assert sorted(path.name for path in run_dir.glob("*.jsonl")) == [
+        "claude-haiku-4-5__v2__precise.jsonl", "claude-haiku-5-5__v2__default.jsonl"
+    ]
+
+
 def test_runs_without_a_run_dir_land_where_make_metrics_looks():
     assert run.RESULTS_DIR == metrics.RESULTS_DIR
-
-
-def test_main_with_local_model_needs_no_api_key(tmp_path, monkeypatch, capsys):
-    make_texts(tmp_path / "texts")
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    monkeypatch.setattr("src.extraction.run.ROOT", tmp_path)  # main prints paths relative to ROOT
-    monkeypatch.setattr("src.extraction.run.RESULTS_DIR", tmp_path / "results")
-    monkeypatch.setattr("src.extraction.run.build_extractor", lambda model: StubExtractor())
-    monkeypatch.setattr("src.extraction.run.configured_model", lambda model: "stub")
-
-    code = main(["--model", "lapa", "--texts-dir", str(tmp_path / "texts")])
-
-    assert code == 0
-    assert "ANTHROPIC_API_KEY" not in capsys.readouterr().err
 
 
 def test_main_saves_into_the_given_run_dir(tmp_path, monkeypatch):
@@ -303,7 +302,7 @@ def test_main_saves_into_the_given_run_dir(tmp_path, monkeypatch):
     code = main(["--texts-dir", str(tmp_path / "texts"), "--run-dir", str(run_dir)])
 
     assert code == 0
-    assert [path.name for path in run_dir.glob("*.jsonl")] == ["stub__v2__precise.jsonl"]
+    assert [path.name for path in run_dir.glob("*.jsonl")] == ["stub__v2__default.jsonl"]
 
 
 def test_main_accepts_a_run_dir_given_relative_to_the_working_directory(tmp_path, monkeypatch):
@@ -317,7 +316,7 @@ def test_main_accepts_a_run_dir_given_relative_to_the_working_directory(tmp_path
     code = main(["--texts-dir", "texts", "--run-dir", "results/smoke/check"])
 
     assert code == 0
-    assert (tmp_path / "results" / "smoke" / "check" / "stub__v2__precise.jsonl").exists()
+    assert (tmp_path / "results" / "smoke" / "check" / "stub__v2__default.jsonl").exists()
 
 
 def test_main_prints_the_full_path_of_a_run_dir_outside_the_project(
@@ -333,7 +332,7 @@ def test_main_prints_the_full_path_of_a_run_dir_outside_the_project(
     code = main(["--texts-dir", str(tmp_path / "texts"), "--run-dir", str(run_dir)])
 
     assert code == 0
-    assert f"to {run_dir.resolve() / 'stub__v2__precise.jsonl'}\n" in capsys.readouterr().out
+    assert f"to {run_dir.resolve() / 'stub__v2__default.jsonl'}\n" in capsys.readouterr().out
 
 
 def test_main_saves_every_run_to_its_own_folder_named_with_the_time(tmp_path, monkeypatch):
@@ -355,26 +354,10 @@ def test_main_saves_every_run_to_its_own_folder_named_with_the_time(tmp_path, mo
     )
     assert (first, second) == (0, 0)
     assert names == [
-        "2026-10-23T14-05-33/stub__v2__precise.jsonl",
-        "2026-10-23T14-12-33/stub__v2__precise.jsonl",
+        "2026-10-23T14-05-33/stub__v2__default.jsonl",
+        "2026-10-23T14-12-33/stub__v2__default.jsonl",
     ]
     assert len(extractor.texts) == 4  # no answer is reused: both runs asked the model
-
-
-def test_main_reports_an_unreachable_ollama_without_traceback(tmp_path, monkeypatch, capsys):
-    make_texts(tmp_path / "texts")
-    monkeypatch.setattr("src.extraction.run.RESULTS_DIR", tmp_path / "results")
-
-    class Unreachable(StubExtractor):
-        def extract(self, text: str, prompt: Prompt, sampling: Sampling) -> ExtractionResult:
-            raise ConnectionError("Failed to connect to Ollama")
-
-    monkeypatch.setattr("src.extraction.run.build_extractor", lambda model: Unreachable())
-
-    code = main(["--model", "lapa", "--texts-dir", str(tmp_path / "texts")])
-
-    assert code == 1
-    assert "ollama serve" in capsys.readouterr().err
 
 
 def test_main_without_api_key_stops_before_writing_results(tmp_path, monkeypatch, capsys):
@@ -395,7 +378,7 @@ def test_gpt_needs_the_openrouter_key_not_the_anthropic_one(tmp_path, monkeypatc
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
     monkeypatch.setattr("src.extraction.run.RESULTS_DIR", tmp_path / "results")
 
-    code = main(["--model", "gpt", "--texts-dir", str(tmp_path / "texts")])
+    code = main(["--model", "gpt-4o", "--texts-dir", str(tmp_path / "texts")])
 
     assert code == 2
     assert "OPENROUTER_API_KEY" in capsys.readouterr().err
@@ -410,7 +393,7 @@ def test_gpt_runs_without_the_anthropic_key(tmp_path, monkeypatch):
     monkeypatch.setattr("src.extraction.run.RESULTS_DIR", tmp_path / "results")
     monkeypatch.setattr("src.extraction.run.build_extractor", lambda model: StubExtractor())
 
-    code = main(["--model", "gpt", "--texts-dir", str(tmp_path / "texts")])
+    code = main(["--model", "gpt-4o", "--texts-dir", str(tmp_path / "texts")])
 
     assert code == 0
 
@@ -430,7 +413,7 @@ def test_main_reports_a_rejected_openrouter_request_without_traceback(
 
     monkeypatch.setattr("src.extraction.run.build_extractor", lambda model: Rejected())
 
-    code = main(["--model", "gpt", "--texts-dir", str(tmp_path / "texts")])
+    code = main(["--model", "gpt-4o", "--texts-dir", str(tmp_path / "texts")])
 
     assert code == 1
     assert "400" in capsys.readouterr().err

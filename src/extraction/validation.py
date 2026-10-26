@@ -1,8 +1,9 @@
-"""The Deal schema as the models see it, and the check of their raw JSON answers against it and
-its content checks."""
+"""The Deal schema as the models see it, and the check of their raw JSON answers: the schema
+first, then the content checks of checks.py."""
 
 from pydantic import ValidationError
 
+from src.extraction.checks import clean_buyer, content_errors
 from src.schemas.deal import Deal
 
 
@@ -30,6 +31,10 @@ def repair_request(error: str) -> str:
 
 def validate_deal(raw: str) -> tuple[Deal | None, str | None]:
     try:
-        return Deal.model_validate_json(raw), None
+        deal = clean_buyer(Deal.model_validate_json(raw))
     except ValidationError as error:
         return None, str(error)
+    errors = content_errors(deal)
+    if errors:
+        return None, "\n".join(errors)
+    return deal, None

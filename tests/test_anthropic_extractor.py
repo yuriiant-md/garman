@@ -183,6 +183,23 @@ def test_answer_that_is_still_invalid_after_the_fix_is_failed_with_the_last_answ
     assert json.loads(result.raw_output) == last
 
 
+def test_implausible_answer_gets_the_same_one_fix_with_the_content_error():
+    first = {"crop": "wheat", "quantity_t": 400000}
+
+    result, client = extract([tool_reply(first), tool_reply({**first, "quantity_t": 400})])
+    _, _, user = client.calls[1]["messages"]
+
+    assert (result.status, result.attempts) == (ExtractionStatus.OK, 2)
+    assert result.deal.quantity_t == 400
+    assert "decimal" in user["content"][0]["content"]
+
+
+def test_answer_still_implausible_after_the_fix_is_failed():
+    result, _ = extract([tool_reply({"quantity_t": 400000}), tool_reply({"quantity_t": 400000})])
+
+    assert (result.status, result.attempts) == (ExtractionStatus.FAILED, 2)
+
+
 def test_text_reply_is_fixed_with_a_plain_user_message():
     result, client = extract([text_reply("Не можу."), tool_reply({"crop": "wheat"})])
     _, assistant, user = client.calls[1]["messages"]

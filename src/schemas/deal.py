@@ -193,7 +193,13 @@ class Penalty(BaseModel):
 class Quality(BaseModel):
     """What all grades share; each grade's own limits live in GradeTerms.indicators."""
 
-    lab: Lab | None = Field(default=None, description="Whose laboratory determines quality.")
+    lab: Lab | None = Field(
+        default=None,
+        description="Whose laboratory determines quality; who pays is in analysis_paid_by.",
+    )
+    analysis_paid_by: Party | None = Field(
+        default=None, description="Party that pays for the quality analyses."
+    )
 
 
 class QualityIndicator(BaseModel):

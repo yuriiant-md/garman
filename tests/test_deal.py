@@ -51,7 +51,7 @@ def test_deal_accepts_valid_nested_data() -> None:
                 "cap_pct": 10,
             }
         ],
-        quality={"lab": "independent"},
+        quality={"lab": "independent", "analysis_paid_by": "buyer"},
         grades=[
             {
                 "grade": "3",
@@ -80,7 +80,7 @@ def test_deal_accepts_valid_nested_data() -> None:
             cap_pct=10,
         )
     ]
-    assert deal.quality == Quality(lab=Lab.INDEPENDENT)
+    assert (deal.quality.lab, deal.quality.analysis_paid_by) == (Lab.INDEPENDENT, Party.BUYER)
     assert deal.grades == [
         GradeTerms(
             grade="3",
@@ -107,6 +107,7 @@ def test_deal_defaults_missing_fields_to_none() -> None:
         {"tolerance": {"pct": 101}},
         {"penalties": [{"amount": 0}]},
         {"quality": {"lab": "elevator"}},
+        {"quality": {"analysis_paid_by": "elevator"}},
         {"crop": "rice"},
     ],
 )

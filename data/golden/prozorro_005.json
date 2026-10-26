@@ -49,7 +49,8 @@
       }
     ],
     "quality": {
-      "lab": null
+      "lab": null,
+      "analysis_paid_by": null
     },
     "grades": [
       {

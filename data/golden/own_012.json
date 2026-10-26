@@ -59,7 +59,8 @@
       }
     ],
     "quality": {
-      "lab": "independent"
+      "lab": "independent",
+      "analysis_paid_by": null
     },
     "grades": [
       {

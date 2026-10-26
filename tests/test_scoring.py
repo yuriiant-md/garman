@@ -36,10 +36,10 @@ GOLDEN = {
     "grades": [{"grade": None, "amount_per_t": 9250}],
     "buyer": 'ТОВ "Зерно Поле 01"',
 }
-# 16 leaf fields outside the lists, 2 for the grade and 5 for the penalty; tolerance, quality.lab
-# and the grade's class are null
-ALL_CORRECT = Counts(filled=19, filled_correct=19, empty=4, fabricated=0, total=23, correct=23)
-LEAVES_AND_GRADE = 16 + 2
+# 17 leaf fields outside the lists, 2 for the grade and 5 for the penalty; tolerance, both quality
+# fields and the grade's class are null
+ALL_CORRECT = Counts(filled=19, filled_correct=19, empty=5, fabricated=0, total=24, correct=24)
+LEAVES_AND_GRADE = 17 + 2
 
 
 def deal(**changes: object) -> Deal:
@@ -175,7 +175,7 @@ def test_missing_penalty_makes_all_its_fields_wrong():
     result = counts(deal(), deal(penalties=None))
 
     assert result == Counts(
-        filled=19, filled_correct=14, empty=4, fabricated=0, total=23, correct=18
+        filled=19, filled_correct=14, empty=5, fabricated=0, total=24, correct=19
     )
 
 
@@ -184,9 +184,9 @@ def test_extra_penalty_is_one_wrong_extra_item_outside_the_fabricated_share():
 
     result = counts(deal(penalties=None), deal(penalties=[extra]))
 
-    # golden has no penalty fields, so the base of the fabricated share stays the 4 golden nulls
+    # golden has no penalty fields, so the base of the fabricated share stays the 5 golden nulls
     assert result == Counts(
-        filled=14, filled_correct=14, empty=4, fabricated=0, total=19, correct=18, extra=1
+        filled=14, filled_correct=14, empty=5, fabricated=0, total=20, correct=19, extra=1
     )
 
 
@@ -208,12 +208,12 @@ def test_value_where_golden_has_null_is_fabricated():
     result = counts(deal(), deal(tolerance={"pct": 5}))
 
     assert result.fabricated == 1
-    assert result.correct == 22
+    assert result.correct == 23
 
 
 def test_failed_answer_makes_every_field_wrong_and_every_null_fabricated():
     assert counts(deal(), None) == Counts(
-        filled=19, filled_correct=0, empty=4, fabricated=4, total=23, correct=0
+        filled=19, filled_correct=0, empty=5, fabricated=5, total=24, correct=0
     )
 
 
@@ -232,7 +232,7 @@ GLUTEN = {"name": "gluten", "limit": "min", "value": 23, "unit": "pct"}
 RYE = {"name": "other", "limit": "max", "value": 4, "unit": "pct", "raw_name": "Зерна жита"}
 SECOND = {"grade": "2", "amount_per_t": 7100, "indicators": [MOISTURE, GLUTEN]}
 FOURTH = {"grade": "4", "amount_per_t": 6300, "indicators": [MOISTURE]}
-# GOLDEN without its grade and penalty: 16 leaf fields, 13 filled and 3 null
+# GOLDEN without its grade and penalty: 17 leaf fields, 13 filled and 4 null
 PLAIN = {"price": CURRENCY, "penalties": None, "grades": None}
 
 
@@ -252,7 +252,7 @@ def test_grades_pair_by_class_in_any_order():
 
     # each grade: its class and price, then one unit per indicator (2 + 1)
     assert result == Counts(
-        filled=13 + 2 * 2 + 3, filled_correct=20, empty=3, fabricated=0, total=23, correct=23
+        filled=13 + 2 * 2 + 3, filled_correct=20, empty=4, fabricated=0, total=24, correct=24
     )
 
 
@@ -347,7 +347,7 @@ def test_extra_grade_is_one_extra_item_and_its_indicators_are_not_scored():
     result = counts(graded(SECOND), graded(SECOND, FOURTH))
 
     assert result == Counts(
-        filled=13 + 2 + 2, filled_correct=17, empty=3, fabricated=0, total=21, correct=20, extra=1
+        filled=13 + 2 + 2, filled_correct=17, empty=4, fabricated=0, total=22, correct=21, extra=1
     )
 
 
@@ -368,7 +368,18 @@ def test_deals_without_grades_score_no_grade_fields():
 def test_failed_answer_makes_every_grade_field_and_indicator_wrong():
     result = counts(graded(SECOND), None)
 
-    # golden nulls (3) count as fabricated, as for any failed answer
+    # golden nulls (4) count as fabricated, as for any failed answer
     assert result == Counts(
-        filled=13 + 2 + 2, filled_correct=0, empty=3, fabricated=3, total=20, correct=0
+        filled=13 + 2 + 2, filled_correct=0, empty=4, fabricated=4, total=21, correct=0
     )
+
+
+def test_lab_and_the_party_that_pays_for_analyses_are_scored_apart():
+    # own_001, п. 2.3: the delivery point's laboratory «за рахунок Покупця»
+    golden = deal(quality={"lab": "other", "analysis_paid_by": "buyer"})
+    predicted = deal(quality={"lab": "buyer", "analysis_paid_by": "buyer"})
+
+    fields = by_field(golden, predicted)
+
+    assert fields["quality.lab"] == [False]
+    assert fields["quality.analysis_paid_by"] == [True]

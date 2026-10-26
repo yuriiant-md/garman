@@ -70,7 +70,8 @@
       }
     ],
     "quality": {
-      "lab": "independent"
+      "lab": "independent",
+      "analysis_paid_by": null
     },
     "grades": [
       {
@@ -97,6 +98,7 @@
     "penalties[5]": "п. 7.3.6",
     "grades.grade": "п. 1.1",
     "quality.lab": "п. 2.3, 6.2.3",
+    "quality.analysis_paid_by": "п. 2.3: Продавець оплачує експертизу лише неякісного товару — витрати у спорі, не оплата аналізів → null",
     "buyer": "преамбула"
   }
 }

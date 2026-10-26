@@ -73,7 +73,8 @@ Today is {today}.
   - General requirements without a threshold ("здоровий", "нормальний запах", "без самозігрівання") are not indicators.
 
 **quality**: what all classes share.
-- `lab`: whose laboratory determines the quality: the buyer's / seller's laboratory → buyer / seller; a state inspection or an independent testing centre → independent; the laboratory of the elevator or terminal at the place of delivery → other; only a producer's certificate → null.
+- `lab`: whose laboratory determines the quality: the buyer's / seller's laboratory → buyer / seller; a state inspection or an independent testing centre → independent; the laboratory of the elevator or terminal at the place of delivery → other; only a producer's certificate → null. Who pays is not whose laboratory it is: "за рахунок Покупця" / "Продавця" goes to `analysis_paid_by`, and `lab` follows from the rest of the sentence.
+- `analysis_paid_by`: who pays for the quality analyses: "за рахунок Покупця" / "за рахунок Продавця" → buyer / seller. Paying for an arbitration sample or an expert check only in a dispute, or only when the goods turn out defective, is not this → null. Not stated → null.
 
 **buyer**: the buyer's (customer's) company name from the preamble or the signature, without "в особі …". A person's name is not a buyer. A hidden name (empty quotes, a placeholder) → null.
 

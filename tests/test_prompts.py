@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from src.extraction.prompts import load_prompt
-from src.schemas.deal import IndicatorName
+from src.schemas.deal import IndicatorName, Quality
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -90,3 +90,9 @@ def test_prompt_v2_explains_grades_and_every_indicator_name():
     assert "**grades**" in text
     assert text.count("- `amount_per_t`:") == 1  # described once, under grades, not under price
     assert all(f"→ {name.value}" in text for name in IndicatorName)
+
+
+def test_prompt_v2_has_a_rule_for_every_quality_field():
+    text = load_prompt(ROOT / "prompts" / "extract_v2.md").text
+
+    assert all(f"- `{field}`:" in text for field in Quality.model_fields)

@@ -219,10 +219,19 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{configured_model(args.model)} rejects temperature and top_p: run it with "
               f"--sampling {DEFAULT_SAMPLING}.", file=sys.stderr)
         return 2
-    prompt = load_prompt(args.prompt)
+    try:
+        prompt = load_prompt(args.prompt)
+    except ValueError as error:
+        print(error, file=sys.stderr)
+        return 2
     started = current_time()
     run_dir = (args.run_dir or run_dir_path(RESULTS_DIR, started)).resolve()
     output = result_path(run_dir, configured_model(args.model), prompt.version, sampling.name)
+    shown = output.relative_to(ROOT) if output.is_relative_to(ROOT) else output  # --run-dir /tmp/x
+    if output.exists():
+        print(f"{shown} already exists: give the prompt a new version in its header "
+              "or choose another --run-dir.", file=sys.stderr)
+        return 2
     key = API_KEY_VARIABLES.get(args.model)
     if key and not os.environ.get(key):
         print(f"{key} is not set: put it in .env and run with "
@@ -239,7 +248,6 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Stopped: {error}", file=sys.stderr)
         return 1
     summary = summarize(records, *load_prices(section=args.model))
-    shown = output.relative_to(ROOT) if output.is_relative_to(ROOT) else output  # --run-dir /tmp/x
     print(f"Saved {len(records)} results to {shown}")
     print(json.dumps(summary, indent=2))
     return 0

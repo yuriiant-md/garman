@@ -360,6 +360,45 @@ def test_main_saves_every_run_to_its_own_folder_named_with_the_time(tmp_path, mo
     assert len(extractor.texts) == 4  # no answer is reused: both runs asked the model
 
 
+def test_main_does_not_overwrite_the_results_of_the_same_prompt_version(
+    tmp_path, monkeypatch, capsys
+):
+    make_texts(tmp_path / "texts")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setattr("src.extraction.run.ROOT", tmp_path)
+    monkeypatch.setattr("src.extraction.run.configured_model", lambda model: "stub")
+    extractor = StubExtractor()
+    monkeypatch.setattr("src.extraction.run.build_extractor", lambda model: extractor)
+    args = ["--texts-dir", str(tmp_path / "texts"), "--run-dir", str(tmp_path / "run")]
+    results = tmp_path / "run" / "stub__v2__default.jsonl"
+    first = main(args)
+    saved = results.read_text(encoding="utf-8")
+
+    second = main(args)
+
+    assert (first, second) == (0, 2)
+    assert results.read_text(encoding="utf-8") == saved
+    assert len(extractor.texts) == 2  # the second run did not ask the model
+    assert "already exists" in capsys.readouterr().err
+
+
+def test_main_reports_a_bad_prompt_version_without_traceback(tmp_path, monkeypatch, capsys):
+    make_texts(tmp_path / "texts")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setattr("src.extraction.run.build_extractor", lambda model: StubExtractor())
+    prompt = tmp_path / "copied.md"
+    prompt.write_text("---\nversion: v2/fix\n---\n\nВитягни умови.\n", encoding="utf-8")
+    run_dir = tmp_path / "run"
+
+    code = main(
+        ["--texts-dir", str(tmp_path / "texts"), "--prompt", str(prompt), "--run-dir", str(run_dir)]
+    )
+
+    assert code == 2
+    assert "version" in capsys.readouterr().err
+    assert not run_dir.exists()
+
+
 def test_main_without_api_key_stops_before_writing_results(tmp_path, monkeypatch, capsys):
     make_texts(tmp_path / "texts")
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)

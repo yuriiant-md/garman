@@ -160,8 +160,8 @@ class AnthropicExtractor:
         messages: list[MessageParam] = [{"role": "user", "content": user_message(text)}]
         first = self._ask(prompt, params, messages)
         _, _, error = read_answer(first)
-        if error is None or first.stop_reason == "refusal":  # asking again will not help
-            return [first]
+        if error is None or first.stop_reason in ("refusal", "max_tokens"):
+            return [first]  # asking again meets the same refusal or the same max_tokens
         fix = [*messages, *fix_messages(first, error)]
         return [first, self._ask(prompt, params, fix)]
 

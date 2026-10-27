@@ -18,6 +18,7 @@ from src.extraction.run import (
     load_openrouter_config,
     load_prices,
     main,
+    model_provider,
     parse_args,
     result_path,
     run_dir_path,
@@ -97,6 +98,15 @@ def test_per_source_is_off_by_default_and_read_from_the_command_line():
     assert parse_args(["--per-source", "2"]).per_source == 2
 
 
+@pytest.mark.parametrize("count", ["0", "-1"])
+def test_per_source_must_be_a_positive_number(count, capsys):
+    with pytest.raises(SystemExit) as stop:
+        parse_args(["--per-source", count])
+
+    assert stop.value.code == 2
+    assert "--per-source" in capsys.readouterr().err
+
+
 def test_run_dir_is_named_with_the_start_time(tmp_path):
     assert run_dir_path(tmp_path, STARTED) == tmp_path / "2026-10-23T14-05-33"
 
@@ -168,6 +178,20 @@ def test_cost_per_1000_docs_ignores_error_results_without_tokens():
     assert summary["cost_per_1000_docs_usd"] == pytest.approx(summary["cost_usd"] * 1000)
 
 
+def test_summary_counts_answers_that_came_without_token_counts():
+    # OpenRouter may leave usage out: such an answer costs money but adds no tokens
+    records = [
+        {"status": "ok", "latency_s": 1.0, "input_tokens": 1000, "output_tokens": 100},
+        {"status": "ok", "latency_s": 1.0, "input_tokens": 0, "output_tokens": 0},
+        {"status": "failed", "latency_s": 1.0, "input_tokens": 0, "output_tokens": 0},
+        {"status": "error", "latency_s": 30.0, "input_tokens": 0, "output_tokens": 0},
+    ]
+
+    summary = summarize(records, price_input=1.0, price_output=5.0)
+
+    assert summary["answers_without_usage"] == 2  # an error has no answer, so it is not one
+
+
 def test_project_configs_load_the_provider_and_both_samplings():
     config = load_anthropic_config(ROOT / "configs" / "models.yaml", section="haiku-4.5")
 
@@ -193,7 +217,7 @@ def test_local_models_are_no_longer_offered():
 def test_project_configs_load_gpt_through_openrouter_with_its_token_prices():
     path = ROOT / "configs" / "models.yaml"
 
-    config = load_openrouter_config(path)
+    config = load_openrouter_config(path, section="gpt-4o")
 
     assert config.model == "openai/gpt-4o"
     assert config.timeout_s > 0 and config.max_retries >= 1 and config.max_tokens > 0
@@ -219,6 +243,36 @@ def test_gpt_is_built_as_the_openrouter_extractor(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
 
     assert isinstance(build_extractor("gpt-4o"), OpenRouterExtractor)
+
+
+def test_every_model_names_a_provider_that_picks_its_extractor_and_api_key():
+    providers = {model: model_provider(model) for model in run.MODELS}
+
+    assert providers == {"haiku-5.5": "anthropic", "haiku-4.5": "anthropic", "gpt-4o": "openrouter"}
+    assert {run.API_KEY_VARIABLES[name] for name in providers.values()} == {
+        "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY"
+    }
+
+
+def test_a_new_section_is_read_by_its_provider_not_by_its_name(tmp_path):
+    path = tmp_path / "models.yaml"
+    path.write_text(
+        "gpt-5:\n  provider: openrouter\n  model: openai/gpt-5\n"
+        "  timeout_s: 60\n  max_retries: 3\n  max_tokens: 4096\n",
+        encoding="utf-8",
+    )
+
+    assert model_provider("gpt-5", path) == "openrouter"
+    assert load_openrouter_config(path, section="gpt-5").model == "openai/gpt-5"
+
+
+@pytest.mark.parametrize("line", ["  provider: ollama\n", ""])
+def test_a_section_without_a_known_provider_is_rejected(tmp_path, line):
+    path = tmp_path / "models.yaml"
+    path.write_text(f"local:\n{line}  model: qwen3:14b\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="provider"):
+        model_provider("local", path)
 
 
 def test_project_configs_load_haiku_55_with_its_effort_and_without_sampling():

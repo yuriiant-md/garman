@@ -23,7 +23,7 @@ from src.extraction import metrics, run
 from src.extraction.sampling import DEFAULT_SAMPLING
 
 ROOT = Path(__file__).resolve().parent
-MODELS = run.MODELS  # the main model first, then the two it is compared with
+MODELS = run.MODELS  # the sections of configs/models.yaml: the main model first, then the others
 PROMPTS = (ROOT / "prompts" / "extract_v1.md", ROOT / "prompts" / "extract_v2.md")
 SAMPLINGS = ("precise", "varied")  # for models that accept them; the others run DEFAULT_SAMPLING
 RESULTS_DIR = ROOT / "results" / "stage1_3"
@@ -36,7 +36,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the whole stage-1 matrix and its metrics.")
     parser.add_argument(
         "--per-source",
-        type=int,
+        type=run.positive_int,
         help="Quick check: only the first N texts of each source, saved in results/smoke/.",
     )
     parser.add_argument(

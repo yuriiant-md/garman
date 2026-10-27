@@ -129,8 +129,9 @@ class OpenRouterExtractor:
         """The answers in order: one, or two when the first was invalid and was sent back."""
         first = self._ask(messages, params)
         raw, _, error = read_answer(first)
-        if error is None:
-            return [first]
+        choice = first.choices[0]
+        if error is None or choice.message.refusal or choice.finish_reason == "length":
+            return [first]  # asking again meets the same refusal or the same max_tokens
         fix: list[ChatCompletionMessageParam] = [
             *messages,
             {"role": "assistant", "content": raw},
@@ -165,7 +166,8 @@ class OpenRouterExtractor:
 
 
 def tokens(response: ChatCompletion) -> tuple[int, int]:
-    """Input and output tokens. OpenRouter may leave usage out: such an answer then counts as
-    free rather than stopping the whole run."""
+    """Input and output tokens. OpenRouter may leave usage out: such an answer then counts no
+    tokens rather than stopping the whole run, and the run summary counts it as
+    `answers_without_usage`."""
     usage = response.usage
     return (0, 0) if usage is None else (usage.prompt_tokens, usage.completion_tokens)

@@ -7,7 +7,7 @@ are not re-checked, so a rule here never makes old data unreadable.
 
 import re
 
-from src.extraction.scoring import normalize_text
+from src.extraction.text import normalize_text
 from src.schemas.deal import Deal, Party, PenaltyTrigger
 
 MAX_FARM_AREA_HA = 5_000  # the largest farm the product serves

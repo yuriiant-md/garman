@@ -98,6 +98,7 @@ uv run python -m scripts.pdf_to_text       # data/raw/prozorro/*.pdf → data/te
 
 ```bash
 uv run python -m scripts.fetch_rag_sources  # закони й постанови ВС → data/raw/rag/; код 1, доки чогось бракує
+uv run python -m scripts.ingest_rag         # очищені знеособлені документи → data/rag/; нічого не пише, доки є проблема з документом
 ```
 
 ## Як рахуються метрики
@@ -149,6 +150,7 @@ data/
   prozorro_sources.csv     з якої закупівлі кожен договір Prozorro
   own_sources.csv          з якого PDF і з яким номером кожен власний договір
   rag_sources.csv          корпус етапу 2: 28 договорів (PDF), 6 законів і 11 постанов ВС (HTML)
+  rag/                     корпус етапу 2 після ingestion: documents.jsonl (текст по сторінках або статтях) і manifest.jsonl
   README.md                як зібрано, знеособлено й розмічено дані
   raw/                     оригінали PDF, файли перевірки маскування й HTML-сторінки етапу 2 в raw/rag/ (не в git)
 prompts/
@@ -172,11 +174,13 @@ src/extraction/
   metrics.py               таблиця метрик модель × промпт × семплінг
 src/rag/
   sources.py               читання й перевірка data/rag_sources.csv: типи, статті кожного закону, мінімуми курсу
+  documents.py             документ після ingestion (частини зі сторінкою або статтею), запис маніфесту, JSONL
 scripts/
   generate_synthetic.py    угоди для синтетичного набору (+ synthetic_render.py, synthetic_checks.py)
   fetch_prozorro.py        пошук договорів у Prozorro
   fetch_rag_sources.py     завантаження законів (kodeksy.com.ua) і постанов (reyestr.court.gov.ua) корпусу етапу 2
   pdf_to_text.py           PDF → знеособлений текст
+  ingest_rag.py            ingestion етапу 2: PDF і HTML → очищені знеособлені документи в data/rag/
   check_golden.py          перевірка розмітки golden set
 tests/                     тести pytest: make test
 results/stage1_3/          по одній папці на запуск з назвою за часом початку: файл *.jsonl на конфігурацію (рядок на документ) і таблиці метрик (metrics.md, metrics_by_field.md)

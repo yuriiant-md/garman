@@ -98,6 +98,7 @@ Collecting the stage 2 corpus (45 documents listed in `data/rag_sources.csv`, de
 
 ```bash
 uv run python -m scripts.fetch_rag_sources  # laws and Supreme Court decisions → data/raw/rag/; exit 1 while anything is missing
+uv run python -m scripts.ingest_rag         # clean, anonymised documents → data/rag/; nothing written while any document has a problem
 ```
 
 ## How the metrics are counted
@@ -149,6 +150,7 @@ data/
   prozorro_sources.csv     which Prozorro tender each contract comes from
   own_sources.csv          which PDF and contract number each own contract comes from
   rag_sources.csv          stage 2 corpus: 28 contracts (PDF), 6 laws and 11 Supreme Court decisions (HTML)
+  rag/                     the stage 2 corpus after ingestion: documents.jsonl (text by page or article) and manifest.jsonl
   README.md                how the data was collected, anonymised and labelled
   raw/                     original PDFs, masking check files and the stage 2 HTML pages in raw/rag/ (not in git)
 prompts/
@@ -172,11 +174,13 @@ src/extraction/
   metrics.py               metrics table model × prompt × sampling
 src/rag/
   sources.py               reads and checks data/rag_sources.csv: types, articles of each law, course minimums
+  documents.py             an ingested document (parts with a page or an article), its manifest entry, JSONL
 scripts/
   generate_synthetic.py    deals for the synthetic set (+ synthetic_render.py, synthetic_checks.py)
   fetch_prozorro.py        search for contracts in Prozorro
   fetch_rag_sources.py     downloads the laws (kodeksy.com.ua) and decisions (reyestr.court.gov.ua) of the stage 2 corpus
   pdf_to_text.py           PDF → anonymised text
+  ingest_rag.py            stage 2 ingestion: PDF and HTML → clean, anonymised documents in data/rag/
   check_golden.py          validates the golden labels
 tests/                     pytest tests: make test
 results/stage1_3/          one folder per launch, named with its start time: a *.jsonl file per configuration (one line per document) and the metrics tables (metrics.md, metrics_by_field.md)

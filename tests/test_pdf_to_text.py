@@ -144,6 +144,13 @@ def test_keeps_street_named_after_person():
     assert masked(text) == text
 
 
+def test_masks_name_after_initials_of_the_previous_name():
+    # initials "І.В." before the next name are not the word "імені"
+    text = "у складі суддів: Булгакової І.В., Васьковського О.В., Чумака Ю.Я."
+
+    assert masked(text) == "у складі суддів: [ПІБ], [ПІБ], [ПІБ]"
+
+
 def test_still_masks_name_after_conjunction_i():
     assert masked("підписали Петренко І.С. і В.В. Коваленко") == "підписали [ПІБ] і [ПІБ]"
 

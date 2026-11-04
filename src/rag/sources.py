@@ -93,7 +93,8 @@ class Source(BaseModel):
         )
 
 
-def _article_key(article: str) -> tuple[int, int]:
+def article_key(article: str) -> tuple[int, int]:
+    """Order of articles in a law: 14 < 14-1 < 15 < 549."""
     main, _, inserted = article.partition("-")
     return int(main), int(inserted or 0)
 
@@ -105,11 +106,11 @@ def _in_item(article: str, item: str) -> bool:
     first, last = match.groups()
     if last is None:
         return article == first
-    key = _article_key(article)
-    if key < _article_key(first):
+    key = article_key(article)
+    if key < article_key(first):
         return False
     # "14..15" also takes 15-1, 15-2: a range ends after the inserted articles of its last number
-    return key <= _article_key(last) if "-" in last else key[0] <= _article_key(last)[0]
+    return key <= article_key(last) if "-" in last else key[0] <= article_key(last)[0]
 
 
 def load_sources(path: Path) -> tuple[Source, ...]:

@@ -48,11 +48,11 @@ make run        # = uv run --env-file .env python main.py
 
 `make run` asks the models for every configuration of stage 1.3 on all 48 texts — the main model Claude Haiku 5.5 × 2 prompts with the `default` sampling, plus the two models it is compared with (Claude Haiku 4.5, GPT-4o) × 2 prompts × 2 samplings (`precise`, `varied`) = 10 configurations. Haiku 5.5 rejects any temperature and top_p but its own, so it gets neither `precise` nor `varied`: `default` sends no sampling parameters at all. Nothing is cached: every run makes live API calls. The full stage 1.2 run (12 configurations) cost $5 ($1.8 for Claude Haiku 4.5, $3.2 for GPT-4o) and took about 1.5 hours on an Apple Silicon Mac: 10 minutes for Claude, 6 for GPT-4o and 80 for Qwen. The stage 1.3 run (the same 10 configurations on 48 texts) cost $11.9 ($4.1 for Claude Haiku 4.5, $0.19 for Claude Haiku 5.5, $7.7 for GPT-4o) and took about 50 minutes of requests: 23 for Haiku 4.5, 20 for GPT-4o, 6 for Haiku 5.5. The numbers differ a little from run to run: the paid models are not fully deterministic even at temperature 0, and prompt v2 contains the run date (`{today}`).
 
-To run only some models, name them with `--models`; the keys name the models: `haiku-5.5` (the main one), `haiku-4.5`, `gpt-4o`. `uv run --env-file .env python main.py --models haiku-5.5` runs only the main model: 2 configurations, about $0.2 and 6 minutes. `--models` also works with `--per-source` (below).
+To run only some models, name them with `--models`; the keys name the models: `haiku-5.5` (the main one), `haiku-4.5`, `gpt-4o`. They are the sections of `configs/models.yaml`, so a new section is a new key. `uv run --env-file .env python main.py --models haiku-5.5` runs only the main model: 2 configurations, about $0.2 and 6 minutes. `--models` also works with `--per-source` (below).
 
 GPT-4o gets the schema as strict structured output (`response_format` with `strict: true`), so it cannot answer outside it; both Claude models get it as a forced tool call, which the API does not compile strictly for a schema of this size. OpenAI has deprecated GPT-4o, so it is a reference point here, not a candidate for production.
 
-Each launch is saved to a new folder named with its start time, e.g. `results/stage1_3/2026-10-27T14-05-33/`. It holds one file per configuration, named with the model, the prompt version and the sampling (`claude-haiku-4-5__v2__precise.jsonl`, `claude-haiku-5-5__v2__default.jsonl`, `openai_gpt-4o__v2__precise.jsonl`; every line also carries `run_at`), and the two tables built from them: `metrics.md` and `metrics_by_field.md` (accuracy, fabricated values and extra list items per field and configuration, on the test golden set). Earlier folders are never touched, so launches can be compared folder by folder.
+Each launch is saved to a new folder named with its start time, e.g. `results/stage1_3/2026-10-27T14-05-33/`. It holds one file per configuration, named with the model, the prompt version and the sampling (`claude-haiku-4-5__v2__precise.jsonl`, `claude-haiku-5-5__v2__default.jsonl`, `openai_gpt-4o__v2__precise.jsonl`; every line also carries `run_at`), and the two tables built from them: `metrics.md` and `metrics_by_field.md` (accuracy, fabricated values and extra list items per field and configuration, on the test golden set). Earlier folders are never touched, so launches can be compared folder by folder. A results file is never overwritten either: a second run of the same model, prompt version and sampling into the same folder stops with a message, so a new prompt needs its own version in the header (Latin letters, digits, `.`, `_` and `-` only, since the version is part of the file name).
 
 A configuration whose model is needed but missing (no key in `.env`) is skipped with the reason; the others still run, and `make run` ends with exit code 1 and the list of what it did not finish.
 
@@ -123,7 +123,7 @@ The rules were written before the first run; the rules for grades and quality in
 | temperature and top_p in a config, ≥ 2 configurations | `configs/sampling.yaml` (`precise`, `varied`; `default` sends none) | done: both samplings run in every `make run` for the models that accept them; Haiku 5.5 rejects them and runs `default` only |
 | Metrics: per-field accuracy, % valid, p50/p95 latency, cost per 1000 documents | `src/extraction/metrics.py` (table), `src/extraction/scoring.py` (comparison with the golden deal); tests — `tests/test_metrics.py`, `tests/test_scoring.py` | done; numbers — `results/stage1_3/<start time>/metrics.md` and `metrics_by_field.md` |
 | Prompts with a version header, ≥ 2 versions, `CHANGELOG` | `prompts/extract_v1.md`, `prompts/extract_v2.md`, `prompts/CHANGELOG.md` | done: v1 is the baseline, v2 is built from the v1 errors on dev |
-| Every answer is validated by the schema and by content checks (a late-payment penalty paid by the seller, more than 50 000 t — what a 5 000 ha farm can sell; a placeholder buyer becomes `null` without a fix); invalid → one fix attempt → `failed` | `src/extraction/validation.py` (the fix request), `checks.py` (content checks), `anthropic_extractor.py` and `openrouter_extractor.py` (the second call); tests — `tests/test_validation.py`, `tests/test_checks.py` and the extractor tests | done; the "Виправлено, %" column of the metrics table counts the answers saved by it |
+| Every answer is validated by the schema and by content checks (a late-payment penalty paid by the seller, more than 50 000 t — what a 5 000 ha farm can sell; a placeholder buyer becomes `null` without a fix); invalid → one fix attempt → `failed` (an answer cut off at `max_tokens` or a refusal gets none: asking again would bring the same) | `src/extraction/validation.py` (the fix request), `checks.py` (content checks), `anthropic_extractor.py` and `openrouter_extractor.py` (the second call); tests — `tests/test_validation.py`, `tests/test_checks.py` and the extractor tests | done; the "Виправлено, %" column of the metrics table counts the answers saved by it |
 | Every result logs the model, prompt version and sampling | record fields — `src/extraction/result.py`; the records — `results/stage1_3/*/*.jsonl` (and `results/stage1_2/`, `results/stage1/`) | done |
 | `REPORT.md`: table, error analysis, production choice | `REPORT.md` (in Ukrainian) | done: Claude Haiku 5.5 + prompt v2 (stage 1.3; stage 1.2 chose Claude Haiku 4.5 + v2 + `precise`) |
 | One command to run: `make run` (= `python main.py`) | `Makefile`, `main.py` | done |
@@ -134,7 +134,7 @@ The rules were written before the first run; the rules for grades and quality in
 Makefile                   make install / test / run / metrics
 main.py                    stage 1 in one command: the whole matrix, then the metrics table
 configs/
-  models.yaml              models, timeout, retry, prices per 1M tokens
+  models.yaml              models with their provider (anthropic, openrouter), timeout, retry, prices per 1M tokens; a new model is a new section
   sampling.yaml            sampling configurations precise, varied and default
 data/
   texts/                   the 48 texts the models get
@@ -158,6 +158,8 @@ src/extraction/
   prompts.py               reads a prompt with its version and file hash
   sampling.py              reads configs/sampling.yaml
   validation.py            checks an answer against the Deal schema; the fix request text
+  checks.py                content checks after the schema: penalty payer, quantity, placeholder buyer
+  text.py                  text normalization shared by the content checks and the scoring
   result.py                what is recorded about each answer
   scoring.py               compares one answer with the golden deal
   metrics.py               metrics table model × prompt × sampling

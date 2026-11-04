@@ -43,6 +43,18 @@ def test_every_configuration_runs_on_all_texts_into_one_folder_with_the_metrics(
     ]
 
 
+@pytest.mark.parametrize("count", ["0", "-1"])
+def test_per_source_must_be_a_positive_number_before_any_run(count, monkeypatch):
+    runs: list[list[str]] = []
+    monkeypatch.setattr("src.extraction.run.main", lambda argv: runs.append(argv) or 0)
+
+    with pytest.raises(SystemExit) as stop:
+        stage1.main(["--per-source", count])
+
+    assert stop.value.code == 2
+    assert runs == []
+
+
 def test_per_source_runs_a_small_set_into_the_smoke_folder_not_the_stage_one_results(
     monkeypatch, tmp_path
 ):

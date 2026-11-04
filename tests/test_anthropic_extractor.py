@@ -136,6 +136,13 @@ def test_truncated_tool_call_is_failed_even_if_its_input_parses():
     assert "max_tokens" in result.error
 
 
+def test_cut_off_tool_call_is_not_sent_back_for_a_fix():
+    # the fix would get the same max_tokens, be cut off again and be paid for twice
+    result, client = extract(tool_reply({}, stop_reason="max_tokens"), HAIKU_55)
+
+    assert (result.status, result.attempts, len(client.calls)) == (ExtractionStatus.FAILED, 1, 1)
+
+
 def test_reply_without_the_tool_call_is_failed_and_keeps_the_text():
     result, _ = extract(text_reply("Не можу знайти умови угоди."))
 

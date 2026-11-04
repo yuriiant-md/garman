@@ -16,6 +16,7 @@ from typing import get_args
 
 from pydantic import BaseModel
 
+from src.extraction.text import normalize_text
 from src.schemas.deal import Deal, GradeTerms, IndicatorName, Penalty, QualityIndicator
 
 NUMBER_TOLERANCE = 0.005  # equal to the hundredth: 9200 = 9200.004, 0.1 != 0.11
@@ -30,14 +31,7 @@ LIST_FIELDS = frozenset({PENALTIES, GRADES})  # scored item by item, not as one 
 PENALTY_KEY = ("payer", "trigger", "unit")
 PENALTY_REST = ("amount", "cap_pct")
 GRADE_FIELDS = ("grade", "amount_per_t")  # its indicators are scored one unit each
-QUOTES = re.compile(r"[\"«»“”„]")
-APOSTROPHES = re.compile(r"['’ʼ`]")  # inside a word: "П'ятихатки" = "Пʼятихатки"
 EXPLANATION = re.compile(r"\s*\([^()]*\)")  # a closed bracket after an indicator's name
-LEGAL_FORMS = re.compile(
-    r"\b(?:товариство з обмеженою відповідальністю|приватне акціонерне товариство"
-    r"|публічне акціонерне товариство|акціонерне товариство|приватне підприємство"
-    r"|державне підприємство|фермерське господарство|тзов|тов|прат|пат|ат|пп|дп|фг)\b"
-)
 
 type Pair[T] = tuple[T | None, T | None]
 PenaltyPair = Pair[Penalty]
@@ -80,12 +74,6 @@ class Counts:
 
     def __add__(self, other: "Counts") -> "Counts":
         return Counts(*(getattr(self, f.name) + getattr(other, f.name) for f in fields(self)))
-
-
-def normalize_text(value: str) -> str:
-    """Case, quotes, the legal form ("ТОВ", "ФГ"…) and spacing do not change who is named."""
-    text = QUOTES.sub(" ", APOSTROPHES.sub("", value.casefold()))
-    return " ".join(LEGAL_FORMS.sub(" ", text).split())
 
 
 def texts_match(expected: str, predicted: str) -> bool:

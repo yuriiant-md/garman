@@ -1,12 +1,15 @@
 # Models of stage 1.3. A section name is the --model key and names its model, so one cannot be
 # taken for another. haiku-5.5 is the main model (REPORT.md, section 6); haiku-4.5 and gpt-4o are
-# kept to compare with. Prices are USD per 1M tokens.
+# kept to compare with. Prices are USD per 1M tokens. `provider` picks the extractor and the API
+# key (anthropic: ANTHROPIC_API_KEY, openrouter: OPENROUTER_API_KEY), so a new model is a new
+# section here, with no change in the code.
 # The local models of stages 1.1 and 1.2 (Lapa 12B, Qwen3 14B through Ollama) are gone since
 # stage 1.3; their answers stay in results/stage1/ and results/stage1_2/, their code in tag stage-1.
 haiku-5.5:
   # Claude Haiku 5.5 through a forced tool call. It rejects any temperature/top_p but the defaults,
   # so it runs with the "default" sampling only.
   # With a forced tool call it answers without thinking, so the effort changes little.
+  provider: anthropic
   model: claude-haiku-5-5
   timeout_s: 60
   max_retries: 3
@@ -18,6 +21,7 @@ haiku-5.5:
 haiku-4.5:
   # The main model up to stage 1.2: the cheapest Claude model that still accepts temperature/top_p
   # and a forced tool call; newer models reject non-default temperature/top_p.
+  provider: anthropic
   model: claude-haiku-4-5
   timeout_s: 30        # per request; the SDK retries timeouts too
   max_retries: 3       # SDK retries 408/409/429/5xx and connection errors with exponential backoff
@@ -27,6 +31,7 @@ haiku-4.5:
 gpt-4o:
   # Stage 1.2: GPT-4o through OpenRouter, a second paid model to compare Claude with. OpenAI has
   # deprecated it, so it is a reference point, not a candidate for production.
+  provider: openrouter
   model: openai/gpt-4o
   timeout_s: 60        # per request; the SDK retries timeouts too
   max_retries: 3       # SDK retries 408/409/429/5xx and connection errors with exponential backoff

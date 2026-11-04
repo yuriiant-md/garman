@@ -94,6 +94,12 @@ uv run python -m scripts.fetch_prozorro    # кандидати в data/raw/proz
 uv run python -m scripts.pdf_to_text       # data/raw/prozorro/*.pdf → data/texts/prozorro_NNN.txt
 ```
 
+Збір корпусу етапу 2 (45 документів зі списку `data/rag_sources.csv`, докладно — у `data/README.md`):
+
+```bash
+uv run python -m scripts.fetch_rag_sources  # закони й постанови ВС → data/raw/rag/; код 1, доки чогось бракує
+```
+
 ## Як рахуються метрики
 
 Правила записані до першого прогону (правила для класів і показників якості додано на етапі 1.3); код — `src/extraction/scoring.py` (один документ) і `src/extraction/metrics.py` (таблиця), кожне правило має свій тест у `tests/test_scoring.py` і `tests/test_metrics.py`.
@@ -142,8 +148,9 @@ data/
   golden/                  еталон договорів Prozorro і власних договорів + RULES.md
   prozorro_sources.csv     з якої закупівлі кожен договір Prozorro
   own_sources.csv          з якого PDF і з яким номером кожен власний договір
+  rag_sources.csv          корпус етапу 2: 28 договорів (PDF), 6 законів і 11 постанов ВС (HTML)
   README.md                як зібрано, знеособлено й розмічено дані
-  raw/                     оригінали PDF і файли перевірки маскування (не в git)
+  raw/                     оригінали PDF, файли перевірки маскування й HTML-сторінки етапу 2 в raw/rag/ (не в git)
 prompts/
   extract_v1.md            baseline-промпт, версія в шапці
   extract_v2.md            промпт з правилами по полях; {today} — дата запуску
@@ -163,9 +170,12 @@ src/extraction/
   result.py                що записується про кожну відповідь
   scoring.py               порівняння однієї відповіді з еталоном
   metrics.py               таблиця метрик модель × промпт × семплінг
+src/rag/
+  sources.py               читання й перевірка data/rag_sources.csv: типи, статті кожного закону, мінімуми курсу
 scripts/
   generate_synthetic.py    угоди для синтетичного набору (+ synthetic_render.py, synthetic_checks.py)
   fetch_prozorro.py        пошук договорів у Prozorro
+  fetch_rag_sources.py     завантаження законів (kodeksy.com.ua) і постанов (reyestr.court.gov.ua) корпусу етапу 2
   pdf_to_text.py           PDF → знеособлений текст
   check_golden.py          перевірка розмітки golden set
 tests/                     тести pytest: make test

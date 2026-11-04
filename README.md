@@ -94,6 +94,12 @@ uv run python -m scripts.fetch_prozorro    # candidates in data/raw/prozorro_can
 uv run python -m scripts.pdf_to_text       # data/raw/prozorro/*.pdf → data/texts/prozorro_NNN.txt
 ```
 
+Collecting the stage 2 corpus (45 documents listed in `data/rag_sources.csv`, details in `data/README.md`):
+
+```bash
+uv run python -m scripts.fetch_rag_sources  # laws and Supreme Court decisions → data/raw/rag/; exit 1 while anything is missing
+```
+
 ## How the metrics are counted
 
 The rules were written before the first run; the rules for grades and quality indicators were added in stage 1.3. Code: `src/extraction/scoring.py` (one document) and `src/extraction/metrics.py` (the table); every rule has its own test in `tests/test_scoring.py` and `tests/test_metrics.py`.
@@ -142,8 +148,9 @@ data/
   golden/                  golden deals of the Prozorro and own contracts + RULES.md
   prozorro_sources.csv     which Prozorro tender each contract comes from
   own_sources.csv          which PDF and contract number each own contract comes from
+  rag_sources.csv          stage 2 corpus: 28 contracts (PDF), 6 laws and 11 Supreme Court decisions (HTML)
   README.md                how the data was collected, anonymised and labelled
-  raw/                     original PDFs and masking check files (not in git)
+  raw/                     original PDFs, masking check files and the stage 2 HTML pages in raw/rag/ (not in git)
 prompts/
   extract_v1.md            baseline prompt, version in the header
   extract_v2.md            prompt with per-field rules; {today} becomes the run date
@@ -163,9 +170,12 @@ src/extraction/
   result.py                what is recorded about each answer
   scoring.py               compares one answer with the golden deal
   metrics.py               metrics table model × prompt × sampling
+src/rag/
+  sources.py               reads and checks data/rag_sources.csv: types, articles of each law, course minimums
 scripts/
   generate_synthetic.py    deals for the synthetic set (+ synthetic_render.py, synthetic_checks.py)
   fetch_prozorro.py        search for contracts in Prozorro
+  fetch_rag_sources.py     downloads the laws (kodeksy.com.ua) and decisions (reyestr.court.gov.ua) of the stage 2 corpus
   pdf_to_text.py           PDF → anonymised text
   check_golden.py          validates the golden labels
 tests/                     pytest tests: make test

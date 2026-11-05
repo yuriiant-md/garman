@@ -99,6 +99,7 @@ Collecting the stage 2 corpus (45 documents listed in `data/rag_sources.csv`, de
 ```bash
 uv run python -m scripts.fetch_rag_sources  # laws and Supreme Court decisions → data/raw/rag/; exit 1 while anything is missing
 uv run python -m scripts.ingest_rag         # clean, anonymised documents → data/rag/; nothing written while any document has a problem
+uv run python -m scripts.chunk_rag          # chunks for the index → data/rag/chunks.jsonl and a comparison with fixed-size chunks
 ```
 
 ## How the metrics are counted
@@ -115,6 +116,24 @@ The rules were written before the first run; the rules for grades and quality in
 8. **Separately per set:** synthetic texts (dev), Prozorro and the author's own contracts (test); the model is chosen on all golden documents together.
 9. **Noise:** accuracy on filled fields comes with a 95% bootstrap interval — 1000 resamples of documents with replacement, fixed seed. When the intervals of two configurations overlap, no advantage is claimed.
 10. **Cost** — tokens of all attempts × the price in `configs/models.yaml`, per 1000 answers without `error`; $0 for the local models.
+
+## How documents are chunked (stage 2)
+
+`uv run python -m scripts.chunk_rag` (local, free, a few seconds) turns `data/rag/documents.jsonl` into `data/rag/chunks.jsonl`, one chunk per line; a second run writes the same bytes. Chunks follow the structure of the document, not a fixed number of characters, because an answer has to cite a place a person can find: [own_003, п. 7.3], [ЦК, ст. 625]. Code: `src/rag/structure.py` (what an answer can cite) and `src/rag/chunking.py` (sizes and metadata); tests — `tests/test_rag_structure.py`, `tests/test_chunking.py`, `tests/test_chunk_rag.py`.
+
+1. **A unit is what an answer cites.** A contract splits into its preamble, clauses «7.3» and requisites. A clause starts only where its number grows, so «1.1 цього Договору» wrapped inside clause 3.1 does not start a new one. A section line «5. Ціна» counts only when the next clause is 5.x, and everything after the last clause that looks like a party label or requisites goes to the section «Реквізити та додатки». A law splits into whole articles «ст. 625». A decision splits into paragraphs «п. 5.12»; its sections are capital-letter headings («ВСТАНОВИВ:») and «N. Title» lines. Section and heading lines are not part of the chunk text: they are kept in its metadata.
+2. **Limits: at most 1500 characters, merge below 200.** They come from the corpus itself: contract clauses have a median of 300 characters, p90 1175, and 106 of 1777 are longer than 1500; law articles have a median of 584; decision paragraphs a median of 411, p90 1677. So 1500 keeps 94% of clauses and nearly every article whole. That is about 400–500 tokens; the real tokenizer is checked in Е2.4.
+3. **A long unit is split by its own numbering first:** a clause into subclauses «п. 10.6.1», an article into parts «ст. 30, ч. 1» or Tax Code points «ст. 201, п. 201.1». What is still too long is split between lines, then sentences, then words, and every piece keeps the ref of its unit.
+4. **A short unit** (under 200 characters, such as «1.1. Товар — пшениця.») joins its neighbour when both are in the same section or article and fit into 1500 together; the ref becomes a range «п. 1.1–1.3» or a list «преамбула, п. 1.1». Units of 200 characters or more stay one per chunk, so their refs stay exact.
+5. **Every chunk carries** `chunk_id` (`own_001#007`), `doc_id`, type, title, short title for the citation, source URL, version date, `in_force`, `cites_commercial_code`, the hash of the document text (a changed document means its chunks are stale), section, heading, ref and pages.
+6. **Comparison with fixed-size chunks.** The baseline is windows of 1500 characters with an overlap of 200 over the same document text, measured against the same citable units. *Clauses cut*: units with a ref that no single chunk holds whole. *Cross a boundary*: chunks touching two sections of a contract or two articles of a law. *One ref*: chunks that a single ref can cite.
+
+| chunking (05.11.2026, 45 documents) | chunks | median chars | p90 chars | clauses cut | cross a boundary | one ref |
+| --- | --- | --- | --- | --- | --- | --- |
+| structural ≤ 1500, merge < 200 | 2836 | 468 | 1163 | 3.9% | 0.0% | 67.2% |
+| fixed 1500, overlap 200 | 1278 | 1500 | 1500 | 20.7% | 27.6% | 8.1% |
+
+Fixed windows cut every fifth clause and mix two sections or articles in every fourth chunk, so an answer would often see half a clause or cite the wrong one. Structural chunks cut only the 3.9% of units that stay over 1500 characters even after their subclauses, and never cross a boundary. The other 33% of structural chunks are merged ranges or decision paragraphs without a number, cited by the range or the section. The price is twice as many chunks. This table measures only where the boundaries fall; whether retrieval gets better is shown by recall@k and MRR on the same questions in Е2.4.
 
 ## Where things are
 
@@ -150,7 +169,7 @@ data/
   prozorro_sources.csv     which Prozorro tender each contract comes from
   own_sources.csv          which PDF and contract number each own contract comes from
   rag_sources.csv          stage 2 corpus: 28 contracts (PDF), 6 laws and 11 Supreme Court decisions (HTML)
-  rag/                     the stage 2 corpus after ingestion: documents.jsonl (text by page or article) and manifest.jsonl
+  rag/                     the stage 2 corpus after ingestion: documents.jsonl (text by page or article), manifest.jsonl and chunks.jsonl (chunks with metadata)
   README.md                how the data was collected, anonymised and labelled
   raw/                     original PDFs, masking check files and the stage 2 HTML pages in raw/rag/ (not in git)
 prompts/
@@ -175,12 +194,15 @@ src/extraction/
 src/rag/
   sources.py               reads and checks data/rag_sources.csv: types, articles of each law, course minimums
   documents.py             an ingested document (parts with a page or an article), its manifest entry, JSONL
+  structure.py             citable units of a document: contract clauses, law articles and their parts, decision paragraphs
+  chunking.py              units packed into chunks of 200–1500 characters with metadata; fixed-size windows for comparison
 scripts/
   generate_synthetic.py    deals for the synthetic set (+ synthetic_render.py, synthetic_checks.py)
   fetch_prozorro.py        search for contracts in Prozorro
   fetch_rag_sources.py     downloads the laws (kodeksy.com.ua) and decisions (reyestr.court.gov.ua) of the stage 2 corpus
   pdf_to_text.py           PDF → anonymised text
   ingest_rag.py            stage 2 ingestion: PDF and HTML → clean, anonymised documents in data/rag/
+  chunk_rag.py             stage 2 chunking: data/rag/chunks.jsonl and the comparison with fixed-size chunks
   check_golden.py          validates the golden labels
 tests/                     pytest tests: make test
 results/stage1_3/          one folder per launch, named with its start time: a *.jsonl file per configuration (one line per document) and the metrics tables (metrics.md, metrics_by_field.md)

@@ -1,4 +1,7 @@
 import csv
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pymupdf
@@ -163,6 +166,30 @@ def test_keeps_company_names_and_amounts():
 
 def test_masks_extra_names_given_by_reviewer():
     assert masked("підпис Гнатюка та Гнатюк", extra_names=("Гнатюк",)) == "підпис [ПІБ] та [ПІБ]"
+
+
+def test_reports_masked_values_in_the_same_order_under_any_hash_seed():
+    # surnames of one length: a set of their stems iterates in an order the hash seed picks
+    script = (
+        "from scripts.pdf_to_text import mask_pii\n"
+        "names = ('Чумак', 'Бойко', 'Дячук', 'Кузик', 'Гнатюк', 'Пєсков')\n"
+        "print(mask_pii('Підписали ' + ', '.join(names) + '.', names)[1])\n"
+    )
+    root = Path(__file__).resolve().parents[1]
+
+    orders = {
+        subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=root,
+            env={**os.environ, "PYTHONHASHSEED": str(seed)},
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+        for seed in range(8)
+    }
+
+    assert len(orders) == 1
 
 
 def test_reports_each_masked_value_with_its_kind():

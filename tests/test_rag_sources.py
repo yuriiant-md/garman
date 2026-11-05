@@ -65,6 +65,7 @@ def test_load_sources_rejects_a_repeated_doc_id(tmp_path):
         LAW_ROW.replace("law_x,law", "Law X,law"),
         LAW_ROW.replace('"549..552,625,14-1"', '"ст. 549"'),
         LAW_ROW.replace("https://example.org/x.htm", "example.org/x.htm"),
+        COURT_ROW.replace("Постанова у справі", "Постанова, у справі"),  # an unquoted comma
     ],
 )
 def test_load_sources_names_the_line_of_a_bad_row(tmp_path, row):

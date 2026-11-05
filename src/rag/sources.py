@@ -9,6 +9,7 @@ import re
 from datetime import date
 from enum import StrEnum
 from pathlib import Path, PurePosixPath
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 
@@ -125,7 +126,9 @@ def load_sources(path: Path) -> tuple[Source, ...]:
     return sources
 
 
-def _parse_row(path: Path, line: int, row: dict[str, str | None]) -> Source:
+def _parse_row(path: Path, line: int, row: dict[str | None, Any]) -> Source:
+    if None in row:  # DictReader puts the cells beyond the header under None, as a list
+        raise ValueError(f"{path}:{line}: more cells than columns; quote a value with a comma")
     cells = {key: (value or "").strip() or None for key, value in row.items()}
     try:
         return Source.model_validate(cells)

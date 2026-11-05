@@ -8,7 +8,10 @@ from src.rag.documents import (
     DocumentPart,
     ManifestEntry,
     NearDuplicate,
+    print_problems,
     read_documents,
+    read_manifest,
+    sha256_hex,
     write_jsonl,
 )
 from src.rag.sources import DocFormat, DocType
@@ -78,6 +81,37 @@ def test_read_documents_names_the_broken_line(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match=r"documents\.jsonl:2"):
         read_documents(path)
+
+
+def test_read_manifest_reads_entries_back_and_names_the_broken_line(tmp_path: Path) -> None:
+    entry = ManifestEntry(
+        doc_id="law_x",
+        doc_type=DocType.LAW,
+        format=DocFormat.HTML,
+        raw_sha256="a" * 64,
+        text_sha256=sha256_hex(LAW.text.encode()),
+        parts=2,
+        chars=len(LAW.text),
+    )
+    path = tmp_path / "manifest.jsonl"
+    write_jsonl(path, (entry,))
+    assert read_manifest(path) == (entry,)
+
+    path.write_text(path.read_text(encoding="utf-8") + "{}\n", encoding="utf-8")
+    with pytest.raises(ValueError, match=r"manifest\.jsonl:2"):
+        read_manifest(path)
+
+
+def test_sha256_hex_is_the_hex_digest() -> None:
+    assert sha256_hex(b"") == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+
+
+def test_print_problems_lists_each_problem_and_fails(capsys: pytest.CaptureFixture[str]) -> None:
+    assert print_problems(["law_x: no row", "court_1: broken page"]) == 1
+
+    printed = capsys.readouterr().out.splitlines()
+    assert printed[:2] == ["PROBLEM law_x: no row", "PROBLEM court_1: broken page"]
+    assert "nothing written" in printed[2]
 
 
 @pytest.mark.parametrize(

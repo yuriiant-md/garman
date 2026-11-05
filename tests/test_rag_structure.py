@@ -101,6 +101,21 @@ def test_wrapped_reference_to_an_earlier_clause_does_not_start_a_clause() -> Non
     assert [u.ref for u in contract_units(document, max_chars=LIMIT)] == ["п. 3.1", "п. 3.2"]
 
 
+def test_wrapped_reference_to_a_later_clause_does_not_start_a_clause() -> None:
+    document = contract(
+        "4.1. Ціна остаточна в місці поставки згідно п.\n5.1. цього Договору.\n"
+        "4.2. У разі зміни ставки ПДВ.\n5. Поставка Товару\n5.1. Постачальник передає Товар."
+    )
+
+    units = contract_units(document, max_chars=LIMIT)
+
+    assert [(u.ref, u.lines[0].text) for u in units] == [
+        ("п. 4.1", "4.1. Ціна остаточна в місці поставки згідно п."),
+        ("п. 4.2", "4.2. У разі зміни ставки ПДВ."),
+        ("п. 5.1", "5.1. Постачальник передає Товар."),
+    ]
+
+
 def test_numbered_list_inside_a_clause_is_not_a_section() -> None:
     document = contract("5.1. Покупець зобов’язаний:\n1. Прийняти Товар\n2. Оплатити Товар\n5.2. Строк")
 

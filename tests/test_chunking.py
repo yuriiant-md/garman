@@ -3,7 +3,7 @@ from datetime import date
 import pytest
 
 from src.rag.chunking import Chunk, chunk_document, fixed_size_chunks, pack_units
-from src.rag.documents import Document, DocumentPart, ManifestEntry
+from src.rag.documents import Document, DocumentPart, ManifestEntry, sha256_hex
 from src.rag.sources import DocFormat, DocType, Source
 from src.rag.structure import Line, Unit
 
@@ -107,16 +107,26 @@ def source(doc_id: str, doc_type: DocType, **fields: object) -> Source:
     )
 
 
-def entry(doc_id: str, doc_type: DocType) -> ManifestEntry:
+def entry(document: Document, doc_type: DocType, *, doc_id: str | None = None) -> ManifestEntry:
+    """The manifest entry ingestion writes: the hash is of this very document's text."""
     return ManifestEntry(
-        doc_id=doc_id,
+        doc_id=doc_id or document.doc_id,
         doc_type=doc_type,
         format=DocFormat.HTML,
         raw_sha256="r" * 64,
-        text_sha256="t" * 64,
+        text_sha256=sha256_hex(document.text.encode()),
         parts=1,
         chars=100,
     )
+
+
+CONTRACT = Document(
+    doc_id="own_001",
+    parts=(
+        DocumentPart(page=1, text="1. Предмет\n1.1. Продавець передає пшеницю 3 класу."),
+        DocumentPart(page=2, text="1.2. Покупець оплачує її протягом 5 днів."),
+    ),
+)
 
 
 def contract_chunk(number: int, ref: str, page: int, text: str) -> Chunk:
@@ -126,7 +136,7 @@ def contract_chunk(number: int, ref: str, page: int, text: str) -> Chunk:
         doc_type=DocType.CONTRACT,
         title="Назва own_001",
         short_title="OWN_001",
-        text_sha256="t" * 64,
+        text_sha256=sha256_hex(CONTRACT.text.encode()),
         section="1. Предмет",
         ref=ref,
         pages=(page,),
@@ -135,17 +145,10 @@ def contract_chunk(number: int, ref: str, page: int, text: str) -> Chunk:
 
 
 def test_contract_chunks_carry_numbered_ids_refs_pages_and_document_metadata() -> None:
-    document = Document(
-        doc_id="own_001",
-        parts=(
-            DocumentPart(page=1, text="1. Предмет\n1.1. Продавець передає пшеницю 3 класу."),
-            DocumentPart(page=2, text="1.2. Покупець оплачує її протягом 5 днів."),
-        ),
-    )
     contract_source = source("own_001", DocType.CONTRACT, format=DocFormat.PDF)
 
     chunks = chunk_document(
-        document, contract_source, entry("own_001", DocType.CONTRACT), min_chars=10
+        CONTRACT, contract_source, entry(CONTRACT, DocType.CONTRACT), min_chars=10
     )
 
     assert chunks == (
@@ -164,7 +167,7 @@ def test_law_chunks_carry_the_edition_and_in_force_flag() -> None:
         "law_commercial_code", DocType.LAW, version_date=date(2025, 8, 28), in_force=False
     )
 
-    (chunk,) = chunk_document(document, law_source, entry("law_commercial_code", DocType.LAW))
+    (chunk,) = chunk_document(document, law_source, entry(document, DocType.LAW))
 
     assert (chunk.ref, chunk.heading, chunk.pages) == ("ст. 231", heading, ())
     assert (chunk.version_date, chunk.in_force) == (date(2025, 8, 28), False)
@@ -176,7 +179,7 @@ def test_decision_chunks_carry_the_commercial_code_flag() -> None:
     )
     court_source = source("court_1", DocType.COURT_DECISION, cites_commercial_code=True)
 
-    (chunk,) = chunk_document(document, court_source, entry("court_1", DocType.COURT_DECISION))
+    (chunk,) = chunk_document(document, court_source, entry(document, DocType.COURT_DECISION))
 
     assert (chunk.section, chunk.ref, chunk.cites_commercial_code) == ("ВСТАНОВИВ:", "п. 5", True)
 
@@ -184,12 +187,22 @@ def test_decision_chunks_carry_the_commercial_code_flag() -> None:
 def test_chunk_document_refuses_metadata_of_another_document() -> None:
     document = Document(doc_id="court_1", parts=(DocumentPart(text="5. Суд дійшов висновку."),))
     own_source = source("court_1", DocType.COURT_DECISION)
-    own_entry = entry("court_1", DocType.COURT_DECISION)
+    own_entry = entry(document, DocType.COURT_DECISION)
+    other_entry = entry(document, DocType.COURT_DECISION, doc_id="court_2")
 
     with pytest.raises(ValueError, match="court_2"):
         chunk_document(document, source("court_2", DocType.COURT_DECISION), own_entry)
     with pytest.raises(ValueError, match="court_2"):
-        chunk_document(document, own_source, entry("court_2", DocType.COURT_DECISION))
+        chunk_document(document, own_source, other_entry)
+
+
+def test_chunk_document_refuses_a_manifest_written_for_another_text() -> None:
+    document = Document(doc_id="court_1", parts=(DocumentPart(text="5. Суд дійшов висновку."),))
+    older = Document(doc_id="court_1", parts=(DocumentPart(text="5. Суд дійшов іншого."),))
+    court_source = source("court_1", DocType.COURT_DECISION)
+
+    with pytest.raises(ValueError, match="court_1: the text differs from the manifest"):
+        chunk_document(document, court_source, entry(older, DocType.COURT_DECISION))
 
 
 def test_fixed_size_chunks_are_windows_that_overlap() -> None:

@@ -31,15 +31,25 @@ def sources_file(tmp_path: Path, *rows: str) -> Path:
     return path
 
 
-def site(requests: list[str], broken: str | None = None) -> httpx.Client:
+CAPTCHA = "<html><body>Підтвердіть, що ви не робот</body></html>"
+ARTICLE_PAGE = '<div id="statya"><p>Стаття</p></div> <!-- statya -->'
+
+
+def site(
+    requests: list[str], broken: str | None = None, captcha: str | None = None
+) -> httpx.Client:
     def handler(request: httpx.Request) -> httpx.Response:
         url = str(request.url)
         requests.append(url)
         if url == broken:
             return httpx.Response(503)
+        if url == captcha:
+            return httpx.Response(200, text=CAPTCHA)  # a 200 page without the text we came for
         if url == LAW_URL:
             return httpx.Response(200, text=LAW_INDEX)
-        return httpx.Response(200, text=f"<p>{url}</p>")
+        if url == COURT_URL:
+            return httpx.Response(200, text=f'<textarea id="txtdepository">{url}</textarea>')
+        return httpx.Response(200, text=f'<div id="statya"><p>{url}</p></div> <!-- statya -->')
 
     return httpx.Client(transport=httpx.MockTransport(handler))
 
@@ -71,7 +81,7 @@ def test_a_cut_off_table_of_contents_names_the_articles_it_lacks(tmp_path):
     cut_off = LAW_INDEX.replace('<a href="/law_x/14-1.htm">14-1</a>', "")
 
     def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, text=cut_off if str(request.url) == LAW_URL else "<p>ok</p>")
+        return httpx.Response(200, text=cut_off if str(request.url) == LAW_URL else ARTICLE_PAGE)
 
     client = httpx.Client(transport=httpx.MockTransport(handler))
     failures = fetch_source(client, law, tmp_path / "raw", pause_s=0)
@@ -89,7 +99,7 @@ def test_a_cut_off_table_of_contents_is_fine_when_the_lacking_pages_are_on_disk(
     cut_off = LAW_INDEX.replace('<a href="/law_x/14-1.htm">14-1</a>', "")
 
     def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, text=cut_off if str(request.url) == LAW_URL else "<p>ok</p>")
+        return httpx.Response(200, text=cut_off if str(request.url) == LAW_URL else ARTICLE_PAGE)
 
     client = httpx.Client(transport=httpx.MockTransport(handler))
 
@@ -128,6 +138,33 @@ def test_a_failed_download_tells_where_to_save_the_page_by_hand(tmp_path):
     assert COURT_URL in failures[0]
     assert str(tmp_path / "raw" / "rag" / "court_1.html") in failures[0]
     assert not (tmp_path / "raw" / "rag" / "court_1.html").exists()
+
+
+def test_a_page_without_its_text_is_not_saved_and_is_fetched_again_next_time(tmp_path):
+    (court,) = load_sources(sources_file(tmp_path, COURT_ROW))
+    saved = tmp_path / "raw" / "rag" / "court_1.html"
+
+    failures = fetch_source(site([], captcha=COURT_URL), court, tmp_path / "raw", pause_s=0)
+
+    (failure,) = failures
+    assert COURT_URL in failure
+    assert "no decision text" in failure
+    assert str(saved) in failure
+    assert not saved.exists()
+    assert fetch_source(site([]), court, tmp_path / "raw", pause_s=0) == []
+    assert saved.exists()
+
+
+def test_a_law_page_without_the_article_is_not_saved(tmp_path):
+    (law,) = load_sources(sources_file(tmp_path, LAW_ROW))
+    article_url = "https://kodeksy.example/law_x/statja-549.htm"
+
+    failures = fetch_source(site([], captcha=article_url), law, tmp_path / "raw", pause_s=0)
+
+    assert len(failures) == 1
+    assert article_url in failures[0]
+    assert "no article text" in failures[0]
+    assert not (tmp_path / "raw" / "rag" / "law_x" / "549.html").exists()
 
 
 def test_a_failed_table_of_contents_tells_where_to_save_the_articles(tmp_path):

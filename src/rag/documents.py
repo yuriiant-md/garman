@@ -5,6 +5,7 @@ scripts/ingest_rag.py writes data/rag/documents.jsonl (one Document per line) an
 a law into articles, a decision stays whole: its sections are found when it is chunked. Titles,
 dates and in-force flags stay in data/rag_sources.csv and are joined by doc_id, not copied here."""
 
+import hashlib
 from collections.abc import Iterable
 from pathlib import Path
 
@@ -59,18 +60,39 @@ class ManifestEntry(BaseModel):
     near_duplicates: tuple[NearDuplicate, ...] = ()  # similar documents, kept but flagged
 
 
+def sha256_hex(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
 def write_jsonl(path: Path, records: Iterable[BaseModel]) -> None:
     lines = (record.model_dump_json(exclude_defaults=True) for record in records)
     path.write_text("".join(f"{line}\n" for line in lines), encoding="utf-8")
 
 
-def read_documents(path: Path) -> tuple[Document, ...]:
+def read_jsonl[M: BaseModel](path: Path, model: type[M]) -> tuple[M, ...]:
+    """One record per line; a broken line is named as path:line."""
     lines = path.read_text(encoding="utf-8").splitlines()
-    return tuple(_parse_line(path, number, line) for number, line in enumerate(lines, start=1))
+    return tuple(_parse_line(path, number, line, model) for number, line in enumerate(lines, 1))
 
 
-def _parse_line(path: Path, number: int, line: str) -> Document:
+def read_documents(path: Path) -> tuple[Document, ...]:
+    return read_jsonl(path, Document)
+
+
+def read_manifest(path: Path) -> tuple[ManifestEntry, ...]:
+    return read_jsonl(path, ManifestEntry)
+
+
+def print_problems(problems: Iterable[str]) -> int:
+    """How both stage 2 commands stop: every problem, then exit code 1 with nothing written."""
+    for problem in problems:
+        print(f"PROBLEM {problem}")
+    print("nothing written: fix the problems above and run again")
+    return 1
+
+
+def _parse_line[M: BaseModel](path: Path, number: int, line: str, model: type[M]) -> M:
     try:
-        return Document.model_validate_json(line)
+        return model.model_validate_json(line)
     except ValidationError as error:
         raise ValueError(f"{path}:{number}: {error}") from None

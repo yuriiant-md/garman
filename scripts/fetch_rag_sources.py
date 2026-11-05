@@ -31,6 +31,9 @@ SOURCES_PATH = ROOT / "data" / "rag_sources.csv"
 RAW_ROOT = ROOT / "data" / "raw"
 HEADERS = {"User-Agent": "garman course research"}
 PAUSE_S = 1.0  # both sites are small public services, so one request a second
+# The block scripts/ingest_rag.py reads: a 200 page without it is cut off or a captcha
+ARTICLE_MARK = ("article", b'<div id="statya">')
+DECISION_MARK = ("decision", b'<textarea id="txtdepository">')
 
 
 def article_links(index_html: str, index_url: str) -> dict[str, str]:
@@ -42,7 +45,9 @@ def article_links(index_html: str, index_url: str) -> dict[str, str]:
     }
 
 
-def _save(client: httpx.Client, url: str, path: Path, pause_s: float) -> str | None:
+def _save(
+    client: httpx.Client, url: str, path: Path, mark: tuple[str, bytes], pause_s: float
+) -> str | None:
     if path.exists():
         return None
     try:
@@ -52,6 +57,9 @@ def _save(client: httpx.Client, url: str, path: Path, pause_s: float) -> str | N
         return f"{url}: {error}; save the page by hand as {path}"
     finally:
         time.sleep(pause_s)
+    kind, block = mark
+    if block not in response.content:  # never kept, so the next run fetches it again
+        return f"{url}: the page has no {kind} text (cut off or a captcha?); save it as {path}"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(response.content)
     return None
@@ -71,7 +79,8 @@ def _fetch_law(
     links = article_links(index.text, index_url)
     wanted = {article: url for article, url in links.items() if source.wants_article(article)}
     saves = (
-        _save(client, url, folder / f"{article}.html", pause_s) for article, url in wanted.items()
+        _save(client, url, folder / f"{article}.html", ARTICLE_MARK, pause_s)
+        for article, url in wanted.items()
     )
     failures = [failure for failure in saves if failure]
     # the mirror sometimes sends a cut-off table of contents, so a short page must not pass silently
@@ -93,7 +102,8 @@ def fetch_source(
         return []
     if source.doc_type is DocType.LAW:
         return _fetch_law(client, source, source.source_url, raw_root, pause_s)
-    failure = _save(client, source.source_url, raw_root / source.raw_path, pause_s)
+    path = raw_root / source.raw_path
+    failure = _save(client, source.source_url, path, DECISION_MARK, pause_s)
     return [failure] if failure else []
 
 

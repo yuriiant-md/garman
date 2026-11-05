@@ -137,8 +137,11 @@ def _contract_marks(lines: Sequence[Line]) -> Iterator[_Mark]:
 
 
 def _clause_number(text: str) -> tuple[int, int] | None:
+    """None for "5.1. цього Договору.": a clause never starts with a lowercase word."""
     match = CLAUSE.match(text)
-    return (int(match[1]), int(match[2])) if match else None
+    if match is None or text[match.end() :].lstrip(" .")[:1].islower():
+        return None
+    return int(match[1]), int(match[2])
 
 
 def _clause_units(clause: Unit, max_chars: int) -> tuple[Unit, ...]:

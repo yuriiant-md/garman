@@ -2,22 +2,25 @@ from pathlib import Path
 
 import pytest
 
-from scripts.chunk_rag import Joined, Stats, compare, join_corpus, run
-from src.rag.chunking import Chunk
-from src.rag.documents import Document, DocumentPart, ManifestEntry, write_jsonl
+from scripts import chunk_rag
+from scripts.chunk_rag import Joined, Stats, compare, join_corpus, pack_corpus, run
+from src.rag import chunking
+from src.rag.chunking import Chunk, document_units
+from src.rag.documents import Document, DocumentPart, ManifestEntry, sha256_hex, write_jsonl
 from src.rag.sources import DocFormat, DocType, Source
+from src.rag.structure import Unit
 
 HEADER = "doc_id,doc_type,format,title,short_title,raw_path\n"
 CONTRACT_ROW = "own_001,contract,pdf,Договір own_001,Договір own_001,own/own_001.pdf\n"
 DUPLICATE_ROW = "own_002,contract,pdf,Договір own_002,Договір own_002,own/own_002.pdf\n"
 LAW_ROW = "law_civil_code,law,html,Цивільний кодекс України,ЦК,rag/law_civil_code\n"
 
-# three clauses of 35 characters in two sections
+# three clauses of 35 characters in two sections; a clause starts with a capital letter
 CONTRACT = Document(
     doc_id="own_001",
     parts=(
-        DocumentPart(page=1, text=f"1. Предмет\n1.1. {'а' * 30}\n1.2. {'б' * 30}"),
-        DocumentPart(page=2, text=f"2. Ціна\n2.1. {'в' * 30}"),
+        DocumentPart(page=1, text=f"1. Предмет\n1.1. А{'а' * 29}\n1.2. Б{'б' * 29}"),
+        DocumentPart(page=2, text=f"2. Ціна\n2.1. В{'в' * 29}"),
     ),
 )
 LAW = Document(
@@ -47,11 +50,15 @@ def entry(doc_id: str, doc_type: DocType, **fields: object) -> ManifestEntry:
     )
 
 
+def text_hash(document: Document) -> str:
+    return sha256_hex(document.text.encode())
+
+
 MANIFEST = (
-    entry("own_001", DocType.CONTRACT),
+    entry("own_001", DocType.CONTRACT, text_sha256=text_hash(CONTRACT)),
     # an exact duplicate is listed in the manifest but has no document to chunk
     entry("own_002", DocType.CONTRACT, duplicate_of="own_001"),
-    entry("law_civil_code", DocType.LAW),
+    entry("law_civil_code", DocType.LAW, text_sha256=text_hash(LAW)),
 )
 
 
@@ -122,6 +129,35 @@ def test_run_writes_nothing_when_a_document_has_no_manifest_entry(
     assert "law_civil_code" in capsys.readouterr().out
 
 
+def test_run_writes_nothing_when_the_manifest_is_from_another_run(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    older = entry("own_001", DocType.CONTRACT, text_sha256=sha256_hex("старий текст".encode()))
+    corpus(tmp_path, manifest=(older, *MANIFEST[1:]))
+
+    assert run_corpus(tmp_path) == 1
+
+    assert not (tmp_path / "out").exists()
+    assert "own_001: the text differs from the manifest" in capsys.readouterr().out
+
+
+def test_run_cuts_each_document_into_units_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    corpus(tmp_path)
+    cut: list[str] = []
+
+    def counted(document: Document, doc_type: DocType, *, max_chars: int) -> tuple[Unit, ...]:
+        cut.append(document.doc_id)
+        return document_units(document, doc_type, max_chars=max_chars)
+
+    monkeypatch.setattr(chunking, "document_units", counted)
+    monkeypatch.setattr(chunk_rag, "document_units", counted)
+
+    assert run_corpus(tmp_path) == 0
+    assert sorted(cut) == ["law_civil_code", "own_001"]
+
+
 def test_join_corpus_reports_a_document_whose_types_disagree() -> None:
     law_source = Source(
         doc_id="law_civil_code",
@@ -154,9 +190,9 @@ def contract_joined() -> Joined:
 
 
 def test_structural_chunks_keep_clauses_whole_and_fixed_windows_cut_them() -> None:
-    result = compare(
-        (contract_joined(),), max_chars=60, min_chars=10, fixed_size=60, fixed_overlap=10
-    )
+    packed = pack_corpus((contract_joined(),), max_chars=60, min_chars=10)
+
+    result = compare(packed, fixed_size=60, fixed_overlap=10)
 
     assert result.structural == pytest.approx(
         Stats(

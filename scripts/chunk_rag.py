@@ -14,19 +14,25 @@ from math import ceil
 from pathlib import Path
 from typing import NamedTuple
 
-from pydantic import ValidationError
-
 from src.rag.chunking import (
     FIXED_OVERLAP,
     MAX_CHARS,
     MIN_CHARS,
     Chunk,
-    chunk_document,
     document_units,
     fixed_size_spans,
+    metadata_problem,
     pack_units,
+    packed_chunks,
 )
-from src.rag.documents import Document, ManifestEntry, read_documents, write_jsonl
+from src.rag.documents import (
+    Document,
+    ManifestEntry,
+    print_problems,
+    read_documents,
+    read_manifest,
+    write_jsonl,
+)
 from src.rag.sources import Source, load_sources
 from src.rag.structure import Unit
 
@@ -52,6 +58,14 @@ class Joined(NamedTuple):
     document: Document
     source: Source
     entry: ManifestEntry
+
+
+class Packed(NamedTuple):
+    """One document cut into units and packed once; both the chunks and the comparison use it."""
+
+    joined: Joined
+    units: tuple[Unit, ...]
+    packed: tuple[Unit, ...]
 
 
 class Span(NamedTuple):
@@ -107,40 +121,35 @@ def _joined(
         return f"{doc_id}: no row in rag_sources.csv"
     if entry is None:
         return f"{doc_id}: no entry in the manifest"
-    if entry.doc_type is not source.doc_type:
-        return f"{doc_id}: {source.doc_type} in rag_sources.csv, {entry.doc_type} in the manifest"
-    return Joined(document, source, entry)
+    return metadata_problem(document, source, entry) or Joined(document, source, entry)
 
 
-def chunk_corpus(joined: Iterable[Joined], *, max_chars: int, min_chars: int) -> tuple[Chunk, ...]:
-    return tuple(
-        chunk
-        for item in joined
-        for chunk in chunk_document(*item, max_chars=max_chars, min_chars=min_chars)
-    )
+def pack_corpus(joined: Iterable[Joined], *, max_chars: int, min_chars: int) -> tuple[Packed, ...]:
+    """Each document's citable units and the chunks they pack into, found once per run."""
+    return tuple(_pack_one(item, max_chars=max_chars, min_chars=min_chars) for item in joined)
+
+
+def _pack_one(item: Joined, *, max_chars: int, min_chars: int) -> Packed:
+    units = document_units(item.document, item.source.doc_type, max_chars=max_chars)
+    return Packed(item, units, pack_units(units, max_chars=max_chars, min_chars=min_chars))
+
+
+def corpus_chunks(packed: Iterable[Packed]) -> tuple[Chunk, ...]:
+    return tuple(chunk for item in packed for chunk in packed_chunks(*item.joined, item.packed))
 
 
 # --- structural chunks against fixed-size windows ---
 
 
-def compare(
-    joined: Iterable[Joined],
-    *,
-    max_chars: int,
-    min_chars: int,
-    fixed_size: int,
-    fixed_overlap: int,
-) -> Comparison:
+def compare(packed: Iterable[Packed], *, fixed_size: int, fixed_overlap: int) -> Comparison:
     """Both chunkings measured on the same text, against the same citable units."""
     structural: list[_Measured] = []
     fixed: list[_Measured] = []
-    for item in joined:
-        text = item.document.text
-        units = document_units(item.document, item.source.doc_type, max_chars=max_chars)
+    for (document, _, _), units, chunks in packed:
+        text = document.text
         unit_spans = _locate(text, units)
-        packed = pack_units(units, max_chars=max_chars, min_chars=min_chars)
         structural.append(
-            _measure(units, unit_spans, _locate(text, packed), [len(p.text) for p in packed])
+            _measure(units, unit_spans, _locate(text, chunks), [len(c.text) for c in chunks])
         )
         windows = tuple(
             Span(*window)
@@ -215,18 +224,6 @@ def _share(flags: Iterable[bool]) -> float:
 # --- the command ---
 
 
-def read_manifest(path: Path) -> tuple[ManifestEntry, ...]:
-    lines = path.read_text(encoding="utf-8").splitlines()
-    return tuple(_parse_entry(path, number, line) for number, line in enumerate(lines, start=1))
-
-
-def _parse_entry(path: Path, number: int, line: str) -> ManifestEntry:
-    try:
-        return ManifestEntry.model_validate_json(line)
-    except ValidationError as error:
-        raise ValueError(f"{path}:{number}: {error}") from None
-
-
 def run(
     documents_path: Path,
     manifest_path: Path,
@@ -242,12 +239,11 @@ def run(
         documents, load_sources(sources_path), read_manifest(manifest_path)
     )
     if problems:
-        return _fail(problems)
-    chunks = chunk_corpus(joined, max_chars=max_chars, min_chars=min_chars)
+        return print_problems(problems)
+    packed = pack_corpus(joined, max_chars=max_chars, min_chars=min_chars)
+    chunks = corpus_chunks(packed)
     comparison = compare(
-        joined,
-        max_chars=max_chars,
-        min_chars=min_chars,
+        packed,
         fixed_size=max_chars,  # the same size, so only where the boundaries fall differs
         fixed_overlap=fixed_overlap,
     )
@@ -260,13 +256,6 @@ def run(
         fixed=f"fixed {max_chars}, overlap {fixed_overlap}",
     )
     return 0
-
-
-def _fail(problems: Sequence[str]) -> int:
-    for problem in problems:
-        print(f"PROBLEM {problem}")
-    print("nothing written: fix the problems above and run again")
-    return 1
 
 
 def _print_comparison(comparison: Comparison, *, structural: str, fixed: str) -> None:

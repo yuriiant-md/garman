@@ -14,6 +14,7 @@ from scripts.ingest_rag import (
     normalize_text,
     pdf_pages,
     run,
+    visible_text,
 )
 from src.rag.documents import Document, DocumentPart, ManifestEntry, read_documents
 from src.rag.sources import DocFormat, DocType, Source
@@ -188,6 +189,19 @@ def test_law_article_rejects_a_page_without_an_article() -> None:
         law_article("<html><body>502 Bad Gateway</body></html>", "549")
 
 
+def test_law_article_rejects_a_heading_without_text() -> None:
+    page = '<div id="statya"><h1>&nbsp;<img src="x.png"></h1><p>Текст</p></div> <!-- statya -->'
+
+    with pytest.raises(ValueError, match="no text in the heading"):
+        law_article(page, "549")
+
+
+def test_visible_text_keeps_table_cells_apart() -> None:
+    table = "<table><tr><th>Сторона</th><th>Назва</th></tr><tr><td>Позивач</td><td>ТОВ</td></tr>"
+
+    assert visible_text(table) == "Сторона\nНазва\nПозивач\nТОВ"
+
+
 def test_decision_text_takes_only_the_decision() -> None:
     text = decision_text(REYESTR_PAGE)
 
@@ -244,6 +258,21 @@ def test_ingest_reports_a_broken_law_page_by_its_path(tmp_path: Path) -> None:
     (problem,) = result.problems
     assert problem.startswith(f"law_x: {broken}: no article block")
     assert result.documents == ()
+
+
+def test_ingest_takes_only_the_law_articles_the_sources_list(tmp_path: Path) -> None:
+    folder = tmp_path / "raw" / "rag" / "law_x"
+    for article in ("549", "550", "625"):
+        write(folder / f"{article}.html", kodeksy_page(article))
+    law = source("law_x", DocType.LAW, "rag/law_x").model_copy(update={"articles": "549..550"})
+
+    first = ingest((law,), tmp_path / "raw", tmp_path / "texts")
+    write(folder / "625.html", "<html><body>сторінка, якої немає в списку</body></html>")
+    second = ingest((law,), tmp_path / "raw", tmp_path / "texts")
+
+    assert [part.article for part in first.documents[0].parts] == ["549", "550"]
+    assert second.problems == ()  # a page left outside the list is not even read
+    assert second.manifest[0].raw_sha256 == first.manifest[0].raw_sha256
 
 
 def test_ingest_keeps_contract_pages_and_their_numbers(tmp_path: Path, contract_pdf: None) -> None:
@@ -414,6 +443,18 @@ def test_run_writes_the_same_files_on_every_run(tmp_path: Path, contract_pdf: No
         "court_1",
     ]
     assert "Коваленко" in (tmp_path / "raw" / "rag" / "mask_review.txt").read_text()
+
+
+def test_run_creates_the_folder_of_the_review_file(tmp_path: Path, contract_pdf: None) -> None:
+    review_path = tmp_path / "new" / "folder" / "mask_review.txt"
+
+    exit_code = run(
+        corpus(tmp_path), tmp_path / "raw", tmp_path / "texts", tmp_path / "out", review_path,
+        min_documents=2,
+    )
+
+    assert exit_code == 0
+    assert "Коваленко" in review_path.read_text(encoding="utf-8")
 
 
 def test_run_writes_nothing_while_a_raw_file_is_missing(

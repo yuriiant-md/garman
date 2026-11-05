@@ -10,7 +10,6 @@ person to check. Exact duplicates are dropped, near-duplicates (one template, an
 are only flagged in the manifest. Nothing is written while any document has a problem."""
 
 import argparse
-import hashlib
 import re
 import sys
 import unicodedata
@@ -33,7 +32,15 @@ from scripts.pdf_to_text import (
     read_reviewer_list,
     suspicious_words,
 )
-from src.rag.documents import Document, DocumentPart, ManifestEntry, NearDuplicate, write_jsonl
+from src.rag.documents import (
+    Document,
+    DocumentPart,
+    ManifestEntry,
+    NearDuplicate,
+    print_problems,
+    sha256_hex,
+    write_jsonl,
+)
 from src.rag.sources import (
     MIN_DOCUMENTS,
     DocType,
@@ -67,7 +74,9 @@ HYPHEN_BREAK = re.compile(r"(?<=[^\W\d_])-\n(?=[^\W\d_])")  # "будь-\nяки
 ARTICLE_BLOCK = re.compile(r'<div id="statya">(.*?)</div>\s*<!-- statya -->', re.DOTALL)
 HEADING = re.compile(r"<h1>(.*?)</h1>", re.DOTALL)
 DECISION_BLOCK = re.compile(r'<textarea id="txtdepository">(.*?)</textarea>', re.DOTALL)
-BLOCK_TAGS = frozenset({"br", "div", "h1", "h2", "h3", "h4", "li", "ol", "p", "table", "tr", "ul"})
+BLOCK_TAGS = frozenset(
+    {"br", "div", "h1", "h2", "h3", "h4", "li", "ol", "p", "table", "td", "th", "tr", "ul"}
+)  # a table cell is a line too: "<td>Позивач</td><td>ТОВ</td>" must not glue into one word
 HIDDEN_TAGS = frozenset({"head", "script", "style", "title"})
 REVIEW_HEADER = (
     "# Masked values of laws and decisions; contracts are checked against data/texts/ instead.\n"
@@ -184,7 +193,10 @@ def law_article(page_html: str, article: str) -> DocumentPart:
     heading = HEADING.search(block.group(1)) if block else None
     if block is None or heading is None:
         raise ValueError("no article block (div#statya with a heading) on the page")
-    title = visible_text(heading.group(1)).splitlines()[-1]  # "Цивільний кодекс України" above
+    heading_lines = visible_text(heading.group(1)).splitlines()
+    if not heading_lines:
+        raise ValueError("no text in the heading of the article block")
+    title = heading_lines[-1]  # "Цивільний кодекс України" is the line above
     if not title.startswith(f"Стаття {article}."):
         raise ValueError(f"the page holds {title!r}, not article {article}")
     body = visible_text(block.group(1)[heading.end() :])
@@ -239,7 +251,7 @@ def _read(source: Source, raw_root: Path, texts_dir: Path) -> _Read:
         if source.doc_type is DocType.CONTRACT:
             return _read_contract(source.doc_id, path, texts_dir)
         if source.doc_type is DocType.LAW:
-            return _read_law(source.doc_id, path)
+            return _read_law(source, path)
         return _read_decision(source.doc_id, path)
     except ValueError as error:  # a broken page or an empty document; pydantic errors included
         return _Read(None, [], f"{source.doc_id}: {error}")
@@ -258,15 +270,20 @@ def _read_contract(doc_id: str, path: Path, texts_dir: Path) -> _Read:
     return _Read(Document(doc_id=doc_id, parts=pages), found)
 
 
-def _read_law(doc_id: str, folder: Path) -> _Read:
-    pages = sorted(folder.glob("*.html"), key=lambda page: article_key(page.stem))
-    articles = tuple(_article(page) for page in pages)
+def law_pages(source: Source, folder: Path) -> tuple[Path, ...]:
+    """The article pages the sources list, in the order of the law; other saved pages stay out."""
+    pages = (page for page in folder.glob("*.html") if source.wants_article(page.stem))
+    return tuple(sorted(pages, key=lambda page: article_key(page.stem)))
+
+
+def _read_law(source: Source, folder: Path) -> _Read:
+    articles = tuple(_article(page) for page in law_pages(source, folder))
     masked, found = mask_parts([article.text for article in articles], folder.parent)
     parts = tuple(
         DocumentPart(article=article.article, heading=article.heading, text=normalize_text(text))
         for article, text in zip(articles, masked, strict=True)
     )
-    return _Read(Document(doc_id=doc_id, parts=parts), found)
+    return _Read(Document(doc_id=source.doc_id, parts=parts), found)
 
 
 def _article(page: Path) -> DocumentPart:
@@ -284,17 +301,13 @@ def _read_decision(doc_id: str, path: Path) -> _Read:
 # --- the whole corpus ---
 
 
-def sha256_hex(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
-
-
-def raw_sha256(path: Path) -> str:
-    """Hash of a raw file, or of every article page in a law folder together with its name."""
+def raw_sha256(source: Source, raw_root: Path) -> str:
+    """Hash of a raw file, or of the listed article pages of a law together with their names."""
+    path = raw_root / source.raw_path
     if path.is_file():
         return sha256_hex(path.read_bytes())
-    listing = "".join(
-        f"{page.name} {sha256_hex(page.read_bytes())}\n" for page in sorted(path.glob("*.html"))
-    )
+    pages = sorted(law_pages(source, path))  # by file name, as before the list was respected
+    listing = "".join(f"{page.name} {sha256_hex(page.read_bytes())}\n" for page in pages)
     return sha256_hex(listing.encode())
 
 
@@ -374,7 +387,7 @@ def _manifest_entry(
         doc_id=source.doc_id,
         doc_type=source.doc_type,
         format=source.format,
-        raw_sha256=raw_sha256(raw_root / source.raw_path),
+        raw_sha256=raw_sha256(source, raw_root),
         text_sha256=text_hash,
         parts=len(document.parts),
         chars=len(document.text),
@@ -405,23 +418,19 @@ def run(
 ) -> int:
     sources = load_sources(sources_path)
     if problems := corpus_problems(sources, raw_root, min_documents):
-        return _fail(problems)
+        return print_problems(problems)
     result = ingest(sources, raw_root, texts_dir)
     if result.problems:
-        return _fail(result.problems)
+        return print_problems(result.problems)
+    review_path.parent.mkdir(parents=True, exist_ok=True)  # first: a bad path stops the run here
+    review_path.write_text(
+        REVIEW_HEADER + "".join(f"{line}\n" for line in result.review), encoding="utf-8"
+    )
     out_dir.mkdir(parents=True, exist_ok=True)
     write_jsonl(out_dir / DOCUMENTS_NAME, result.documents)
     write_jsonl(out_dir / MANIFEST_NAME, result.manifest)
-    review_path.write_text(REVIEW_HEADER + "".join(f"{line}\n" for line in result.review))
     _print_summary(result, out_dir, review_path)
     return 0
-
-
-def _fail(problems: Sequence[str]) -> int:
-    for problem in problems:
-        print(f"PROBLEM {problem}")
-    print("nothing written: fix the problems above and run again")
-    return 1
 
 
 def _print_summary(result: Ingested, out_dir: Path, review_path: Path) -> None:

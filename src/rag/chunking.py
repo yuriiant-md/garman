@@ -14,7 +14,7 @@ from typing import assert_never
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from src.rag.documents import Document, ManifestEntry
+from src.rag.documents import Document, ManifestEntry, sha256_hex
 from src.rag.sources import DocType, Source
 from src.rag.structure import Line, Unit, contract_units, decision_units, law_units
 
@@ -55,18 +55,33 @@ def chunk_document(
     min_chars: int = MIN_CHARS,
 ) -> tuple[Chunk, ...]:
     """Chunks of one document with its metadata from rag_sources.csv and the manifest."""
-    for other in (source.doc_id, entry.doc_id):
-        if other != document.doc_id:
-            raise ValueError(f"{document.doc_id}: metadata belongs to {other}")
-    if entry.doc_type is not source.doc_type:
-        raise ValueError(
-            f"{document.doc_id}: {source.doc_type} in sources, {entry.doc_type} in manifest"
-        )
     units = document_units(document, source.doc_type, max_chars=max_chars)
     packed = pack_units(units, max_chars=max_chars, min_chars=min_chars)
+    return packed_chunks(document, source, entry, packed)
+
+
+def packed_chunks(
+    document: Document, source: Source, entry: ManifestEntry, packed: Sequence[Unit]
+) -> tuple[Chunk, ...]:
+    """Chunks of the document's units already packed by pack_units, numbered in their order."""
+    if problem := metadata_problem(document, source, entry):
+        raise ValueError(problem)
     return tuple(
         _chunk(source, entry, number, unit) for number, unit in enumerate(packed, start=1)
     )
+
+
+def metadata_problem(document: Document, source: Source, entry: ManifestEntry) -> str | None:
+    """Why the source row or manifest entry does not describe this document, if they don't."""
+    doc_id = document.doc_id
+    for other in (source.doc_id, entry.doc_id):
+        if other != doc_id:
+            return f"{doc_id}: metadata belongs to {other}"
+    if entry.doc_type is not source.doc_type:
+        return f"{doc_id}: {source.doc_type} in rag_sources.csv, {entry.doc_type} in the manifest"
+    if sha256_hex(document.text.encode()) != entry.text_sha256:
+        return f"{doc_id}: the text differs from the manifest; run scripts.ingest_rag again"
+    return None
 
 
 def pack_units(units: Sequence[Unit], *, max_chars: int, min_chars: int) -> tuple[Unit, ...]:

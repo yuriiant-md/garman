@@ -155,7 +155,7 @@ def mask_pii(
     text = _mask_initials(text, surnames, found)
     text = _mask_first_names(text, surnames, found)
     stems = {stem for name in surnames for stem in _stems(name)}
-    for stem in sorted(stems, key=len, reverse=True):
+    for stem in sorted(stems, key=lambda stem: (-len(stem), stem)):  # longest first, then a-z
         surname_forms = re.compile(
             rf"\b{re.escape(stem)}[{UPPER}{LOWER}]{{0,{MAX_ENDING}}}\b", re.IGNORECASE
         )

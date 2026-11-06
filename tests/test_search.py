@@ -10,6 +10,7 @@ from src.rag.chunking import Chunk
 from src.rag.embedding import Progress, Vector
 from src.rag.index import StaleIndexError, build_index, index_stamp, searchable_text
 from src.rag.search import (
+    PREFETCH_LIMIT,
     RERANK_CANDIDATES,
     CrossEncoderReranker,
     Hit,
@@ -177,6 +178,33 @@ def test_contract_filter_keeps_this_contract_laws_and_decisions(client: QdrantCl
         "vs_2019#001",
         "vs_2023#001",
     ]
+
+
+def test_contract_with_contract_type_keeps_only_this_contract(client: QdrantClient) -> None:
+    # the filter of every contract question in data/rag/search_questions.yaml
+    this_only = SearchFilter(contract_id="own_003", doc_types=frozenset({DocType.CONTRACT}))
+
+    hits = searcher(client).search("пеню", SearchMode.HYBRID, k=10, search_filter=this_only)
+
+    assert sorted(ids(hits)) == ["own_003#001", "own_003#002", "own_003#003"]
+
+
+def test_hybrid_filters_inside_each_list_not_only_after_the_fusion() -> None:
+    # 60 contract chunks closer to the query than the one law fill both lists of 50;
+    # filtered only after the fusion, the law would be lost
+    near = tuple(chunk(f"own_009#{number:03d}", "Пеню сплачує покупець.") for number in range(60))
+    law = chunk("cc#625", "Боржник сплачує три проценти річних.", **LAW)
+    corpus = (*near, law)
+    client = QdrantClient(":memory:")
+    embedder = PenaltyEmbedder()
+    build_index(client, COLLECTION, corpus, embedder)
+    found = Searcher(client, COLLECTION, embedder, index_stamp(corpus, embedder))
+    laws = SearchFilter(doc_types=frozenset({DocType.LAW}))
+
+    hits = found.search("пеню", SearchMode.HYBRID, k=5, search_filter=laws)
+
+    assert len(near) > PREFETCH_LIMIT
+    assert ids(hits) == ["cc#625"]
 
 
 def test_doc_types_filter_keeps_only_those_types(client: QdrantClient) -> None:

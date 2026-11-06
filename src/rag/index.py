@@ -4,14 +4,15 @@
 weights of its words (src/rag/bm25.py); Qdrant multiplies them by IDF when it answers a query.
 The payload is the whole chunk: search filters on doc_id, doc_type, in_force and version_date, and
 an answer cites the chunk's text and ref. After the last point, the collection's metadata gets a
-stamp of what the index was built from, so search can refuse an index built from other chunks or
-by another model, and one whose build stopped half-way.
+stamp of what the index was built from, so search can refuse an index built from other chunks, by
+another model or by an older version of this code (INDEX_VERSION), and one whose build stopped
+half-way.
 """
 
 import uuid
 from collections.abc import Sequence
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, ValidationError
 from qdrant_client import QdrantClient, models
 
 from src.rag.bm25 import TermWeights, average_length, document_weights, tokenize
@@ -32,10 +33,13 @@ FILTER_FIELDS = {
     "version_date": models.PayloadSchemaType.DATETIME,
 }
 REBUILD = "rebuild it: uv run python -m scripts.index_rag"
+# How the code turns a chunk into its vectors. The chunks' hash does not see a change to
+# searchable_text, tokenize, K1 or B: raise this by one with any such change.
+INDEX_VERSION = 1
 
 
 class IndexStamp(BaseModel):
-    """What an index was built from."""
+    """What an index was built from, and by which version of this code."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -43,6 +47,7 @@ class IndexStamp(BaseModel):
     chunks: int
     model: str
     dimension: int
+    index_version: int
 
 
 class StaleIndexError(RuntimeError):
@@ -70,6 +75,7 @@ def index_stamp(chunks: Sequence[Chunk], embedder: Embedder) -> IndexStamp:
         chunks=len(chunks),
         model=embedder.model_name,
         dimension=embedder.dimension,
+        index_version=INDEX_VERSION,
     )
 
 
@@ -112,9 +118,17 @@ def stale_reason(client: QdrantClient, collection: str, expected: IndexStamp) ->
     """Why the collection is not an index of these chunks by this model; None when it is."""
     if not client.collection_exists(collection):
         return f"no collection {collection!r} in Qdrant"
-    stamp = read_stamp(client, collection)
+    try:
+        stamp = read_stamp(client, collection)
+    except ValidationError:
+        return f"{collection} has an unreadable stamp, written by an older version of the code"
     if stamp is None:
         return f"{collection}: the index is unfinished, it has no stamp"
+    if stamp.index_version != expected.index_version:
+        return (
+            f"{collection} was built by index version {stamp.index_version}, "
+            f"search uses {expected.index_version}"
+        )
     if (stamp.model, stamp.dimension) != (expected.model, expected.dimension):
         return (
             f"{collection} was built by {stamp.model} ({stamp.dimension} numbers), "

@@ -9,6 +9,8 @@ from src.rag.embedding import Progress, Vector
 from src.rag.index import (
     BM25,
     DENSE,
+    INDEX_VERSION,
+    STAMP_KEY,
     StaleIndexError,
     build_index,
     check_fresh,
@@ -159,6 +161,26 @@ def test_a_collection_without_a_stamp_is_stale(client: QdrantClient) -> None:
     client.create_collection(COLLECTION, vectors_config={})
 
     with pytest.raises(StaleIndexError, match="unfinished"):
+        check_fresh(client, COLLECTION, index_stamp(CHUNKS, FakeEmbedder()))
+
+
+def test_an_index_built_by_another_index_version_is_stale(client: QdrantClient) -> None:
+    # what a change to searchable_text, tokenize, K1 or B must cause: INDEX_VERSION goes up
+    stamp = build_index(client, COLLECTION, CHUNKS, FakeEmbedder())
+    older = stamp.model_copy(update={"index_version": INDEX_VERSION - 1})
+    client.update_collection(COLLECTION, metadata={STAMP_KEY: older.model_dump()})
+
+    with pytest.raises(StaleIndexError, match=f"index version {INDEX_VERSION - 1}"):
+        check_fresh(client, COLLECTION, index_stamp(CHUNKS, FakeEmbedder()))
+
+
+def test_a_stamp_of_an_older_format_is_stale_not_a_crash(client: QdrantClient) -> None:
+    # the stamp before index_version: the four other fields only
+    build_index(client, COLLECTION, CHUNKS, FakeEmbedder())
+    old = {"chunks_sha256": "0" * 64, "chunks": 3, "model": "fake-embedder", "dimension": 2}
+    client.update_collection(COLLECTION, metadata={STAMP_KEY: old})
+
+    with pytest.raises(StaleIndexError, match="unreadable stamp"):
         check_fresh(client, COLLECTION, index_stamp(CHUNKS, FakeEmbedder()))
 
 

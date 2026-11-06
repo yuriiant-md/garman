@@ -7,7 +7,7 @@ laws and decisions allowed, to show what court decisions quoting other contracts
 and every rank go to a new folder results/stage2/search/<time>/, so no run overwrites another.
 
 Qdrant must be running with a fresh index: docker compose up -d qdrant, then scripts.index_rag.
-The first run downloads the 0.57 GB reranker. About three minutes, most of it the reranker:
+The first run downloads the 0.57 GB reranker. About two minutes, most of it the reranker:
 caffeinate -i uv run python -m scripts.eval_search
 """
 
@@ -173,7 +173,8 @@ class Results:
             if (item.collection, item.mode, item.variant)
             == (selection.collection, mode, selection.variant)
         }
-        return [found[question_id] for question_id in selection.question_ids or tuple(found)]
+        wanted = tuple(found) if selection.question_ids is None else selection.question_ids
+        return [found[question_id] for question_id in wanted]
 
     def ranks(self, mode: SearchMode, selection: Selection = ALL) -> list[int | None]:
         return [item.rank for item in self.chosen(mode, selection)]
@@ -239,6 +240,18 @@ def _pair_table(
             ]
         )
     return _table(header, rows)
+
+
+def _contracts_table(results: Results, contract_ids: tuple[str, ...]) -> list[str]:
+    """Contract questions searched in the contract alone and with laws and decisions."""
+    if not contract_ids:
+        return ["Питань про договір немає."]
+    return _pair_table(
+        results,
+        ("лише договір", "+ закони й рішення"),
+        Selection(question_ids=contract_ids),
+        Selection(variant=WIDENED, question_ids=contract_ids),
+    )
 
 
 def _ranks_table(results: Results, questions: Sequence[SearchQuestion]) -> list[str]:
@@ -307,12 +320,7 @@ def render_report(
                 "договір + закони й рішення"
             ),
             "",
-            *_pair_table(
-                results,
-                ("лише договір", "+ закони й рішення"),
-                Selection(question_ids=contract_ids),
-                Selection(variant=WIDENED, question_ids=contract_ids),
-            ),
+            *_contracts_table(results, contract_ids),
         ],
         [
             "## 5. Місце першого правильного чанка",

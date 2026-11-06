@@ -98,7 +98,9 @@ def searchers(client: QdrantClient) -> dict[str, Searcher]:
 type Key = tuple[str, SearchMode, str, str]  # collection, mode, variant, question id
 
 
-def outcomes_with(ranks: dict[Key, int | None]) -> tuple[Outcome, ...]:
+def outcomes_with(
+    ranks: dict[Key, int | None], questions: Sequence[SearchQuestion] = QUESTIONS
+) -> tuple[Outcome, ...]:
     """An outcome for every planned search: rank 1 unless `ranks` says otherwise."""
     return tuple(
         Outcome(
@@ -111,7 +113,7 @@ def outcomes_with(ranks: dict[Key, int | None]) -> tuple[Outcome, ...]:
             seconds=0.5,
             top=(),
         )
-        for task in plan_tasks(QUESTIONS)
+        for task in plan_tasks(questions)
     )
 
 
@@ -168,6 +170,24 @@ def test_the_report_tables_hold_recall_mrr_and_the_ranks() -> None:
     assert "| vector | 1.00 | 1.00 | 1.00 | 0.33 |" in report
     missed = report.split("## 6.")[1]
     assert "q02" in missed and "q01" not in missed
+
+
+def test_an_empty_question_list_selects_no_outcome_not_all() -> None:
+    results = eval_search.Results(outcomes_with({}))
+
+    none = results.chosen(SearchMode.VECTOR, eval_search.Selection(question_ids=()))
+
+    assert none == []
+
+
+def test_a_report_without_contract_questions_says_so_instead_of_failing() -> None:
+    only_law = (LAW_QUESTION,)
+
+    report = render_report(only_law, outcomes_with({}, only_law), ["Прогін: тест"])
+
+    contracts = report.split("## 4.")[1].split("## 5.")[0]
+    assert "Питань про договір немає" in contracts
+    assert "| vector |" not in contracts
 
 
 def test_write_run_saves_the_report_and_every_rank_in_a_new_folder(tmp_path: Path) -> None:

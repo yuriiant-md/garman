@@ -160,20 +160,13 @@ class Searcher:
         return _hits(response.points)
 
     def _hybrid(self, query: str, k: int, qdrant_filter: models.Filter | None) -> tuple[Hit, ...]:
-        # the filter goes into each list: a list cut to 50 before filtering could lose them all
-        prefetch = [
-            models.Prefetch(
-                query=self._dense(query), using=DENSE, filter=qdrant_filter, limit=PREFETCH_LIMIT
-            )
-        ]
+        prefetch = [models.Prefetch(query=self._dense(query), using=DENSE, limit=PREFETCH_LIMIT)]
         weights = query_weights(tokenize(query))
         if weights.indices:  # a query of punctuation alone has no words for BM25
             sparse = models.SparseVector(indices=list(weights.indices), values=list(weights.values))
-            prefetch.append(
-                models.Prefetch(
-                    query=sparse, using=BM25, filter=qdrant_filter, limit=PREFETCH_LIMIT
-                )
-            )
+            prefetch.append(models.Prefetch(query=sparse, using=BM25, limit=PREFETCH_LIMIT))
+        # Qdrant applies query_filter inside each prefetch too, so both lists of 50 hold only
+        # chunks that pass it: none is lost to chunks the filter would drop after the fusion
         response = self.client.query_points(
             self.collection,
             prefetch=prefetch,

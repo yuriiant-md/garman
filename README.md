@@ -6,6 +6,8 @@ A Telegram bot for farmers: it extracts the terms of a grain trader's contract, 
 
 Stage 1 grew in three steps. The first matrix compared Claude Haiku 4.5 with the local Lapa 12B; Lapa got about 27% accuracy on filled fields of the real contracts, so stage 1.2 replaced it with Qwen3 14B and added GPT-4o through OpenRouter as a second paid model. Stage 1.3 changed the schema: a contract may name several grades, each with its own price per tonne and its own quality limits (test weight, gluten, falling number, …), and added Claude Haiku 5.5, which became the main model (`REPORT.md`, section 6). Since stage 1.3 the code has no local model: the course no longer requires one, and the local runs stay in `results/` as history. `make run` now runs the stage 1.3 matrix into `results/stage1_3/`. The earlier matrices stay in `results/stage1/` and `results/stage1_2/`; they were scored with the schema before grades, so they are re-read with the code of the `stage-1` tag (step 4).
 
+Stage 2, RAG with citations, is in progress: the corpus, the chunks and the search are ready ("How documents are chunked" and "How search works" below).
+
 ## Reproduce stage 1
 
 ### Requirements
@@ -102,6 +104,16 @@ uv run python -m scripts.ingest_rag         # clean, anonymised documents → da
 uv run python -m scripts.chunk_rag          # chunks for the index → data/rag/chunks.jsonl and a comparison with fixed-size chunks
 ```
 
+The stage 2 search index and its quality (details in "How search works"):
+
+```bash
+docker compose up -d qdrant                         # Qdrant 1.20 on 127.0.0.1:6333; the data stays in the qdrant_storage volume
+caffeinate -i uv run python -m scripts.index_rag    # both collections, about 7 minutes on CPU; a fresh collection is skipped, --force rebuilds
+caffeinate -i uv run python -m scripts.eval_search  # 111 searches, about 2 minutes → results/stage2/search/<start time>/
+```
+
+`caffeinate -i` keeps a Mac awake: a sleeping Mac pauses the run. On Linux, drop it. The first run of `index_rag` downloads bge-m3 (2.3 GB), the first run of `eval_search` the reranker (0.57 GB), both into `~/.cache/fastembed`; no key is needed.
+
 ## How the metrics are counted
 
 The rules were written before the first run; the rules for grades and quality indicators were added in stage 1.3. Code: `src/extraction/scoring.py` (one document) and `src/extraction/metrics.py` (the table); every rule has its own test in `tests/test_scoring.py` and `tests/test_metrics.py`.
@@ -122,7 +134,7 @@ The rules were written before the first run; the rules for grades and quality in
 `uv run python -m scripts.chunk_rag` (local, free, a few seconds) turns `data/rag/documents.jsonl` into `data/rag/chunks.jsonl`, one chunk per line; a second run writes the same bytes. Chunks follow the structure of the document, not a fixed number of characters, because an answer has to cite a place a person can find: [own_003, п. 7.3], [ЦК, ст. 625]. Code: `src/rag/structure.py` (what an answer can cite) and `src/rag/chunking.py` (sizes and metadata); tests — `tests/test_rag_structure.py`, `tests/test_chunking.py`, `tests/test_chunk_rag.py`.
 
 1. **A unit is what an answer cites.** A contract splits into its preamble, clauses «7.3» and requisites. A clause starts only where its number grows, so «1.1 цього Договору» wrapped inside clause 3.1 does not start a new one. A section line «5. Ціна» counts only when the next clause is 5.x, and everything after the last clause that looks like a party label or requisites goes to the section «Реквізити та додатки». A law splits into whole articles «ст. 625». A decision splits into paragraphs «п. 5.12»; its sections are capital-letter headings («ВСТАНОВИВ:») and «N. Title» lines. Section and heading lines are not part of the chunk text: they are kept in its metadata.
-2. **Limits: at most 1500 characters, merge below 200.** They come from the corpus itself: contract clauses have a median of 300 characters, p90 1175, and 106 of 1777 are longer than 1500; law articles have a median of 584; decision paragraphs a median of 411, p90 1677. So 1500 keeps 94% of clauses and nearly every article whole. That is about 400–500 tokens; the real tokenizer is checked in Е2.4.
+2. **Limits: at most 1500 characters, merge below 200.** They come from the corpus itself: contract clauses have a median of 300 characters, p90 1175, and 106 of 1777 are longer than 1500; law articles have a median of 584; decision paragraphs a median of 411, p90 1677. So 1500 keeps 94% of clauses and nearly every article whole. By the bge-m3 tokenizer the indexed texts (title, section, heading and text) have a median of 147 tokens, p90 316 and at most 544: far below the 8192 that bge-m3 and the reranker take, so nothing is cut.
 3. **A long unit is split by its own numbering first:** a clause into subclauses «п. 10.6.1», an article into parts «ст. 30, ч. 1» or Tax Code points «ст. 201, п. 201.1». What is still too long is split between lines, then sentences, then words, and every piece keeps the ref of its unit.
 4. **A short unit** (under 200 characters, such as «1.1. Товар — пшениця.») joins its neighbour when both are in the same section or article and fit into 1500 together; the ref becomes a range «п. 1.1–1.3» or a list «преамбула, п. 1.1». Units of 200 characters or more stay one per chunk, so their refs stay exact.
 5. **Every chunk carries** `chunk_id` (`own_001#007`), `doc_id`, type, title, short title for the citation, source URL, version date, `in_force`, `cites_commercial_code`, the hash of the document text (a changed document means its chunks are stale), section, heading, ref and pages.
@@ -133,7 +145,45 @@ The rules were written before the first run; the rules for grades and quality in
 | structural ≤ 1500, merge < 200 | 2836 | 468 | 1163 | 3.9% | 0.0% | 67.2% |
 | fixed 1500, overlap 200 | 1278 | 1500 | 1500 | 20.7% | 27.6% | 8.1% |
 
-Fixed windows cut every fifth clause and mix two sections or articles in every fourth chunk, so an answer would often see half a clause or cite the wrong one. Structural chunks cut only the 3.9% of units that stay over 1500 characters even after their subclauses, and never cross a boundary. The other 33% of structural chunks are merged ranges or decision paragraphs without a number, cited by the range or the section. The price is twice as many chunks. This table measures only where the boundaries fall; whether retrieval gets better is shown by recall@k and MRR on the same questions in Е2.4.
+Fixed windows cut every fifth clause and mix two sections or articles in every fourth chunk, so an answer would often see half a clause or cite the wrong one. Structural chunks cut only the 3.9% of units that stay over 1500 characters even after their subclauses, and never cross a boundary. The other 33% of structural chunks are merged ranges or decision paragraphs without a number, cited by the range or the section. The price is twice as many chunks. This table measures only where the boundaries fall; retrieval is measured in "How search works": structural chunks put the right text in the top 5 for 0.93 of the questions, fixed windows for 0.73 (vector search).
+
+## How search works (stage 2)
+
+`src/rag/search.py` searches the Qdrant index that `scripts/index_rag.py` builds, `scripts/eval_search.py` measures it on questions with a known answer. Code: `src/rag/bm25.py`, `embedding.py`, `index.py`, `search.py` and `search_eval.py`; tests — `tests/test_bm25.py`, `test_embedding.py`, `test_rag_index.py`, `test_index_rag.py`, `test_search.py`, `test_search_eval.py`, `test_eval_search.py`, all on an in-memory Qdrant and stub models.
+
+1. **The index.** Every chunk is one Qdrant point with two vectors. `dense` is the bge-m3 embedding (1024 numbers, compared by cosine) of the chunk's title, section, heading and text. `bm25` holds the BM25 weights of the same words; Qdrant multiplies them by IDF itself, so a new document does not re-weight the others. The payload is the whole chunk, with indexes on `doc_id`, `doc_type`, `in_force` and `version_date` for the filters. There are two collections: `chunks` (2836 structural chunks) and `chunks_fixed` (1278 fixed-size windows, the baseline).
+2. **A stale index is refused.** After the last point the collection gets a stamp: the hash of its chunks, the model and the vector size. A search checks it first and stops with "rebuild it" when the index was built from other chunks, by another model, or did not finish.
+3. **The embedder is bge-m3 through fastembed** (ONNX on CPU, no torch, no key). It knows Ukrainian, takes up to 8192 tokens, gives the same vectors as bge-m3 in Ollama (cosine 0.9999 on corpus chunks) and runs the same way in GitHub Actions, where Ollama would not.
+4. **Three modes.** `vector`: cosine between the question and each chunk. `hybrid`: 50 chunks by vector and 50 by BM25, fused by RRF (reciprocal rank fusion): a chunk scores by its places in the two lists, not by their scores, which are on different scales. `hybrid_rerank`: the top 20 of hybrid are read again by bge-reranker-v2-m3 (int8 ONNX), a cross-encoder that reads the question and the chunk together; it judges a pair better but is too slow for the whole index.
+5. **Filters** (`SearchFilter`). `contract_id`: this contract plus all laws and decisions, never another contract; with `doc_types: [contract]` only this contract. `doc_types`: only these types. `skip_repealed`: drops laws that are no longer in force (only laws carry `in_force`, so contracts and decisions stay). `version_from` / `version_to`: only decisions have a date, so undated chunks pass and dated ones must fall in the range.
+6. **Questions.** 15 in `data/rag/search_questions.yaml`, written and checked by the author: 7 about one contract (own_003, own_008, prozorro_009), 6 about the law, 2 about Supreme Court decisions; 4 `exact` (rare words or numbers shared with the answer), 5 `paraphrase` (the same said in other words), 6 `plain`. A found chunk is right when it comes from the question's document and holds its `evidence` word for word (spaces, line breaks and apostrophes compared loosely), so one rule scores structural chunks and fixed windows. A test checks every evidence against `chunks.jsonl`.
+7. **Metrics.** R@k: the share of questions with a right chunk among the first k. MRR: the mean of 1/rank of the first right chunk, a miss (not in the first 10) counting 0; it rewards a right chunk at 1 more than one at 5.
+
+| search (06.11.2026, 15 questions, structural chunks) | R@1 | R@3 | R@5 | R@10 | MRR | mean time, s |
+| --- | --- | --- | --- | --- | --- | --- |
+| vector | 0.67 | 0.93 | 0.93 | 0.93 | 0.79 | 0.03 |
+| hybrid | 0.53 | 0.87 | 0.87 | 0.93 | 0.69 | 0.02 |
+| hybrid + rerank | 0.73 | 0.93 | 0.93 | 0.93 | 0.81 | 1.99 |
+
+| R@5 / MRR | vector | hybrid | hybrid + rerank |
+| --- | --- | --- | --- |
+| structural chunks | 0.93 / 0.79 | 0.87 / 0.69 | 0.93 / 0.81 |
+| fixed windows | 0.73 / 0.72 | 0.80 / 0.70 | 0.87 / 0.79 |
+| 7 contract questions: this contract only | 1.00 / 1.00 | 1.00 / 0.93 | 1.00 / 1.00 |
+| the same, with laws and decisions | 1.00 / 0.64 | 1.00 / 0.61 | 1.00 / 0.72 |
+
+The full report, with recall by question kind and the rank of every question — `results/stage2/search/2026-11-06T10-29-42/search_metrics.md`; every search with the chunks that came instead — `ranks.jsonl` next to it.
+
+What the numbers say. Reranking gives the best R@1 and MRR, but plain vector search is one question behind at R@1 and 66 times faster. With 15 questions one question is 0.07, so a difference of one or two questions is not claimed as an advantage. Hybrid alone is below vector here: vector already finds every `exact` question first, so BM25 has nothing to add, and on `plain` questions it pulls up chunks that repeat the question's words ("Що таке пеня?" drops the definition from 3rd to 6th). Structural chunks beat fixed windows at R@5 in every mode (by MRR, hybrid is even: 0.69 and 0.70). A contract question keeps its clause in the top 5 when laws and decisions are allowed, but loses the first place to decisions that quote similar clauses of other contracts, so a question about a contract searches only that contract.
+
+**Decisions made in Е2.4.** The embedder is bge-m3 through fastembed (point 3), so the same model runs locally and in CI. Qdrant runs locally in Docker (`docker-compose.yml`); the tests use the in-memory Qdrant, CI will use a service container (Е2.6). Every evaluation run goes to a new folder named by its start time, as in stage 1.
+
+**Known limits and what is left to do:**
+
+- **Filters.** Contract questions search only the contract; searching a contract together with the law, and the other filters, are still to be reworked (one option for stage 3: separate agent tools "search the contract" and "search the law").
+- **Whose position a decision paragraph holds.** q15 is missed by every mode, yet every mode finds the right decision: it returns the paragraphs that state the appeal court's view, which the Supreme Court overturned. All paragraphs of a decision sit in one section «ВСТАНОВИВ:», so a chunk does not know whether it holds the lower court's reasoning or the Supreme Court's conclusion. A bot would cite the overturned view; decisions need splitting by their subsections or a mark of whose position a paragraph is.
+- **BM25 has no stemming:** «пеня», «пеню» and «пені» are three different words for it.
+- **15 questions** tell modes apart only by large differences; there are no confidence intervals yet.
 
 ## Where things are
 
@@ -158,6 +208,7 @@ Fixed windows cut every fifth clause and mix two sections or articles in every f
 
 ```
 Makefile                   make install / test / run / metrics
+docker-compose.yml         Qdrant for the stage 2 search (docker compose up -d qdrant)
 main.py                    stage 1 in one command: the whole matrix, then the metrics table
 configs/
   models.yaml              models with their provider (anthropic, openrouter), timeout, retry, prices per 1M tokens; a new model is a new section
@@ -169,7 +220,7 @@ data/
   prozorro_sources.csv     which Prozorro tender each contract comes from
   own_sources.csv          which PDF and contract number each own contract comes from
   rag_sources.csv          stage 2 corpus: 28 contracts (PDF), 6 laws and 11 Supreme Court decisions (HTML)
-  rag/                     the stage 2 corpus after ingestion: documents.jsonl (text by page or article), manifest.jsonl and chunks.jsonl (chunks with metadata)
+  rag/                     the stage 2 corpus after ingestion: documents.jsonl (text by page or article), manifest.jsonl, chunks.jsonl (chunks with metadata) and search_questions.yaml (15 questions with a known answer)
   README.md                how the data was collected, anonymised and labelled
   raw/                     original PDFs, masking check files and the stage 2 HTML pages in raw/rag/ (not in git)
 prompts/
@@ -196,6 +247,11 @@ src/rag/
   documents.py             an ingested document (parts with a page or an article), its manifest entry, JSONL
   structure.py             citable units of a document: contract clauses, law articles and their parts, decision paragraphs
   chunking.py              units packed into chunks of 200–1500 characters with metadata; fixed-size windows for comparison
+  bm25.py                  BM25 word weights for Ukrainian text, kept in Qdrant as a sparse vector
+  embedding.py             bge-m3 through fastembed on CPU; texts embedded in batches of similar length
+  index.py                 a chunk becomes a Qdrant point with two vectors; the stamp that marks a stale index
+  search.py                vector, hybrid and hybrid + rerank search with filters
+  search_eval.py           which found chunk is right; recall@k and MRR
 scripts/
   generate_synthetic.py    deals for the synthetic set (+ synthetic_render.py, synthetic_checks.py)
   fetch_prozorro.py        search for contracts in Prozorro
@@ -203,11 +259,14 @@ scripts/
   pdf_to_text.py           PDF → anonymised text
   ingest_rag.py            stage 2 ingestion: PDF and HTML → clean, anonymised documents in data/rag/
   chunk_rag.py             stage 2 chunking: data/rag/chunks.jsonl and the comparison with fixed-size chunks
+  index_rag.py             builds the two Qdrant collections: structural chunks and fixed-size windows
+  eval_search.py           measures the search on the 15 questions: report and ranks in results/stage2/search/
   check_golden.py          validates the golden labels
 tests/                     pytest tests: make test
 results/stage1_3/          one folder per launch, named with its start time: a *.jsonl file per configuration (one line per document) and the metrics tables (metrics.md, metrics_by_field.md)
 results/stage1_2/          the same for stage 1.2, on the schema before grades (read with the stage-1 tag)
 results/stage1/            the same for the first matrix (Claude and Lapa)
+results/stage2/search/     one folder per search evaluation: search_metrics.md and ranks.jsonl
 ```
 
 The author keeps the work plan locally (`docs/`, outside the repository); its metric rules were moved to "How the metrics are counted".

@@ -93,6 +93,19 @@ def pack_units(units: Sequence[Unit], *, max_chars: int, min_chars: int) -> tupl
     return tuple(_merged(group) for group in groups)
 
 
+def fixed_document_chunks(
+    document: Document, source: Source, entry: ManifestEntry, *, size: int, overlap: int
+) -> tuple[Chunk, ...]:
+    """The baseline index: fixed-size windows over the document text, blind to its structure.
+
+    A window keeps what is known of the whole document (doc_id, in_force, …), so search filters
+    work alike on both indexes, but it has no section, heading or ref to cite.
+    """
+    windows = fixed_size_chunks(document.text, size=size, overlap=overlap)
+    units = tuple(Unit(lines=(Line(page=None, text=window),)) for window in windows)
+    return packed_chunks(document, source, entry, units)
+
+
 def fixed_size_chunks(text: str, *, size: int, overlap: int) -> tuple[str, ...]:
     """Windows of `size` characters, each starting `size - overlap` after the one before."""
     spans = fixed_size_spans(len(text), size=size, overlap=overlap)

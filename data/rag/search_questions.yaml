@@ -1,0 +1,153 @@
+# Search questions with a known answer (stage 2, Е2.4), checked by the author.
+#
+# A found chunk is right when it belongs to `doc_id` and contains `evidence` word for word
+# (spaces, line breaks and apostrophes ' ’ ` ʼ are compared loosely). The same rule works for
+# structural and for fixed-size chunks, so both can be scored on these questions.
+# `chunk_ids` are the structural chunks that hold the evidence; a check keeps them in step.
+#
+# kind: exact — the answer shares rare words or numbers with the question (BM25 should help);
+#       paraphrase — the question says it in other words (the vector should help);
+#       plain — neither.
+# filter: what the search may look at, the fields of SearchFilter (src/rag/search.py).
+#         `contract_id` = this contract plus all laws and decisions; with `doc_types: [contract]`
+#         only this contract. A question about a contract searches only that contract; the
+#         evaluation also runs it without `doc_types`, to show what the decisions cost.
+#         `skip_repealed` drops laws that are no longer in force.
+version: 1
+questions:
+  # --- contracts: the question is about one contract ---
+  - id: q01
+    question: Яку пеню платить покупець, якщо затримає оплату?
+    kind: plain
+    filter: {contract_id: own_003, doc_types: [contract]}
+    doc_id: own_003
+    evidence: облікової ставки НБУ від неоплаченої суми за кожний день прострочення
+    chunk_ids: [own_003#030]
+    note: п. 7.2 — подвійна облікова ставка НБУ за кожен день
+
+  - id: q02
+    question: Який штраф заплатить постачальник, якщо недопоставить зерно?
+    kind: plain
+    filter: {contract_id: own_003, doc_types: [contract]}
+    doc_id: own_003
+    evidence: штраф у розмірі 30% від загальної вартості непоставленого/недопоставленого Товару
+    chunk_ids: [own_003#031]
+    note: п. 7.3 — 30% вартості недопоставленого
+
+  - id: q03
+    question: Яку частину грошей мені перерахують одразу після передачі зерна і за скільки днів?
+    kind: paraphrase
+    filter: {contract_id: own_003, doc_types: [contract]}
+    doc_id: own_003
+    evidence: Покупець сплачує 86% вартості Товару
+    chunk_ids: [own_003#024]
+    note: п. 6.1 — 86% протягом 3 банківських днів
+
+  - id: q04
+    question: Яка пеня 0,1% за прострочення оплати і чи є в неї межа?
+    kind: exact
+    filter: {contract_id: own_008, doc_types: [contract]}
+    doc_id: own_008
+    evidence: пеню в розмірі 0,1% від суми простроченого платежу
+    chunk_ids: [own_008#013]
+    note: п. 6.3 — 0,1% за день, але не більше подвійної облікової ставки НБУ
+
+  - id: q05
+    question: Що можна зробити, якщо форс-мажор затягнувся на кілька місяців?
+    kind: paraphrase
+    filter: {contract_id: own_008, doc_types: [contract]}
+    doc_id: own_008
+    evidence: тривають понад 60 (шістдесят) календарних днів
+    chunk_ids: [own_008#017]
+    note: п. 8.3 — понад 60 днів кожна сторона може відмовитися від невиконаної частини
+
+  - id: q06
+    question: Де і за яким правом розглядатимуть спір за договором?
+    kind: plain
+    filter: {contract_id: own_008, doc_types: [contract]}
+    doc_id: own_008
+    evidence: регулюється матеріальним правом Англії
+    chunk_ids: [own_008#020]
+    note: п. 10.1–10.2 — право Англії, арбітраж Gafta у Лондоні
+
+  - id: q07
+    question: Протягом скількох банківських днів замовник оплачує прийнятий товар?
+    kind: exact
+    filter: {contract_id: prozorro_009, doc_types: [contract]}
+    doc_id: prozorro_009
+    evidence: протягом 20 банківських днів з дати прийняття товару
+    chunk_ids: [prozorro_009#007]
+    note: п. 4.1 — 20 банківських днів; п. 4.2 дозволяє пізніше при затримці бюджетних коштів
+
+  # --- laws ---
+  - id: q08
+    question: Що таке пеня?
+    kind: plain
+    doc_id: law_civil_code
+    evidence: Пенею є неустойка, що обчислюється у відсотках від суми несвоєчасно виконаного грошового зобов'язання
+    chunk_ids: [law_civil_code#007]
+    note: ЦК ст. 549 ч. 3
+
+  - id: q09
+    question: Скільки процентів річних платить боржник за прострочення оплати, якщо договір цього не визначає?
+    kind: exact
+    filter: {doc_types: [law]}
+    doc_id: law_civil_code
+    evidence: три проценти річних від простроченої суми
+    chunk_ids: [law_civil_code#026]
+    note: ЦК ст. 625 ч. 2 — інфляція + 3% річних
+
+  - id: q10
+    question: Чи може суд зменшити неустойку?
+    kind: plain
+    filter: {doc_types: [law], skip_repealed: true}
+    doc_id: law_civil_code
+    evidence: Розмір неустойки може бути зменшений за рішенням суду
+    chunk_ids: [law_civil_code#009]
+    note: ЦК ст. 551 ч. 3; без skip_repealed знайшлася б ще ст. 233 ГК, що втратив чинність
+
+  - id: q11
+    question: Чи звільняє від відповідальності те, що в покупця просто немає грошей?
+    kind: paraphrase
+    filter: {doc_types: [law]}
+    doc_id: law_civil_code
+    evidence: відсутність у боржника необхідних коштів
+    chunk_ids: [law_civil_code#018]
+    note: ЦК ст. 617 — це не вважається випадком
+
+  - id: q12
+    question: Яка найбільша пеня за прострочення платежу дозволена законом?
+    kind: exact
+    filter: {doc_types: [law]}
+    doc_id: law_late_payment
+    evidence: не може перевищувати подвійної облікової ставки Національного банку України
+    chunk_ids: [law_late_payment#002]
+    note: Закон про несвоєчасне виконання грошових зобов'язань, ст. 3
+
+  - id: q13
+    question: Коли покупець має заплатити за товар, якщо строк оплати в договорі не вказаний?
+    kind: paraphrase
+    filter: {doc_types: [law]}
+    doc_id: law_civil_code
+    evidence: Покупець зобов'язаний оплатити товар після його прийняття
+    chunk_ids: [law_civil_code#071]
+    note: ЦК ст. 692 ч. 1
+
+  # --- Supreme Court decisions ---
+  - id: q14
+    question: Чи нараховуються інфляційні втрати, якщо прострочення тривало неповний місяць?
+    kind: plain
+    filter: {doc_types: [court_decision]}
+    doc_id: court_910_13071_19
+    evidence: час прострочення у неповному місяці більше півмісяця (> 15 днів) = 1 (один) місяць
+    chunk_ids: [court_910_13071_19#083, court_910_13071_19#113]
+    note: ОП КГС ВС 20.11.2020, п. 26 і п. 38.2 (той самий текст) — понад 15 днів = місяць, до 15 включно = 0
+
+  - id: q15
+    question: Чи є платою за користування чужими грошима сума, що рахується за кожен день прострочення, чи це пеня?
+    kind: paraphrase
+    filter: {doc_types: [court_decision]}
+    doc_id: court_910_14180_18
+    evidence: не залежить від встановленого сторонами у договорі способу обчислення такої плати
+    chunk_ids: [court_910_14180_18#057]
+    note: ОП КГС ВС 03.12.2021 — правова природа плати не залежить від способу обчислення, тож це не пеня

@@ -1,0 +1,13 @@
+# Qdrant for the stage 2 search index. Start: docker compose up -d qdrant
+services:
+  qdrant:
+    image: qdrant/qdrant:v1.20.0  # the same version as qdrant-client in pyproject.toml
+    ports:
+      # Only this machine can connect: the server runs without an API key.
+      - "127.0.0.1:6333:6333"  # REST
+      - "127.0.0.1:6334:6334"  # gRPC
+    volumes:
+      - qdrant_storage:/qdrant/storage  # the index survives a container restart
+
+volumes:
+  qdrant_storage:

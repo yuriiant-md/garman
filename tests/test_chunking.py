@@ -2,7 +2,13 @@ from datetime import date
 
 import pytest
 
-from src.rag.chunking import Chunk, chunk_document, fixed_size_chunks, pack_units
+from src.rag.chunking import (
+    Chunk,
+    chunk_document,
+    fixed_document_chunks,
+    fixed_size_chunks,
+    pack_units,
+)
 from src.rag.documents import Document, DocumentPart, ManifestEntry, sha256_hex
 from src.rag.sources import DocFormat, DocType, Source
 from src.rag.structure import Line, Unit
@@ -203,6 +209,36 @@ def test_chunk_document_refuses_a_manifest_written_for_another_text() -> None:
 
     with pytest.raises(ValueError, match="court_1: the text differs from the manifest"):
         chunk_document(document, court_source, entry(older, DocType.COURT_DECISION))
+
+
+def test_fixed_document_chunks_are_windows_with_the_document_metadata_and_no_ref() -> None:
+    law_source = source("law_1", DocType.LAW, version_date=date(2025, 8, 28), in_force=True)
+    document = Document(
+        doc_id="law_1",
+        parts=(DocumentPart(article="1", heading="Стаття 1. Мета", text="1. Текст статті."),),
+    )
+
+    chunks = fixed_document_chunks(
+        document, law_source, entry(document, DocType.LAW), size=20, overlap=5
+    )
+
+    windows = fixed_size_chunks(document.text, size=20, overlap=5)
+    assert tuple(chunk.text for chunk in chunks) == windows
+    assert [chunk.chunk_id for chunk in chunks] == ["law_1#001", "law_1#002"]
+    assert {(c.doc_id, c.version_date, c.in_force) for c in chunks} == {
+        ("law_1", date(2025, 8, 28), True)
+    }
+    assert {(c.section, c.heading, c.ref, c.pages) for c in chunks} == {(None, None, None, ())}
+
+
+def test_fixed_document_chunks_refuse_metadata_of_another_document() -> None:
+    document = Document(doc_id="court_1", parts=(DocumentPart(text="5. Суд дійшов висновку."),))
+    other = source("court_2", DocType.COURT_DECISION)
+
+    with pytest.raises(ValueError, match="court_2"):
+        fixed_document_chunks(
+            document, other, entry(document, DocType.COURT_DECISION), size=20, overlap=5
+        )
 
 
 def test_fixed_size_chunks_are_windows_that_overlap() -> None:

@@ -14,6 +14,9 @@ htmlcov/
 CLAUDE.md
 data/raw/
 
+# The author's local work plan (PLAN, PLAN_SHORT, PROJECT_MAP, retro): kept out of the public repo
+docs/
+
 # Unfinished runs; finished results/stage1/*.jsonl are committed so the metrics can be checked
 results/**/*.partial
 

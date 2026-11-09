@@ -4,29 +4,37 @@ The Е2.4 search questions are named by id, not copied: their text, contract and
 the evidence stay in data/rag/search_questions.yaml. Their filters (doc_types, skip_repealed) are
 not kept: an answer searches the contract of the question, the laws and the decisions
 (context.py). The traps (off the corpus, the repealed Commercial Code, an injection) are written
-here.
+here, and the expected answers of all of them.
 
 Two checks need no judge: the outcome is the expected one, and the answer cites a chunk that
 holds the evidence. Whether the claims say what the chunks say is for the Е2.6 judge.
 """
 
+import re
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError
 
 from src.extraction.metrics import cost_usd, percentile
 from src.rag.answer import AnswerStatus
 from src.rag.answerer import Outcome, RagResult
+from src.rag.bm25 import unify_apostrophes
 from src.rag.search_eval import SearchQuestion, load_questions
 
 ANSWER_QUESTIONS_PATH = Path("data/rag/answer_questions.yaml")
 SEARCH_QUESTIONS_PATH = Path("data/rag/search_questions.yaml")
+
+FACT_ALTERNATIVE_SEPARATOR = "|"
+SPACE_BEFORE_PERCENT = re.compile(r"(?<=\d)\s+%")
+# a number stands alone: «5%» is not in «15%» or «0,5%», «60» is not in «600» or «60,5»
+NOT_AFTER_A_NUMBER = r"(?<!\d)(?<!\d[,.])"
+NOT_BEFORE_A_NUMBER = r"(?!\d|[,.]\d)"
 
 
 class AnswerKind(StrEnum):
@@ -34,11 +42,28 @@ class AnswerKind(StrEnum):
     OFF_CORPUS = "off_corpus"  # the documents do not answer it
     REPEALED = "repealed"  # the answer is in the Commercial Code, not in force since 28.08.2025
     INJECTION = "injection"  # the question tells the model to drop its rules
+    SIMILAR_CONTRACT = "similar_contract"  # another contract has the same clause, other numbers
 
 
-class AnswerQuestion(BaseModel):
+# one or more alternatives split by "|", none empty: "60|шістдесят"
+Fact = Annotated[str, StringConstraints(pattern=r"^[^|]+(\|[^|]+)*$")]
+
+
+class AnswerReference(BaseModel):
+    """What a right answer says: the facts are for Python, the expected answer for the judge."""
+
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    expected_answer: str | None = Field(default=None, min_length=1)
+    key_facts: tuple[Fact, ...] = ()  # short and in a form that does not inflect: «5%», «подвійн»
+    forbidden_facts: tuple[Fact, ...] = ()  # e.g. the number of the similar contract
+
+
+class SearchQuestionReference(AnswerReference):
+    id: str  # a question of data/rag/search_questions.yaml
+
+
+class AnswerQuestion(AnswerReference):
     id: str
     kind: AnswerKind
     question: str = Field(min_length=1)
@@ -51,8 +76,8 @@ class AnswerQuestion(BaseModel):
 class AnswerQuestionSet(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    version: Literal[1]
-    search_questions: tuple[str, ...] = ()  # ids in data/rag/search_questions.yaml
+    version: Literal[2]
+    search_questions: tuple[SearchQuestionReference, ...] = ()
     questions: tuple[AnswerQuestion, ...] = ()
 
 
@@ -71,7 +96,9 @@ class Summary:
     latency_p95_s: float
 
 
-def from_search_question(question: SearchQuestion) -> AnswerQuestion:
+def from_search_question(
+    question: SearchQuestion, reference: SearchQuestionReference
+) -> AnswerQuestion:
     return AnswerQuestion(
         id=question.id,
         kind=AnswerKind.SEARCH,
@@ -80,6 +107,9 @@ def from_search_question(question: SearchQuestion) -> AnswerQuestion:
         expect=AnswerStatus.ANSWERED,
         should_cite=question.chunk_ids,
         note=question.note,
+        expected_answer=reference.expected_answer,
+        key_facts=reference.key_facts,
+        forbidden_facts=reference.forbidden_facts,
     )
 
 
@@ -94,10 +124,11 @@ def load_answer_questions(
     except ValidationError as error:
         raise ValueError(f"{path}: {error}") from error
     found = {question.id: question for question in load_questions(search_path)}
-    if unknown := [qid for qid in question_set.search_questions if qid not in found]:
+    references = question_set.search_questions
+    if unknown := [reference.id for reference in references if reference.id not in found]:
         raise ValueError(f"{path}: search_questions not in {search_path}: {', '.join(unknown)}")
     questions = (
-        *(from_search_question(found[qid]) for qid in question_set.search_questions),
+        *(from_search_question(found[reference.id], reference) for reference in references),
         *question_set.questions,
     )
     counts = Counter(question.id for question in questions)
@@ -115,6 +146,27 @@ def cites_expected(result: RagResult, question: AnswerQuestion) -> bool | None:
     if not question.should_cite:
         return None
     return any(chunk_id in result.cited for chunk_id in question.should_cite)
+
+
+def _normalized(text: str) -> str:
+    """One case, one space, one apostrophe, and «5 %» written as «5%»."""
+    spaced = " ".join(unify_apostrophes(text).casefold().split())
+    return SPACE_BEFORE_PERCENT.sub("%", spaced)
+
+
+def _alternative_pattern(alternative: str) -> str:
+    start = NOT_AFTER_A_NUMBER if alternative[:1].isdigit() else ""
+    end = NOT_BEFORE_A_NUMBER if alternative[-1:].isdigit() else ""
+    return f"{start}{re.escape(alternative)}{end}"
+
+
+def fact_found(fact: str, text: str) -> bool:
+    """Whether the text holds any alternative of the fact."""
+    normalized_text = _normalized(text)
+    return any(
+        re.search(_alternative_pattern(_normalized(alternative)), normalized_text)
+        for alternative in fact.split(FACT_ALTERNATIVE_SEPARATOR)
+    )
 
 
 def summarize(

@@ -6,7 +6,7 @@ A Telegram bot for farmers: it extracts the terms of a grain trader's contract, 
 
 Stage 1 grew in three steps. The first matrix compared Claude Haiku 4.5 with the local Lapa 12B; Lapa got about 27% accuracy on filled fields of the real contracts, so stage 1.2 replaced it with Qwen3 14B and added GPT-4o through OpenRouter as a second paid model. Stage 1.3 changed the schema: a contract may name several grades, each with its own price per tonne and its own quality limits (test weight, gluten, falling number, …), and added Claude Haiku 5.5, which became the main model (`REPORT.md`, section 6). Since stage 1.3 the code has no local model: the course no longer requires one, and the local runs stay in `results/` as history. `make run` now runs the stage 1.3 matrix into `results/stage1_3/`. The earlier matrices stay in `results/stage1/` and `results/stage1_2/`; they were scored with the schema before grades, so they are re-read with the code of the `stage-1` tag (step 4).
 
-Stage 2, RAG with citations, is in progress: the corpus, the chunks and the search are ready ("How documents are chunked" and "How search works" below).
+Stage 2, RAG with citations, is in progress: the corpus, the chunks, the search and the answers with sources are ready ("How documents are chunked", "How search works" and "How answers work" below).
 
 ## Reproduce stage 1
 
@@ -114,6 +114,14 @@ caffeinate -i uv run python -m scripts.eval_search  # 111 searches, about 2 minu
 
 `caffeinate -i` keeps a Mac awake: a sleeping Mac pauses the run. On Linux, drop it. The first run of `index_rag` downloads bge-m3 (2.3 GB), the first run of `eval_search` the reranker (0.57 GB), both into `~/.cache/fastembed`; no key is needed.
 
+The stage 2 answers (paid: Claude Haiku 5.5, about $0.01 for 20 questions; Qdrant must be running with a fresh index; details in "How answers work"):
+
+```bash
+caffeinate -i uv run --env-file .env python -m scripts.ask_rag                                # all 20 questions → results/stage2/answers/<start time>/
+caffeinate -i uv run --env-file .env python -m scripts.ask_rag --ids q01,t05                  # only these questions
+caffeinate -i uv run --env-file .env python -m scripts.ask_rag --prompt prompts/answer_v2.md  # another prompt than the one in configs/answer.yaml
+```
+
 ## How the metrics are counted
 
 The rules were written before the first run; the rules for grades and quality indicators were added in stage 1.3. Code: `src/extraction/scoring.py` (one document) and `src/extraction/metrics.py` (the table); every rule has its own test in `tests/test_scoring.py` and `tests/test_metrics.py`.
@@ -185,6 +193,34 @@ What the numbers say. Reranking gives the best R@1 and MRR, but plain vector sea
 - **BM25 has no stemming:** «пеня», «пеню» and «пені» are three different words for it.
 - **15 questions** tell modes apart only by large differences; there are no confidence intervals yet.
 
+## How answers work (stage 2)
+
+`scripts/ask_rag.py` asks the 20 questions of `data/rag/answer_questions.yaml` and writes each answer with its sources to `results/stage2/answers/<start time>/`. Code: `src/rag/context.py`, `answerer.py`, `answer.py`, `answer_config.py` and `answer_eval.py`; settings — `configs/answer.yaml`; tests — `tests/test_rag_context.py`, `test_rag_answerer.py`, `test_rag_answer.py`, `test_answer_config.py`, `test_answer_eval.py`, `test_ask_rag.py`.
+
+1. **Three searches.** The question's contract (4 chunks), the laws (3) and the decisions (3) are searched apart with `hybrid_rerank` and then interleaved: in one shared top the long decisions pushed the laws out. No other contract is ever searched.
+2. **A threshold instead of a guess.** A chunk with a reranker score below −1.7 is noise. With nothing left the answer is «У документах цього немає» and the model is not asked, so it costs nothing.
+3. **The context.** Whole chunks, up to about 4000 tokens. Each chunk is a block `<document id="S1">` with its title, type, source and warning. Anything in a chunk or in the question that could close a block or open a fake one is escaped: the text of a contract is data, not instructions.
+4. **The answer.** Claude Haiku 5.5 fills the forced tool `record_answer`: claims, each with the labels of its chunks, or `not_in_documents`. An invalid answer is sent back once with the reason; if the fix is invalid too, the result is `failed`.
+5. **Python writes the citations and the warnings.** It checks that every label was in the context and builds the citation from the chunk's metadata, so a citation cannot name a clause the chunk does not have; the text of a claim is still the model's. The Commercial Code has not been in force since 28.08.2025: an article of it gets «ГК втратив чинність…», a decision resting on it «Це практика за ГК, що втратив чинність 28.08.2025.». A wrong answer from the model cannot drop them.
+6. **Questions.** The 15 search questions and 5 traps: 2 off the corpus (t01, t02), 2 on the repealed code (t03, t04), 1 injection (t05). Two checks need no judge: the outcome is the expected one, and the answer cites a chunk that holds the evidence.
+
+| prompt (run) | outcome as expected | cites the evidence | tokens in / out | $ per 1000 questions | latency p50 / p95, s |
+| --- | --- | --- | --- | --- | --- |
+| v1 (`2026-11-07T20-17-50`) | 19 / 20 | 16 / 18 | 50 436 / 7 248 | 0.43 | 7.1 / 9.3 |
+| v2 (`2026-11-08T17-24-00`) | 19 / 20 | 16 / 18 | 62 672 / 5 128 | 0.44 | 6.7 / 9.4 |
+| v3 (`2026-11-08T17-58-33`) | 19 / 20 | 16 / 18 | 65 598 / 5 390 | 0.46 | 6.5 / 9.4 |
+| v3, final (`2026-11-09T08-46-28`) | 19 / 20 | 16 / 18 | 65 156 / 4 797 | 0.45 | 5.9 / 9.8 |
+
+What the numbers say. The automatic metrics are the same for all three prompts, so they cannot rank them. The one wrong outcome is q03: its right clause scores −5.11, below the threshold. The two missed evidences are q03 and q15. Answers also differ from run to run, so v2 and v3 were compared over 4 tries each with every answer read by hand, and v3 was chosen (`prompts/CHANGELOG.md`, «answer v3»). The traps held in every version.
+
+**Known limits and what is left to do (Е2.6):**
+
+- **Arguments of a party given as the court's view.** q05 and t03 repeat the same error in every try: the model does not tell the section with the complainant's arguments from the court's conclusion. The prompt did not fix it; the code knows the section, so it has to mark or drop such chunks.
+- **Terms of someone else's contract.** A decision may quote another party's contract, and the answer may repeat its terms (q01 in 3 of 4 tries of v3, t03 in all).
+- **The text of a claim is not verified.** Whether a claim says what its chunks say needs an LLM judge; it would also count errors across tries automatically.
+- **Foreign words** («half») appear with the «Ukrainian only» rule as often as without it, and Haiku 5.5 accepts only the default sampling.
+- **The threshold** was set on 23 questions and loses q03; it is to be recalibrated on the Е2.6 test set.
+
 ## Where things are
 
 ### Stage 1 requirements
@@ -213,6 +249,7 @@ main.py                    stage 1 in one command: the whole matrix, then the me
 configs/
   models.yaml              models with their provider (anthropic, openrouter), timeout, retry, prices per 1M tokens; a new model is a new section
   sampling.yaml            sampling configurations precise, varied and default
+  answer.yaml              stage 2 answers: the model, the prompt and how the context is built
 data/
   texts/                   the 48 texts the models get
   synthetic/               golden Deal and "dirtiness" parameters of each synthetic text
@@ -221,11 +258,13 @@ data/
   own_sources.csv          which PDF and contract number each own contract comes from
   rag_sources.csv          stage 2 corpus: 28 contracts (PDF), 6 laws and 11 Supreme Court decisions (HTML)
   rag/                     the stage 2 corpus after ingestion: documents.jsonl (text by page or article), manifest.jsonl, chunks.jsonl (chunks with metadata) and search_questions.yaml (15 questions with a known answer)
+  rag/answer_questions.yaml  the 20 questions the answers are tried on: 15 by id from search_questions.yaml and 5 traps
   README.md                how the data was collected, anonymised and labelled
   raw/                     original PDFs, masking check files and the stage 2 HTML pages in raw/rag/ (not in git)
 prompts/
   extract_v1.md            baseline prompt, version in the header
   extract_v2.md            prompt with per-field rules; {today} becomes the run date
+  answer_v1.md … answer_v3.md  stage 2 answer prompts; v3 is in configs/answer.yaml
   CHANGELOG.md             what changed between versions and why
 src/schemas/
   deal.py                  the Deal schema: grades with their prices and quality indicators
@@ -253,6 +292,11 @@ src/rag/
   index.py                 a chunk becomes a Qdrant point with two vectors; the stamp that marks a stale index
   search.py                vector, hybrid and hybrid + rerank search with filters
   search_eval.py           which found chunk is right; recall@k and MRR
+  context.py               three searches, the threshold and the document blocks the model reads
+  answer.py                the answer schema; Python's citations and warnings
+  answerer.py              search, then Claude with a forced tool, the one fix, the result of a question
+  answer_config.py         reads configs/answer.yaml
+  answer_eval.py           the 20 questions and the checks that need no judge
 scripts/
   generate_synthetic.py    deals for the synthetic set (+ synthetic_render.py, synthetic_checks.py)
   fetch_prozorro.py        search for contracts in Prozorro
@@ -262,12 +306,14 @@ scripts/
   chunk_rag.py             stage 2 chunking: data/rag/chunks.jsonl and the comparison with fixed-size chunks
   index_rag.py             builds the two Qdrant collections: structural chunks and fixed-size windows
   eval_search.py           measures the search on the 15 questions: report and ranks in results/stage2/search/
+  ask_rag.py               asks the 20 questions: report and answers in results/stage2/answers/
   check_golden.py          validates the golden labels
 tests/                     pytest tests: make test
 results/stage1_3/          one folder per launch, named with its start time: a *.jsonl file per configuration (one line per document) and the metrics tables (metrics.md, metrics_by_field.md)
 results/stage1_2/          the same for stage 1.2, on the schema before grades (read with the stage-1 tag)
 results/stage1/            the same for the first matrix (Claude and Lapa)
 results/stage2/search/     one folder per search evaluation: search_metrics.md and ranks.jsonl
+results/stage2/answers/    one folder per answers run: report.md and answers.jsonl
 ```
 
 The author keeps the work plan locally (`docs/`, outside the repository); its metric rules were moved to "How the metrics are counted".

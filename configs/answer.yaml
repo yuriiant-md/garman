@@ -1,0 +1,17 @@
+# Stage 2 answers (src/rag/answerer.py): the model, the prompt and how the context is built.
+# `model` is a section of configs/models.yaml: its id, timeout, retries and prices live there.
+model: haiku-5.5
+prompt: prompts/answer_v3.md   # chosen 08.11 over v1 and v2: prompts/CHANGELOG.md, «answer v3»
+context:
+  # each list is searched apart (src/rag/context.py): together, the long court decisions pushed
+  # the laws out of the top (Е2.5, 06.11: «скільки процентів річних…» found no law in a shared
+  # top 6, ЦК ст. 625 first among laws alone)
+  contract_k: 4      # the contract of the question; no other contract is ever searched
+  law_k: 3
+  decision_k: 3
+  max_tokens: 4000   # whole chunks only, estimated at 2.36 characters per token
+  # reranker score below which a chunk is noise; with none left the answer is «немає» and the
+  # model is not asked. Midway between the weakest right chunk kept (−1.04, Е2.4 q05) and the
+  # strongest off-corpus contract chunk (−2.37), on the 15 Е2.4 questions + 8 off-corpus ones
+  # (06.11). Loses q03 (right clause at −5.11). Recalibrated on the Е2.6 test set.
+  min_score: -1.7

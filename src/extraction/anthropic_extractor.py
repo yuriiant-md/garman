@@ -80,11 +80,15 @@ def read_answer(response: anthropic.types.Message) -> tuple[str, Deal | None, st
 
 
 def fix_messages(response: anthropic.types.Message, error: str) -> list[MessageParam]:
-    """The invalid answer and the request to fix it, to be appended to the conversation.
+    """The invalid Deal answer and the request to fix it, to be appended to the conversation."""
+    return tool_error_turns(response, repair_request(error))
 
-    A tool call must be answered by a tool_result, so the error goes back as a failed one.
+
+def tool_error_turns(response: anthropic.types.Message, request: str) -> list[MessageParam]:
+    """Any invalid answer and the request to fix it, to be appended to the conversation.
+
+    A tool call must be answered by a tool_result, so the request goes back as a failed one.
     """
-    request = repair_request(error)
     call = next((block for block in response.content if block.type == "tool_use"), None)
     if call is None:
         text = "".join(block.text for block in response.content if block.type == "text")

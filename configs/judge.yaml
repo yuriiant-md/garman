@@ -1,0 +1,18 @@
+# The stage 2 LLM judge (src/rag/judge.py): a model other than the one that answers (answer.yaml).
+# Not a section of models.yaml: every section there joins the stage 1 matrix of `make run`, whose
+# forced tool call Sonnet 5.5 rejects. Prices are USD per 1M tokens.
+model:
+  id: claude-sonnet-5-5
+  timeout_s: 120
+  max_retries: 3
+  max_tokens: 8192     # thinking counts in it, and a long answer has a verdict for every claim
+  effort: medium
+  price_input_per_mtok: 2.0
+  price_output_per_mtok: 10.0
+prompts:
+  correct: prompts/judge_correct_v1.md
+  faithful: prompts/judge_faithful_v1.md
+thresholds:
+  correct_min: 0.80     # of the questions with a reference answer
+  faithful_min: 0.90    # of all claims of the answers
+  agreement_min: 0.80   # the judge against the manual marks: below it the judge is not used

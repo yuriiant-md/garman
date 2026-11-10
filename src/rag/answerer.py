@@ -18,7 +18,7 @@ from typing import TypedDict, Unpack
 
 import anthropic
 from anthropic.types import MessageParam, ToolParam
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from src.extraction.anthropic_extractor import (
     AnthropicConfig,
@@ -35,7 +35,14 @@ from src.rag.answer import (
     render,
 )
 from src.rag.chunking import Chunk
-from src.rag.context import Context, ContextSettings, Search, build_context, escaped
+from src.rag.context import (
+    Context,
+    ContextSettings,
+    Search,
+    build_context,
+    document_block,
+    escaped,
+)
 
 ANSWER_TOOL: ToolParam = {
     "name": "record_answer",
@@ -69,6 +76,10 @@ class RagResult(BaseModel):
     answer: Answer | None = None
     sources: dict[str, str]  # label -> chunk_id: the whole context
     cited: tuple[str, ...] = ()  # chunk_ids the answer cites, each once
+    # label -> the <document> block the model read, for the cited labels only: the judge checks
+    # the claims against these, so a rebuilt chunks.jsonl cannot change what a saved run is
+    # checked against. Empty without a valid answer and in runs saved before 10.11.
+    cited_documents: dict[str, str] = Field(default_factory=dict)
     context_tokens: int
     left_out: tuple[str, ...]
     below_threshold: tuple[str, ...]
@@ -99,6 +110,7 @@ class ModelFields(TypedDict, total=False):
     text: str | None
     answer: Answer | None
     cited: tuple[str, ...]
+    cited_documents: dict[str, str]
     attempts: int
     input_tokens: int
     output_tokens: int
@@ -244,6 +256,7 @@ class Answerer:
             text=render(answer, context.sources),
             answer=answer,
             cited=_cited(answer, context.sources),
+            cited_documents=_cited_documents(answer, context.sources),
             **usage,
         )
 
@@ -273,6 +286,14 @@ class Answerer:
         )
 
 
+def _cited_labels(answer: Answer) -> tuple[str, ...]:
+    """The labels the claims cite, each once, in the order they first appear."""
+    return tuple(dict.fromkeys(label for claim in answer.claims for label in claim.sources))
+
+
 def _cited(answer: Answer, sources: Mapping[str, Chunk]) -> tuple[str, ...]:
-    labels = (label for claim in answer.claims for label in claim.sources)
-    return tuple(dict.fromkeys(sources[label].chunk_id for label in labels))
+    return tuple(dict.fromkeys(sources[label].chunk_id for label in _cited_labels(answer)))
+
+
+def _cited_documents(answer: Answer, sources: Mapping[str, Chunk]) -> dict[str, str]:
+    return {label: document_block(label, sources[label]) for label in _cited_labels(answer)}

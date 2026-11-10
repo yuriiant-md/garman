@@ -7,7 +7,7 @@ import pytest
 from src.extraction.prompts import Prompt
 from src.rag.answer import NOT_IN_DOCUMENTS_TEXT
 from src.rag.answerer import ANSWER_TOOL, Answerer, Outcome, RagResult, user_turn
-from src.rag.context import Context, ContextSettings
+from src.rag.context import Context, ContextSettings, document_block
 from src.rag.sources import DocType
 from tests.test_anthropic_extractor import (
     HAIKU_55,
@@ -93,6 +93,27 @@ def test_a_valid_answer_is_rendered_with_its_citations_and_logged() -> None:
     )
     assert result.sampling == "default"
     assert result.context_tokens > 0
+
+
+def test_the_result_keeps_the_cited_documents_exactly_as_the_model_saw_them() -> None:
+    result, _ = ask(GOOD)
+
+    assert result.cited_documents == {"S1": document_block("S1", CLAUSE)}  # S2, S3 not cited
+
+
+@pytest.mark.parametrize("outcome", [UNKNOWN_LABEL, anthropic.APITimeoutError(REQUEST)])
+def test_a_result_with_no_valid_answer_keeps_no_documents(outcome: object) -> None:
+    result, _ = ask(outcome)
+
+    assert result.outcome in {Outcome.FAILED, Outcome.ERROR}
+    assert result.cited_documents == {}
+
+
+def test_a_result_saved_before_cited_documents_existed_still_loads() -> None:
+    saved, _ = ask(GOOD)
+    old = saved.model_dump(exclude={"cited_documents"})
+
+    assert RagResult.model_validate(old).cited_documents == {}
 
 
 def test_the_commercial_code_warning_is_added_even_if_the_model_leaves_it_out() -> None:

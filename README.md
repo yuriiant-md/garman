@@ -134,6 +134,26 @@ uv run python -m scripts.calibrate_judge                                        
 
 All take a run folder as an argument (`results/stage2/answers/2026-11-10T10-08-19`); without one they take the newest run, and `calibrate_judge` the run named in the sheet. `judge_sheet` keeps a sheet that exists: it may hold marks (`--force` writes over it).
 
+## Reproduce stage 2
+
+### Requirements
+
+- Everything from stage 1, plus [Docker](https://docs.docker.com/get-docker/) running: Qdrant keeps the search index (`docker-compose.yml`).
+- About 3 GB of disk for the models: bge-m3 (2.3 GB) and the reranker (0.57 GB) download into `~/.cache/fastembed` on the first run.
+- An Anthropic API key in `.env` only for new answers (`make answers`, `make ask`); `make rag` needs no key.
+- The repository holds the corpus after ingestion (`data/rag/documents.jsonl`, `chunks.jsonl`, `manifest.jsonl`), so the commands below start from it. Ingestion from scratch also needs `data/raw/`, which is not in git: the author's own contracts are there (see "Separate commands").
+
+### Make commands
+
+| Command | What it does | Needs a key |
+| --- | --- | --- |
+| `make qdrant` | starts Qdrant in Docker and waits until it is ready | no |
+| `make rag` | the whole free stage 2: builds the index (only when it is stale; about 7 minutes the first time), measures search on 15 questions → `results/stage2/search/<start time>/`, checks the saved answers by rules with thresholds and the judge's calibration, as CI does; about 1.5 minutes with a fresh index | no |
+| `make answers` | new answers to the 26 questions → `results/stage2/answers/<start time>/`, then their check by rules; about $0.01 | yes |
+| `make ask IDS=q01,t05` | answers to only these test questions; cents | yes |
+
+The paid LLM judge is not in `make`: it runs by hand or from CI (see "How answers are checked").
+
 ## How the metrics are counted
 
 The rules were written before the first run; the rules for grades and quality indicators were added in stage 1.3. Code: `src/extraction/scoring.py` (one document) and `src/extraction/metrics.py` (the table); every rule has its own test in `tests/test_scoring.py` and `tests/test_metrics.py`.
@@ -309,7 +329,7 @@ The actions are pinned to a commit hash (a tag can be moved), the checkout keeps
 ### Folders and files
 
 ```
-Makefile                   make install / test / run / metrics
+Makefile                   make install / test / run / smoke / metrics (stage 1), qdrant / rag / answers / ask (stage 2)
 .github/workflows/ci.yml   CI: tests, mypy, rules and judge calibration on every push; the paid judge by hand
 docker-compose.yml         Qdrant for the stage 2 search (docker compose up -d qdrant)
 main.py                    stage 1 in one command: the whole matrix, then the metrics table

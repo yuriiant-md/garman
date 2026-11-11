@@ -41,6 +41,21 @@ def test_load_prompt_rejects_missing_header_version_or_body(tmp_path, content):
         load_prompt(path)
 
 
+@pytest.mark.parametrize("version", ["v2/fix", "../v2", "v 3", "в3"])
+def test_load_prompt_rejects_a_version_that_cannot_name_a_results_file(tmp_path, version):
+    path = write_prompt(tmp_path / "p.md", "Витягни умови.", version=version)
+
+    with pytest.raises(ValueError, match="version"):
+        load_prompt(path)
+
+
+@pytest.mark.parametrize("version", ["v3", "v3.1", "v3-fix", "v3_a"])
+def test_load_prompt_accepts_letters_digits_dots_dashes_and_underscores(tmp_path, version):
+    prompt = load_prompt(write_prompt(tmp_path / "p.md", "Витягни умови.", version=version))
+
+    assert prompt.version == version
+
+
 def test_today_placeholder_becomes_the_run_date(tmp_path):
     path = write_prompt(tmp_path / "p.md", "Today is {today}.")
 

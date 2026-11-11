@@ -1,0 +1,7 @@
+# What a stage 2 run must reach (src/rag/answer_scoring.py). Below any of them the run fails.
+# The targets of the course plan, step 4.
+source_min: 0.85                # the answer cites a chunk with the evidence
+key_facts_min: 0.80             # of all key facts of the answerable questions
+not_in_documents_min: 1.0       # the questions with no answer in the corpus: all of them
+forbidden_facts_max: 0          # e.g. the numbers of a similar contract
+repealed_as_in_force_max: 0     # the Commercial Code, not in force since 28.08.2025

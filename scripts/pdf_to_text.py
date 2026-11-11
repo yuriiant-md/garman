@@ -103,8 +103,9 @@ INITIALS_THEN_SURNAME = re.compile(rf"{INITIALS}\s?({NAME_WORD})")
 SURNAME_THEN_INITIALS = re.compile(rf"\b({NAME_WORD})\s+{INITIALS}")
 # A name right after these words belongs to an institution or a street, not to a signatory:
 # "імені Л.П. Симиренка" (OCR also gives "iMCHi", "iivieni"), "вул. Петра Сагайдачного".
+# A letter after the "і": initials "І.В." of the previous name in a list are not "ім.".
 NAMED_AFTER = re.compile(
-    r"(?:\b[іiІI1]\S{1,6}|вул\.|вулиця|просп\.|проспект|пров\.|провулок|бульв\.|бульвар|пл\.|площа)\s*$",
+    r"(?:\b[іiІI1][^\W\d_]\S{0,5}|вул\.|вулиця|просп\.|проспект|пров\.|провулок|бульв\.|бульвар|пл\.|площа)\s*$",
     re.IGNORECASE,
 )
 CASE_ENDINGS = ("ого", "ому", "ою", "ої", "ей", "ем", "а", "я", "у", "ю", "і", "и", "о", "е")
@@ -154,7 +155,7 @@ def mask_pii(
     text = _mask_initials(text, surnames, found)
     text = _mask_first_names(text, surnames, found)
     stems = {stem for name in surnames for stem in _stems(name)}
-    for stem in sorted(stems, key=len, reverse=True):
+    for stem in sorted(stems, key=lambda stem: (-len(stem), stem)):  # longest first, then a-z
         surname_forms = re.compile(
             rf"\b{re.escape(stem)}[{UPPER}{LOWER}]{{0,{MAX_ENDING}}}\b", re.IGNORECASE
         )

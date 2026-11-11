@@ -5,7 +5,6 @@ import pytest
 from src.extraction.scoring import (
     Counts,
     drop_explanation,
-    normalize_text,
     pair_penalties,
     score_deal,
     values_match,
@@ -94,31 +93,12 @@ def test_enums_and_dates_match_only_exactly():
     assert not values_match(date(2024, 11, 9), date(2024, 11, 10))
 
 
-def test_text_normalization_drops_case_quotes_and_legal_form():
-    assert normalize_text('ТОВ "Зерно Поле 01"') == "зерно поле 01"
-    assert normalize_text("«Зерно поле 01»") == "зерно поле 01"
-    assert normalize_text("Товариство з обмеженою відповідальністю «Зерно Поле 01»") == (
-        "зерно поле 01"
-    )
-    assert normalize_text("ФГ  «Колос»") == "колос"
-
-
-def test_text_normalization_drops_other_business_forms():
-    assert normalize_text("ТзОВ «Агро-Світ»") == "агро-світ"
-    assert normalize_text("ПрАТ «Агро-Світ»") == "агро-світ"
-    assert normalize_text("АТ «Укрзалізниця»") == "укрзалізниця"
+def test_a_spelled_out_legal_form_matches_its_abbreviation():
+    # normalize_text itself: tests/test_text.py
     assert values_match(
         "Державне підприємство «Лугинське лісове господарство»",
         "ДП «Лугинське лісове господарство»",
     )
-
-
-def test_text_normalization_keeps_words_that_start_like_a_legal_form():
-    assert normalize_text("Товарна біржа") == "товарна біржа"
-
-
-def test_apostrophes_do_not_split_words():
-    assert normalize_text("Пʼятихатки") == normalize_text("П'ятихатки") == "пятихатки"
 
 
 def test_text_tolerates_ocr_noise():

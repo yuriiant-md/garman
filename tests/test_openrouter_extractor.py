@@ -189,6 +189,16 @@ def test_refusal_is_failed_and_keeps_the_refusal_text():
     assert "refus" in result.error
 
 
+@pytest.mark.parametrize(
+    "first", [answer("{}", finish_reason="length"), answer(None, refusal="I can't help with that.")]
+)
+def test_cut_off_or_refused_answer_is_not_sent_back_for_a_fix(first):
+    # asking again meets the same max_tokens or the same refusal, and is paid for twice
+    result, client = extract(first)
+
+    assert (result.status, result.attempts, len(client.calls)) == (ExtractionStatus.FAILED, 1, 1)
+
+
 def test_valid_first_answer_is_asked_once():
     result, client = extract(answer(json.dumps({"crop": "wheat"})))
 

@@ -1,6 +1,7 @@
 """Versioned extraction prompts: a YAML header with the version, then the prompt text."""
 
 import hashlib
+import re
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -9,6 +10,7 @@ import yaml
 
 HEADER_FENCE = "---"
 TODAY_PLACEHOLDER = "{today}"  # replaced with the run date, the year source for yearless dates
+VERSION_PATTERN = re.compile(r"[A-Za-z0-9._-]+")  # the version is part of the results file name
 
 
 @dataclass(frozen=True)
@@ -24,6 +26,10 @@ def load_prompt(path: Path, today: date | None = None) -> Prompt:
     version = header.get("version")
     if not version:
         raise ValueError(f"{path}: header has no version")
+    if not VERSION_PATTERN.fullmatch(str(version)):
+        raise ValueError(
+            f"{path}: version {version!r} may use only Latin letters, digits, '.', '_' and '-'"
+        )
     if not text:
         raise ValueError(f"{path}: prompt text is empty")
     run_date = (today or date.today()).isoformat()

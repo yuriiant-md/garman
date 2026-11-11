@@ -35,12 +35,11 @@ MODELS_PATH = ROOT / "configs" / "models.yaml"
 DEFAULT_PROMPT = ROOT / "prompts" / "extract_v2.md"
 DEV_PREFIX = "synthetic_"  # dev = synthetic texts; everything else (golden set) is test
 SPLITS = ("dev", "test", "all")
-MAIN_MODEL = "haiku-5.5"  # the production choice, REPORT.md section 6
-# --model keys, named after their models; each is a section of models.yaml
-MODELS = (MAIN_MODEL, "haiku-4.5", "gpt-4o")
-API_KEY_VARIABLES = {  # --model -> key
-    "haiku-5.5": "ANTHROPIC_API_KEY", "haiku-4.5": "ANTHROPIC_API_KEY", "gpt-4o": "OPENROUTER_API_KEY"
-}
+MAIN_MODEL = "haiku-5.5"  # the production choice, REPORT.md, stage 1, section 6
+# --model keys: the sections of models.yaml in file order, each named after its model
+MODELS: tuple[str, ...] = tuple(yaml.safe_load(MODELS_PATH.read_text(encoding="utf-8")))
+ANTHROPIC, OPENROUTER = "anthropic", "openrouter"  # the `provider` of a models.yaml section
+API_KEY_VARIABLES = {ANTHROPIC: "ANTHROPIC_API_KEY", OPENROUTER: "OPENROUTER_API_KEY"}
 PRECISE_SAMPLING = "precise"  # without --sampling, for a model that takes temperature/top_p
 PARTIAL_SUFFIX = ".partial"
 RUN_STAMP_FORMAT = "%Y-%m-%dT%H-%M-%S"  # colons are not allowed in file names on some systems
@@ -126,6 +125,11 @@ def summarize(
         "median_latency_s": statistics.median(record["latency_s"] for record in records),
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
+        # OpenRouter may leave usage out: such answers are paid for, but the cost below misses them
+        "answers_without_usage": sum(
+            record["status"] != ExtractionStatus.ERROR and record["input_tokens"] == 0
+            for record in records
+        ),
         "cost_usd": cost_usd(input_tokens, output_tokens, price_input, price_output),
         "cost_per_1000_docs_usd": cost_per_1000_docs(records, price_input, price_output),
     }
@@ -155,8 +159,8 @@ def default_sampling(model: str) -> str:
     return PRECISE_SAMPLING if takes_sampling(model) else DEFAULT_SAMPLING
 
 
-def load_openrouter_config(path: Path = MODELS_PATH) -> OpenRouterConfig:
-    values = yaml.safe_load(path.read_text(encoding="utf-8"))["gpt-4o"]
+def load_openrouter_config(path: Path = MODELS_PATH, *, section: str) -> OpenRouterConfig:
+    values = yaml.safe_load(path.read_text(encoding="utf-8"))[section]
     return OpenRouterConfig(
         model=values["model"],
         timeout_s=float(values["timeout_s"]),
@@ -170,18 +174,37 @@ def load_prices(path: Path = MODELS_PATH, section: str = MAIN_MODEL) -> tuple[fl
     return float(values["price_input_per_mtok"]), float(values["price_output_per_mtok"])
 
 
+def model_provider(model: str, path: Path = MODELS_PATH) -> str:
+    """The `provider` of a models.yaml section: it picks the extractor and the API key."""
+    provider = yaml.safe_load(path.read_text(encoding="utf-8"))[model].get("provider")
+    if provider not in API_KEY_VARIABLES:
+        raise ValueError(
+            f"{path}: section {model} needs provider: {' or '.join(API_KEY_VARIABLES)}, "
+            f"not {provider!r}"
+        )
+    return str(provider)
+
+
 def configured_model(model: str) -> str:
     """The model id from configs/models.yaml for a --model choice; it names the results file."""
-    if model == "gpt-4o":
-        return load_openrouter_config().model
+    if model_provider(model) == OPENROUTER:
+        return load_openrouter_config(section=model).model
     return load_anthropic_config(section=model).model
 
 
 def build_extractor(model: str) -> Extractor:
     """Built only when some document needs the model: API clients require their keys."""
-    if model == "gpt-4o":
-        return OpenRouterExtractor(load_openrouter_config())
+    if model_provider(model) == OPENROUTER:
+        return OpenRouterExtractor(load_openrouter_config(section=model))
     return AnthropicExtractor(load_anthropic_config(section=model))
+
+
+def positive_int(value: str) -> int:
+    """The argparse type of --per-source: 0 or a negative count would leave no texts to run."""
+    number = int(value)
+    if number <= 0:
+        raise argparse.ArgumentTypeError(f"must be a positive whole number, not {value}")
+    return number
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -189,7 +212,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--model", choices=MODELS, default=MAIN_MODEL)
     parser.add_argument("--split", choices=SPLITS, default="dev")
     parser.add_argument(
-        "--per-source", type=int, help="Only the first N texts of each source (a quick check)."
+        "--per-source",
+        type=positive_int,
+        help="Only the first N texts of each source (a quick check).",
     )
     parser.add_argument("--texts-dir", type=Path, default=TEXTS_DIR)
     parser.add_argument("--prompt", type=Path, default=DEFAULT_PROMPT)
@@ -219,12 +244,21 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{configured_model(args.model)} rejects temperature and top_p: run it with "
               f"--sampling {DEFAULT_SAMPLING}.", file=sys.stderr)
         return 2
-    prompt = load_prompt(args.prompt)
+    try:
+        prompt = load_prompt(args.prompt)
+    except ValueError as error:
+        print(error, file=sys.stderr)
+        return 2
     started = current_time()
     run_dir = (args.run_dir or run_dir_path(RESULTS_DIR, started)).resolve()
     output = result_path(run_dir, configured_model(args.model), prompt.version, sampling.name)
-    key = API_KEY_VARIABLES.get(args.model)
-    if key and not os.environ.get(key):
+    shown = output.relative_to(ROOT) if output.is_relative_to(ROOT) else output  # --run-dir /tmp/x
+    if output.exists():
+        print(f"{shown} already exists: give the prompt a new version in its header "
+              "or choose another --run-dir.", file=sys.stderr)
+        return 2
+    key = API_KEY_VARIABLES[model_provider(args.model)]
+    if not os.environ.get(key):
         print(f"{key} is not set: put it in .env and run with "
               "`uv run --env-file .env python -m src.extraction.run`.", file=sys.stderr)
         return 2
@@ -239,7 +273,6 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Stopped: {error}", file=sys.stderr)
         return 1
     summary = summarize(records, *load_prices(section=args.model))
-    shown = output.relative_to(ROOT) if output.is_relative_to(ROOT) else output  # --run-dir /tmp/x
     print(f"Saved {len(records)} results to {shown}")
     print(json.dumps(summary, indent=2))
     return 0

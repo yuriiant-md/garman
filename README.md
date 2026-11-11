@@ -275,7 +275,15 @@ Results on run `2026-11-10T10-08-19`:
 
 The judge passes and is used. On the blind marks it agrees almost always; on the seen ones the author disagreed with it more often, so the marks did not follow its verdicts. Of the 8 disagreements, 2 are «judge yes, author no», a missed error (q01 claim 2, q04 claim 1), and 6 «judge no, author yes», a judge too strict (q01 claim 3, q05 claim 4, q11 claim 1, q13 claim 2, t03 claim 3, s03 correct). Read again against the documents, at least four are the author's errors, not the judge's: q01 claim 2 and q04 claim 1 say what п. 7.2 and п. 6.3 say; q01 claim 3 widens п. 7.2 just as t05 claim 2, which the author marked false; t03 claim 3 dates the hearing by the contract's period. The marks are not changed after reading the judge's reasons: then they would no longer be blind.
 
-**Left to do:** a faithful prompt that sees the warnings Python adds (q13), then CI with these thresholds.
+**Left to do:** a faithful prompt that sees the warnings Python adds (q13).
+
+## CI
+
+GitHub Actions (`.github/workflows/ci.yml`) checks every push and pull request, free and with no key: `uv sync --locked` (exactly the versions of `uv.lock`), `pytest`, `mypy`, the rules on the newest run of the answers (`score_answers`, thresholds of `configs/eval.yaml`) and the calibration of the judge (`calibrate_judge`, agreement ≥ 80%). A threshold that is not met fails the run. The tests need neither Qdrant nor the models: Qdrant runs in memory, the embedder and the reranker are replaced by fakes.
+
+The paid judge runs only by hand: Actions → CI → Run workflow (the `limit` field judges only the first N questions). It needs the `ANTHROPIC_API_KEY` secret in Settings → Secrets and variables → Actions; its `judge.md` and `judge.jsonl` are kept as the run's artifact. Until a faithful prompt that sees the warnings, this job fails: faithful is 87% against 90%.
+
+The actions are pinned to a commit hash (a tag can be moved), the checkout keeps no GitHub token, and the workflow may only read the repository.
 
 ## Where things are
 
@@ -300,6 +308,7 @@ The judge passes and is used. On the blind marks it agrees almost always; on the
 
 ```
 Makefile                   make install / test / run / metrics
+.github/workflows/ci.yml   CI: tests, mypy, rules and judge calibration on every push; the paid judge by hand
 docker-compose.yml         Qdrant for the stage 2 search (docker compose up -d qdrant)
 main.py                    stage 1 in one command: the whole matrix, then the metrics table
 configs/

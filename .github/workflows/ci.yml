@@ -1,0 +1,71 @@
+# Checks of every push and PR: tests, types and the free evals of the stage 2 answers.
+# The paid LLM judge runs only by hand (Actions → CI → Run workflow) and needs the
+# ANTHROPIC_API_KEY secret (Settings → Secrets and variables → Actions).
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Judge only the first N questions (empty: the whole run, about $0.19)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}  # never stop a paid run
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # actions pinned to a commit: a tag can be moved, a hash cannot
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+        with:
+          persist-credentials: false  # no GitHub token left in .git/config
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e  # v6.8.0
+        with:
+          enable-cache: true
+      - name: Install (exactly uv.lock)
+        run: uv sync --locked
+      - name: Tests
+        run: uv run pytest -q
+      - name: Types
+        run: uv run mypy
+      - name: Answers by rules (thresholds of configs/eval.yaml, the newest run)
+        run: uv run python -m scripts.score_answers
+      - name: Judge calibration (agreement_min of configs/judge.yaml)
+        run: uv run python -m scripts.calibrate_judge
+
+  judge:
+    if: github.event_name == 'workflow_dispatch'
+    needs: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e  # v6.8.0
+        with:
+          enable-cache: true
+      - name: Install (exactly uv.lock)
+        run: uv sync --locked
+      - name: LLM judge on the newest run (paid)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          LIMIT: ${{ inputs.limit }}
+        run: uv run python -m scripts.judge_answers ${LIMIT:+--limit "$LIMIT"}
+      - name: Keep the verdicts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: judge
+          path: results/stage2/answers/*/judge.*
+          if-no-files-found: warn

@@ -35,7 +35,8 @@ class Chunk(BaseModel):
     title: str
     short_title: str
     source_url: str | None = None
-    version_date: date | None = None
+    version_date: date | None = None  # date of a contract or a decision
+    retrieved_on: date | None = None  # a law: the day its text was downloaded, its version
     in_force: bool | None = None
     cites_commercial_code: bool | None = None
     text_sha256: str  # of the whole document: a changed document means its chunks are stale
@@ -144,6 +145,7 @@ def _chunk(source: Source, entry: ManifestEntry, number: int, unit: Unit) -> Chu
         short_title=source.short_title,
         source_url=source.source_url,
         version_date=source.version_date,
+        retrieved_on=source.retrieved_on,
         in_force=source.in_force,
         cites_commercial_code=source.cites_commercial_code,
         text_sha256=entry.text_sha256,

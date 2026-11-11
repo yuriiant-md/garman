@@ -45,7 +45,8 @@ class SearchFilter(BaseModel):
     contract_id: str | None = None  # this contract, laws and decisions; no other contract
     doc_types: frozenset[DocType] = frozenset()
     skip_repealed: bool = False  # drops laws not in force; other documents have no in_force
-    # only decisions have a date: undated chunks pass the range, dated ones must fall in it
+    # contracts and decisions have a date and must fall in the range; a law has only the day
+    # it was downloaded (retrieved_on), not an edition, so it passes as undated
     version_from: date | None = None
     version_to: date | None = None
 

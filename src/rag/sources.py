@@ -41,10 +41,12 @@ class Source(BaseModel):
     short_title: str  # how an answer cites the document: [ЦК, ст. 549]
     source_url: str | None = None
     raw_path: str  # relative to data/raw/; for a law, the folder of its article pages
-    version_date: date | None = None  # edition of a law or date of a decision, when known
+    version_date: date | None = None  # date of a contract or a decision; edition of a law if known
     in_force: bool | None = None
     cites_commercial_code: bool | None = None  # a decision that leans on the repealed ГК
     articles: str | None = None  # "549..552,625,14-1"; empty means the whole law
+    # the day the text was downloaded: the version of a law whose mirror gives no edition date
+    retrieved_on: date | None = None
 
     @field_validator("doc_id")
     @classmethod
@@ -141,6 +143,7 @@ def corpus_problems(
 ) -> list[str]:
     """What keeps the corpus from ingestion: missing raw files and the course minimums."""
     problems = [problem for source in sources if (problem := _raw_problem(source, raw_root))]
+    problems += [problem for source in sources if (problem := dating_problem(source))]
     if len(sources) < min_documents:
         problems.append(
             f"the corpus has {len(sources)} documents, the course asks for at least {min_documents}"
@@ -151,6 +154,18 @@ def corpus_problems(
             f"the corpus has {len(formats)} format(s), the course asks for at least {MIN_FORMATS}"
         )
     return problems
+
+
+def dating_problem(source: Source) -> str | None:
+    """Every chunk carries a date or a version: a contract or a decision its date, a law the edition
+    date or, when the mirror gives none, the day its text was downloaded."""
+    if source.doc_type is DocType.LAW:
+        if source.version_date is None and source.retrieved_on is None:
+            return f"{source.doc_id}: a law needs version_date (edition) or retrieved_on (download)"
+        return None
+    if source.version_date is None:
+        return f"{source.doc_id}: a {source.doc_type} needs version_date (its date)"
+    return None
 
 
 def _raw_problem(source: Source, raw_root: Path) -> str | None:

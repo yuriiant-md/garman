@@ -8,6 +8,7 @@ from src.rag.sources import (
     DocFormat,
     DocType,
     corpus_problems,
+    dating_problem,
     load_sources,
 )
 
@@ -15,16 +16,17 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCES_PATH = ROOT / "data" / "rag_sources.csv"
 HEADER = (
     "doc_id,doc_type,format,title,short_title,source_url,raw_path,"
-    "version_date,in_force,cites_commercial_code,articles\n"
+    "version_date,in_force,cites_commercial_code,articles,retrieved_on\n"
 )
 LAW_ROW = (
-    'law_x,law,html,Закон X,ЗX,https://example.org/x.htm,rag/law_x,,true,,"549..552,625,14-1"\n'
+    "law_x,law,html,Закон X,ЗX,https://example.org/x.htm,rag/law_x,,true,,"
+    '"549..552,625,14-1",2026-11-04\n'
 )
 COURT_ROW = (
     "court_1,court_decision,html,Постанова у справі № 1/2/3,ВС № 1/2/3,"
-    "https://example.org/Review/1,rag/court_1.html,2024-11-15,,true,\n"
+    "https://example.org/Review/1,rag/court_1.html,2024-11-15,,true,,\n"
 )
-CONTRACT_ROW = "own_001,contract,pdf,Договір own_001,Договір own_001,,own/a.pdf,,,,\n"
+CONTRACT_ROW = "own_001,contract,pdf,Договір own_001,Договір own_001,,own/a.pdf,2026-06-30,,,,\n"
 
 
 def write_sources(tmp_path: Path, *rows: str) -> Path:
@@ -135,6 +137,32 @@ def test_corpus_problems_needs_enough_documents_and_two_formats(tmp_path):
 
     assert any(str(3) in problem for problem in problems)
     assert any("format" in problem for problem in problems)
+
+
+def test_corpus_problems_names_a_document_without_a_date_or_a_version(tmp_path):
+    undated_contract = CONTRACT_ROW.replace("2026-06-30", "")
+    law_without_snapshot = LAW_ROW.replace("2026-11-04", "")
+    sources = load_sources(write_sources(tmp_path, law_without_snapshot, COURT_ROW, undated_contract))
+
+    problems = corpus_problems(sources, raw_files(tmp_path), min_documents=3)
+
+    assert any("own_001" in problem and "version_date" in problem for problem in problems)
+    assert any("law_x" in problem and "retrieved_on" in problem for problem in problems)
+    assert not any("court_1" in problem for problem in problems)
+
+
+def test_load_sources_reads_the_date_a_law_was_retrieved(tmp_path):
+    law, contract = load_sources(write_sources(tmp_path, LAW_ROW, CONTRACT_ROW))
+
+    assert law.retrieved_on == date(2026, 11, 4)
+    assert contract.version_date == date(2026, 6, 30)
+    assert contract.retrieved_on is None
+
+
+def test_every_document_in_the_project_list_has_a_date_or_a_version():
+    sources = load_sources(SOURCES_PATH)
+
+    assert [problem for s in sources if (problem := dating_problem(s))] == []
 
 
 def test_corpus_problems_is_empty_for_a_complete_corpus(tmp_path):

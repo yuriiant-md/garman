@@ -7,7 +7,7 @@ from src.rag.sources import load_sources
 
 HEADER = (
     "doc_id,doc_type,format,title,short_title,source_url,raw_path,"
-    "version_date,in_force,cites_commercial_code,articles\n"
+    "version_date,in_force,cites_commercial_code,articles,retrieved_on\n"
 )
 LAW_URL = "https://kodeksy.example/law_x.htm"
 LAW_INDEX = """
@@ -17,12 +17,12 @@ LAW_INDEX = """
 <a href="/law_x/download.htm">Завантажити</a>
 <a href="/other_law/statja-549.htm">чужа 549</a>
 """
-LAW_ROW = f'law_x,law,html,Закон X,ЗX,{LAW_URL},rag/law_x,,true,,"549,14-1"\n'
+LAW_ROW = f'law_x,law,html,Закон X,ЗX,{LAW_URL},rag/law_x,,true,,"549,14-1",2026-11-04\n'
 COURT_URL = "https://reyestr.example/Review/1"
 COURT_ROW = (
-    f"court_1,court_decision,html,Постанова,ВС № 1,{COURT_URL},rag/court_1.html,2024-11-15,,true,\n"
+    f"court_1,court_decision,html,Постанова,ВС № 1,{COURT_URL},rag/court_1.html,2024-11-15,,true,,\n"
 )
-CONTRACT_ROW = "own_001,contract,pdf,Договір own_001,Договір own_001,,own/a.pdf,,,,\n"
+CONTRACT_ROW = "own_001,contract,pdf,Договір own_001,Договір own_001,,own/a.pdf,2026-06-30,,,,\n"
 
 
 def sources_file(tmp_path: Path, *rows: str) -> Path:

@@ -142,6 +142,7 @@ def contract_chunk(number: int, ref: str, page: int, text: str) -> Chunk:
         doc_type=DocType.CONTRACT,
         title="Назва own_001",
         short_title="OWN_001",
+        version_date=date(2026, 6, 30),
         text_sha256=sha256_hex(CONTRACT.text.encode()),
         section="1. Предмет",
         ref=ref,
@@ -151,7 +152,9 @@ def contract_chunk(number: int, ref: str, page: int, text: str) -> Chunk:
 
 
 def test_contract_chunks_carry_numbered_ids_refs_pages_and_document_metadata() -> None:
-    contract_source = source("own_001", DocType.CONTRACT, format=DocFormat.PDF)
+    contract_source = source(
+        "own_001", DocType.CONTRACT, format=DocFormat.PDF, version_date=date(2026, 6, 30)
+    )
 
     chunks = chunk_document(
         CONTRACT, contract_source, entry(CONTRACT, DocType.CONTRACT), min_chars=10
@@ -163,20 +166,24 @@ def test_contract_chunks_carry_numbered_ids_refs_pages_and_document_metadata() -
     )
 
 
-def test_law_chunks_carry_the_edition_and_in_force_flag() -> None:
+def test_law_chunks_carry_the_download_date_and_in_force_flag() -> None:
     heading = "Стаття 231. Розмір штрафних санкцій"
     document = Document(
         doc_id="law_commercial_code",
         parts=(DocumentPart(article="231", heading=heading, text="1. Законом…"),),
     )
     law_source = source(
-        "law_commercial_code", DocType.LAW, version_date=date(2025, 8, 28), in_force=False
+        "law_commercial_code", DocType.LAW, retrieved_on=date(2026, 11, 4), in_force=False
     )
 
     (chunk,) = chunk_document(document, law_source, entry(document, DocType.LAW))
 
     assert (chunk.ref, chunk.heading, chunk.pages) == ("ст. 231", heading, ())
-    assert (chunk.version_date, chunk.in_force) == (date(2025, 8, 28), False)
+    assert (chunk.version_date, chunk.retrieved_on, chunk.in_force) == (
+        None,
+        date(2026, 11, 4),
+        False,
+    )
 
 
 def test_decision_chunks_carry_the_commercial_code_flag() -> None:
@@ -212,7 +219,13 @@ def test_chunk_document_refuses_a_manifest_written_for_another_text() -> None:
 
 
 def test_fixed_document_chunks_are_windows_with_the_document_metadata_and_no_ref() -> None:
-    law_source = source("law_1", DocType.LAW, version_date=date(2025, 8, 28), in_force=True)
+    law_source = source(
+        "law_1",
+        DocType.LAW,
+        version_date=date(2025, 8, 28),
+        retrieved_on=date(2026, 11, 4),
+        in_force=True,
+    )
     document = Document(
         doc_id="law_1",
         parts=(DocumentPart(article="1", heading="Стаття 1. Мета", text="1. Текст статті."),),
@@ -225,8 +238,8 @@ def test_fixed_document_chunks_are_windows_with_the_document_metadata_and_no_ref
     windows = fixed_size_chunks(document.text, size=20, overlap=5)
     assert tuple(chunk.text for chunk in chunks) == windows
     assert [chunk.chunk_id for chunk in chunks] == ["law_1#001", "law_1#002"]
-    assert {(c.doc_id, c.version_date, c.in_force) for c in chunks} == {
-        ("law_1", date(2025, 8, 28), True)
+    assert {(c.doc_id, c.version_date, c.retrieved_on, c.in_force) for c in chunks} == {
+        ("law_1", date(2025, 8, 28), date(2026, 11, 4), True)
     }
     assert {(c.section, c.heading, c.ref, c.pages) for c in chunks} == {(None, None, None, ())}
 

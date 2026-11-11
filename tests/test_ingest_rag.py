@@ -24,7 +24,7 @@ HEADER = (
     "version_date,in_force,cites_commercial_code,articles\n"
 )
 COURT_ROW = "court_1,court_decision,html,Постанова,ВС № 910/1/18,,rag/court_1.html,2021-12-03,,,\n"
-CONTRACT_ROW = "prozorro_001,contract,pdf,Договір,Договір prozorro_001,,prozorro/a.pdf,,,,\n"
+CONTRACT_ROW = "prozorro_001,contract,pdf,Договір,Договір prozorro_001,,prozorro/a.pdf,2016-10-27,,,\n"
 
 # A kodeksy.com.ua article page cut down to the parts that matter: the warning and the
 # neighbour links sit outside the article block and must not reach the index.

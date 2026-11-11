@@ -6,7 +6,7 @@ A Telegram bot for farmers: it extracts the terms of a grain trader's contract, 
 
 Stage 1 grew in three steps. The first matrix compared Claude Haiku 4.5 with the local Lapa 12B; Lapa got about 27% accuracy on filled fields of the real contracts, so stage 1.2 replaced it with Qwen3 14B and added GPT-4o through OpenRouter as a second paid model. Stage 1.3 changed the schema: a contract may name several grades, each with its own price per tonne and its own quality limits (test weight, gluten, falling number, …), and added Claude Haiku 5.5, which became the main model (`REPORT.md`, section 6). Since stage 1.3 the code has no local model: the course no longer requires one, and the local runs stay in `results/` as history. `make run` now runs the stage 1.3 matrix into `results/stage1_3/`. The earlier matrices stay in `results/stage1/` and `results/stage1_2/`; they were scored with the schema before grades, so they are re-read with the code of the `stage-1` tag (step 4).
 
-Stage 2, RAG with citations, is in progress: the corpus, the chunks, the search, the answers with sources and their checks by rules and by an LLM judge are ready ("How documents are chunked", "How search works", "How answers work" and "How answers are checked" below). The judge is calibrated on the author's manual marks: it agrees with them on 95% of the correct checks and 83% of the claims (80% needed).
+Stage 2, RAG with citations, is in progress: the corpus, the chunks, the search, the answers with sources and their checks by rules and by an LLM judge are ready ("How documents are chunked", "How search works", "How answers work" and "How answers are checked" below). The judge is calibrated on the author's manual marks: it agrees with them on 95% of the correct checks and 83% of the claims (80% needed). The stage 2 report, in Ukrainian: `REPORT_STAGE2.md`.
 
 ## Reproduce stage 1
 
@@ -196,7 +196,7 @@ The full report, with recall by question kind and the rank of every question —
 
 What the numbers say. Reranking gives the best R@1 and MRR, but plain vector search is one question behind at R@1 and 66 times faster. With 15 questions one question is 0.07, so a difference of one or two questions is not claimed as an advantage. Hybrid alone is below vector here: vector already finds every `exact` question first, so BM25 has nothing to add, and on `plain` questions it pulls up chunks that repeat the question's words ("Що таке пеня?" drops the definition from 3rd to 6th). Structural chunks beat fixed windows at R@5 in every mode (by MRR, hybrid is even: 0.69 and 0.70). A contract question keeps its clause in the top 5 when laws and decisions are allowed, but loses the first place to decisions that quote similar clauses of other contracts, so a question about a contract searches only that contract.
 
-**Decisions made in Е2.4.** The embedder is bge-m3 through fastembed (point 3), so the same model runs locally and in CI. Qdrant runs locally in Docker (`docker-compose.yml`); the tests use the in-memory Qdrant, CI will use a service container (Е2.6). Every evaluation run goes to a new folder named by its start time, as in stage 1.
+**Decisions made in Е2.4.** The embedder is bge-m3 through fastembed (point 3), so the same model runs locally and in CI. Qdrant runs locally in Docker (`docker-compose.yml`); the tests and CI use the in-memory Qdrant, so CI needs no Qdrant service. Every evaluation run goes to a new folder named by its start time, as in stage 1.
 
 **Known limits and what is left to do:**
 

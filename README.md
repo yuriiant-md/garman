@@ -2,11 +2,11 @@
 
 English · [Українська](README.uk.md)
 
-A Telegram bot for farmers: it extracts the terms of a grain trader's contract, finds risks with a reference to the contract clause or the law, and helps compare offers. This is a course project that grows in stages; stage 1 is ready for review: extracting deal terms from "dirty" texts and comparing paid models with a local one.
+A Telegram bot for farmers: it extracts the terms of a grain trader's contract, finds risks with a reference to the contract clause or the law, and helps compare offers. This is a course project that grows in stages; stages 1 and 2 are ready for review: extracting deal terms from "dirty" texts and comparing paid models with a local one (stage 1), answers about the contract and the law with a source for every claim (stage 2).
 
 Stage 1 grew in three steps. The first matrix compared Claude Haiku 4.5 with the local Lapa 12B; Lapa got about 27% accuracy on filled fields of the real contracts, so stage 1.2 replaced it with Qwen3 14B and added GPT-4o through OpenRouter as a second paid model. Stage 1.3 changed the schema: a contract may name several grades, each with its own price per tonne and its own quality limits (test weight, gluten, falling number, …), and added Claude Haiku 5.5, which became the main model (`REPORT.md`, section 6). Since stage 1.3 the code has no local model: the course no longer requires one, and the local runs stay in `results/` as history. `make run` now runs the stage 1.3 matrix into `results/stage1_3/`. The earlier matrices stay in `results/stage1/` and `results/stage1_2/`; they were scored with the schema before grades, so they are re-read with the code of the `stage-1` tag (step 4).
 
-Stage 2, RAG with citations, is in progress: the corpus, the chunks, the search, the answers with sources and their checks by rules and by an LLM judge are ready ("How documents are chunked", "How search works", "How answers work" and "How answers are checked" below). The judge is calibrated on the author's manual marks: it agrees with them on 95% of the correct checks and 83% of the claims (80% needed). The stage 2 report, in Ukrainian: `REPORT_STAGE2.md`.
+Stage 2, RAG with citations, is ready: the corpus, the chunks, the search, the answers with sources and their checks by rules and by an LLM judge ("How documents are chunked", "How search works", "How answers work" and "How answers are checked" below). The judge is calibrated on the author's manual marks: it agrees with them on 95% of the correct checks and 83% of the claims (80% needed). Both stages are reported in Ukrainian in `REPORT.md`, stage 2 first.
 
 ## Reproduce stage 1
 
@@ -323,7 +323,7 @@ The actions are pinned to a commit hash (a tag can be moved), the checkout keeps
 | Prompts with a version header, ≥ 2 versions, `CHANGELOG` | `prompts/extract_v1.md`, `prompts/extract_v2.md`, `prompts/CHANGELOG.md` | done: v1 is the baseline, v2 is built from the v1 errors on dev |
 | Every answer is validated by the schema and by content checks (a late-payment penalty paid by the seller, more than 50 000 t — what a 5 000 ha farm can sell; a placeholder buyer becomes `null` without a fix); invalid → one fix attempt → `failed` (an answer cut off at `max_tokens` or a refusal gets none: asking again would bring the same) | `src/extraction/validation.py` (the fix request), `checks.py` (content checks), `anthropic_extractor.py` and `openrouter_extractor.py` (the second call); tests — `tests/test_validation.py`, `tests/test_checks.py` and the extractor tests | done; the "Виправлено, %" column of the metrics table counts the answers saved by it |
 | Every result logs the model, prompt version and sampling | record fields — `src/extraction/result.py`; the records — `results/stage1_3/*/*.jsonl` (and `results/stage1_2/`, `results/stage1/`) | done |
-| `REPORT.md`: table, error analysis, production choice | `REPORT.md` (in Ukrainian) | done: Claude Haiku 5.5 + prompt v2 (stage 1.3; stage 1.2 chose Claude Haiku 4.5 + v2 + `precise`) |
+| `REPORT.md`: table, error analysis, production choice | `REPORT.md`, stage 1 (in Ukrainian) | done: Claude Haiku 5.5 + prompt v2 (stage 1.3; stage 1.2 chose Claude Haiku 4.5 + v2 + `precise`) |
 | One command to run: `make run` (= `python main.py`) | `Makefile`, `main.py` | done |
 
 ### Folders and files

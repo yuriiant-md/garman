@@ -35,7 +35,7 @@ MODELS_PATH = ROOT / "configs" / "models.yaml"
 DEFAULT_PROMPT = ROOT / "prompts" / "extract_v2.md"
 DEV_PREFIX = "synthetic_"  # dev = synthetic texts; everything else (golden set) is test
 SPLITS = ("dev", "test", "all")
-MAIN_MODEL = "haiku-5.5"  # the production choice, REPORT.md section 6
+MAIN_MODEL = "haiku-5.5"  # the production choice, REPORT.md, stage 1, section 6
 # --model keys: the sections of models.yaml in file order, each named after its model
 MODELS: tuple[str, ...] = tuple(yaml.safe_load(MODELS_PATH.read_text(encoding="utf-8")))
 ANTHROPIC, OPENROUTER = "anthropic", "openrouter"  # the `provider` of a models.yaml section

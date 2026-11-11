@@ -1,5 +1,5 @@
 # Models of stage 1.3. A section name is the --model key and names its model, so one cannot be
-# taken for another. haiku-5.5 is the main model (REPORT.md, section 6); haiku-4.5 and gpt-4o are
+# taken for another. haiku-5.5 is the main model (REPORT.md, stage 1, section 6); haiku-4.5 and gpt-4o are
 # kept to compare with. Prices are USD per 1M tokens. `provider` picks the extractor and the API
 # key (anthropic: ANTHROPIC_API_KEY, openrouter: OPENROUTER_API_KEY), so a new model is a new
 # section here, with no change in the code.

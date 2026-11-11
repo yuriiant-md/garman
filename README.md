@@ -6,7 +6,7 @@ A Telegram bot for farmers: it extracts the terms of a grain trader's contract, 
 
 Stage 1 grew in three steps. The first matrix compared Claude Haiku 4.5 with the local Lapa 12B; Lapa got about 27% accuracy on filled fields of the real contracts, so stage 1.2 replaced it with Qwen3 14B and added GPT-4o through OpenRouter as a second paid model. Stage 1.3 changed the schema: a contract may name several grades, each with its own price per tonne and its own quality limits (test weight, gluten, falling number, …), and added Claude Haiku 5.5, which became the main model (`REPORT.md`, section 6). Since stage 1.3 the code has no local model: the course no longer requires one, and the local runs stay in `results/` as history. `make run` now runs the stage 1.3 matrix into `results/stage1_3/`. The earlier matrices stay in `results/stage1/` and `results/stage1_2/`; they were scored with the schema before grades, so they are re-read with the code of the `stage-1` tag (step 4).
 
-Stage 2, RAG with citations, is in progress: the corpus, the chunks, the search, the answers with sources and their checks by rules and by an LLM judge are ready ("How documents are chunked", "How search works", "How answers work" and "How answers are checked" below). The judge is still to be calibrated on the author's manual marks.
+Stage 2, RAG with citations, is in progress: the corpus, the chunks, the search, the answers with sources and their checks by rules and by an LLM judge are ready ("How documents are chunked", "How search works", "How answers work" and "How answers are checked" below). The judge is calibrated on the author's manual marks: it agrees with them on 95% of the correct checks and 85% of the claims (80% needed).
 
 ## Reproduce stage 1
 
@@ -128,9 +128,11 @@ Checking a saved run of the answers (no Qdrant, no search; details in "How answe
 uv run python -m scripts.score_answers                                            # rules, free: scores.md in the newest run
 caffeinate -i uv run --env-file .env python -m scripts.judge_answers --limit 2    # the judge on 2 questions, about $0.02: a check that it works
 caffeinate -i uv run --env-file .env python -m scripts.judge_answers              # the judge on the whole run, about $0.19: judge.jsonl and judge.md
+uv run python -m scripts.judge_sheet --seen q01,q05                               # free: the sheet for manual marks, data/rag/judge_marks.yaml
+uv run python -m scripts.calibrate_judge                                          # free: the marks against judge.jsonl, calibration.md
 ```
 
-Both take a run folder as an argument (`results/stage2/answers/2026-11-10T10-08-19`); without one they take the newest run.
+All take a run folder as an argument (`results/stage2/answers/2026-11-10T10-08-19`); without one they take the newest run, and `calibrate_judge` the run named in the sheet. `judge_sheet` keeps a sheet that exists: it may hold marks (`--force` writes over it).
 
 ## How the metrics are counted
 
@@ -232,7 +234,7 @@ What the numbers say. The automatic metrics are the same for all three prompts, 
 
 ## How answers are checked (stage 2)
 
-Two scripts check a saved run of the answers; neither searches or needs Qdrant, so a run can be checked again at any time. The questions and their references — `data/rag/answer_questions.yaml`; thresholds — `configs/eval.yaml` (rules) and `configs/judge.yaml` (judge). Code: `src/rag/answer_scoring.py`, `src/rag/judge.py`, `scripts/score_answers.py`, `scripts/judge_answers.py`; tests — `tests/test_answer_scoring.py`, `test_score_answers.py`, `test_judge.py`, `test_judge_answers.py`.
+Two scripts check a saved run of the answers; neither searches or needs Qdrant, so a run can be checked again at any time. The questions and their references — `data/rag/answer_questions.yaml`; thresholds — `configs/eval.yaml` (rules) and `configs/judge.yaml` (judge). Code: `src/rag/answer_scoring.py`, `src/rag/judge.py`, `scripts/score_answers.py`, `scripts/judge_answers.py` (the calibration of the judge has its own subsection below); tests — `tests/test_answer_scoring.py`, `test_score_answers.py`, `test_judge.py`, `test_judge_answers.py`.
 
 1. **The test set.** Each of the 26 questions has a reference answer written by a person (`expected_answer`) and the key facts a right answer holds (`key_facts`: a number, a word stem, alternatives split by `|`). The similar-contract traps also have forbidden facts: the numbers of the other contract. Every key fact is in an evidence chunk, and a test keeps them in step.
 2. **Rules, free.** `score_answers` looks for the facts in the claims only (citations and warnings carry numbers the model did not say) and writes `scores.md`. Five thresholds: the right source ≥ 85%, key facts ≥ 80%, «У документах цього немає» for every off-corpus question, no forbidden fact, no claim that calls the Commercial Code in force.
@@ -258,7 +260,22 @@ The judge cost $0.19 for the run (61 462 tokens in, 6 936 out), about $7.4 per 1
 
 What the verdicts say, read by hand against the documents. The two misses on correct are q03 (unanswered: its clause is below the threshold) and s03 (п. 6.1 counts 3 days from the transfer of ownership and the receipt of the documents; the answer drops the documents). Of the 6 claims without support four are real errors: q01 and t05 widen п. 7.2 from the terms of п. 6.2 and 6.4 to any term of the contract, q05 gives the complainant's argument as the Supreme Court's view, t03 says the court heard the case in 2014 (the contract's period; the decision is of 2026). q11 is strict but defensible: the answer adds «лише» to Article 617 of the Civil Code. q13 is half right: the dropped «або прийняття товаророзпорядчих документів» is real, but the judge also wants the Commercial Code warning inside the claim — it does not see the warnings Python adds below the answer (step 5 of "How answers work").
 
-**Left to do:** calibrate the judge on at least 10 answers marked by the author (agreement ≥ 80%, `agreement_min` in `configs/judge.yaml`; below it the judge is not used); then a faithful prompt that sees the warnings, and CI with these thresholds.
+### Calibration of the judge on manual marks
+
+The judge is used only if it agrees with a person. `scripts/judge_sheet.py` writes `data/rag/judge_marks.yaml`: the 20 answers and 47 claims the judge judged in a run, each with the question, the reference, the answer and the documents the claim cites, but without the judge's verdicts. The author fills `correct` and every `supported` by the rules of the judge's prompts (they are on top of the sheet). `scripts/calibrate_judge.py` puts each mark next to the judge's verdict and writes `calibration.md` in the run's folder. Both checks need agreement ≥ 80% (`agreement_min` in `configs/judge.yaml`), or the judge is not used; a verdict the judge did not give counts as a disagreement. Code: `src/rag/calibration.py`; tests — `tests/test_calibration.py`, `test_judge_sheet.py`, `test_calibrate_judge.py`.
+
+The author had read the judge's verdicts on 7 questions (q01, q05, q11, q13, t03, t05, s03) before marking. They stay in the sheet as `seen`: all 6 claims the judge rejected and its only correct ✗ are among them, and without them the agreement would test nothing. So the agreement is counted over all answers and over unseen and seen apart. t05 (the injection) was re-marked before the comparison: its `false` marked the question, not the answer, which did not follow the injection.
+
+Results on run `2026-11-10T10-08-19`:
+
+| check | all | unseen | seen | threshold | passed |
+| --- | --- | --- | --- | --- | --- |
+| correct | 19 / 20 (95%) | 13 / 13 (100%) | 6 / 7 (86%) | ≥ 80% | ✓ |
+| faithful | 40 / 47 (85%) | 27 / 28 (96%) | 13 / 19 (68%) | ≥ 80% | ✓ |
+
+The judge passes and is used. On the blind marks it agrees almost always; on the seen ones the author disagreed with it more often, so the marks did not follow its verdicts. Of the 8 disagreements, 2 are «judge yes, author no», a missed error (q01 claim 2, q04 claim 1), and 6 «judge no, author yes», a judge too strict (q01 claim 3, q05 claim 4, q11 claim 1, q13 claim 2, t03 claim 3, s03 correct). Read again against the documents, at least four are the author's errors, not the judge's: q01 claim 2 and q04 claim 1 say what п. 7.2 and п. 6.3 say; q01 claim 3 widens п. 7.2 just as t05 claim 2, which the author marked false; t03 claim 3 dates the hearing by the contract's period. The marks are not changed after reading the judge's reasons: then they would no longer be blind.
+
+**Left to do:** a faithful prompt that sees the warnings Python adds (q13), then CI with these thresholds.
 
 ## Where things are
 
@@ -300,6 +317,7 @@ data/
   rag_sources.csv          stage 2 corpus: 28 contracts (PDF), 6 laws and 11 Supreme Court decisions (HTML)
   rag/                     the stage 2 corpus after ingestion: documents.jsonl (text by page or article), manifest.jsonl, chunks.jsonl (chunks with metadata) and search_questions.yaml (15 questions with a known answer)
   rag/answer_questions.yaml  the 26 questions the answers are tried on: 15 by id from search_questions.yaml and 11 traps, each with a reference answer and key facts
+  rag/judge_marks.yaml     the author's manual marks of the judged answers of one run, for the calibration of the judge
   README.md                how the data was collected, anonymised and labelled
   raw/                     original PDFs, masking check files and the stage 2 HTML pages in raw/rag/ (not in git)
 prompts/
@@ -341,6 +359,7 @@ src/rag/
   answer_eval.py           the 26 questions and the checks that need no judge
   answer_scoring.py        rule scoring of a saved run with the thresholds of configs/eval.yaml
   judge.py                 the LLM judge: correct and faithful checks of one saved answer
+  calibration.py           the sheet of manual marks and the agreement of the judge with it
 scripts/
   generate_synthetic.py    deals for the synthetic set (+ synthetic_render.py, synthetic_checks.py)
   fetch_prozorro.py        search for contracts in Prozorro
@@ -353,13 +372,15 @@ scripts/
   ask_rag.py               asks the 26 questions: report and answers in results/stage2/answers/
   score_answers.py         rule scoring of a saved run: scores.md, free
   judge_answers.py         the judge on a saved run: judge.jsonl and judge.md, paid
+  judge_sheet.py           the sheet for the author's manual marks of a judged run, free
+  calibrate_judge.py       the manual marks against judge.jsonl: calibration.md, free
   check_golden.py          validates the golden labels
 tests/                     pytest tests: make test
 results/stage1_3/          one folder per launch, named with its start time: a *.jsonl file per configuration (one line per document) and the metrics tables (metrics.md, metrics_by_field.md)
 results/stage1_2/          the same for stage 1.2, on the schema before grades (read with the stage-1 tag)
 results/stage1/            the same for the first matrix (Claude and Lapa)
 results/stage2/search/     one folder per search evaluation: search_metrics.md and ranks.jsonl
-results/stage2/answers/    one folder per answers run: report.md and answers.jsonl, then scores.md, judge.jsonl and judge.md
+results/stage2/answers/    one folder per answers run: report.md and answers.jsonl, then scores.md, judge.jsonl, judge.md and calibration.md
 ```
 
 The author keeps the work plan locally (`docs/`, outside the repository); its metric rules were moved to "How the metrics are counted".

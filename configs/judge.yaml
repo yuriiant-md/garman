@@ -11,7 +11,7 @@ model:
   price_output_per_mtok: 10.0
 prompts:
   correct: prompts/judge_correct_v1.md
-  faithful: prompts/judge_faithful_v1.md
+  faithful: prompts/judge_faithful_v2.md   # v2: the farmer sees the «Увага» warnings below the answer
 thresholds:
   correct_min: 0.80     # of the questions with a reference answer
   faithful_min: 0.90    # of all claims of the answers

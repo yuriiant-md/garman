@@ -12,6 +12,7 @@ from src.rag.answer import (
     warning,
 )
 from src.rag.chunking import Chunk
+from src.rag.context import document_block
 from src.rag.sources import DocType
 
 
@@ -89,6 +90,26 @@ def test_a_repealed_law_and_practice_on_it_get_a_warning_and_the_rest_none() -> 
     assert old_article is not None and "втратив чинність" in old_article
     old_practice = warning(OLD_PRACTICE)
     assert old_practice is not None and "практика за ГК" in old_practice
+
+
+@pytest.mark.parametrize("cited", [CLAUSE, ARTICLE, OLD_ARTICLE, OLD_PRACTICE])
+def test_the_warning_the_judge_reads_is_the_one_the_farmer_sees(cited: Chunk) -> None:
+    # judge_faithful_v2 tells the judge: every «Увага» line of a cited document is shown to the
+    # farmer below the answer. If the two ever part, that prompt tells the judge a lie.
+    # Arrange
+    caution = warning(cited)
+    answer = answered(Claim(text="Твердження.", sources=("S1",)))
+
+    # Act
+    block = document_block("S1", cited)
+    text = render(answer, {"S1": cited})
+
+    # Assert
+    if caution is None:
+        assert "Увага:" not in block and "⚠" not in text
+    else:
+        assert f"\nУвага: {caution}\n" in block
+        assert text.endswith(f"\n\n⚠ {citation(cited)}: {caution}")
 
 
 def test_render_puts_citations_after_each_claim_and_each_warning_once() -> None:

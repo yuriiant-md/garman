@@ -6,7 +6,7 @@ A Telegram bot for farmers: it extracts the terms of a grain trader's contract, 
 
 Stage 1 grew in three steps. The first matrix compared Claude Haiku 4.5 with the local Lapa 12B; Lapa got about 27% accuracy on filled fields of the real contracts, so stage 1.2 replaced it with Qwen3 14B and added GPT-4o through OpenRouter as a second paid model. Stage 1.3 changed the schema: a contract may name several grades, each with its own price per tonne and its own quality limits (test weight, gluten, falling number, …), and added Claude Haiku 5.5, which became the main model (`REPORT.md`, section 6). Since stage 1.3 the code has no local model: the course no longer requires one, and the local runs stay in `results/` as history. `make run` now runs the stage 1.3 matrix into `results/stage1_3/`. The earlier matrices stay in `results/stage1/` and `results/stage1_2/`; they were scored with the schema before grades, so they are re-read with the code of the `stage-1` tag (step 4).
 
-Stage 2, RAG with citations, is in progress: the corpus, the chunks, the search, the answers with sources and their checks by rules and by an LLM judge are ready ("How documents are chunked", "How search works", "How answers work" and "How answers are checked" below). The judge is calibrated on the author's manual marks: it agrees with them on 95% of the correct checks and 85% of the claims (80% needed).
+Stage 2, RAG with citations, is in progress: the corpus, the chunks, the search, the answers with sources and their checks by rules and by an LLM judge are ready ("How documents are chunked", "How search works", "How answers work" and "How answers are checked" below). The judge is calibrated on the author's manual marks: it agrees with them on 95% of the correct checks and 83% of the claims (80% needed).
 
 ## Reproduce stage 1
 
@@ -245,7 +245,7 @@ Two scripts check a saved run of the answers; neither searches or needs Qdrant, 
    The verdict is JSON shaped by a schema (structured outputs): Sonnet 5.5 rejects the forced tool call the answers use. A verdict Python cannot accept goes back once with the reason, and then it is `failed`. A judgement with no verdict counts as a miss, so a failure of the judge cannot raise the score. In doubt the judge says no: the farmer acts on the answer.
 4. **Results.** In the run's folder: `judge.jsonl` (every verdict with its reasons, the model, the prompt version and hash, tokens, latency) and `judge.md` (the table by question and the claims without support). `--limit N` judges only the first N questions: a check that the judge works, with no thresholds.
 
-The first full run, `2026-11-10T10-08-19` (answer prompt v3):
+The full run `2026-11-10T10-08-19` (answer prompt v3), judged with `judge_correct_v1` and `judge_faithful_v2` (the judging with `judge_faithful_v1` is in commit `644fa89`):
 
 | check | measured | threshold | passed |
 | --- | --- | --- | --- |
@@ -254,11 +254,13 @@ The first full run, `2026-11-10T10-08-19` (answer prompt v3):
 | rules: «немає» for off-corpus questions | 5 / 5 | all | ✓ |
 | rules: forbidden facts; Commercial Code as in force | 0; 0 | 0 | ✓ |
 | judge: correct | 19 / 21 (90%) | ≥ 80% | ✓ |
-| judge: faithful claims | 41 / 47 (87%) | ≥ 90% | ✗ |
+| judge: faithful claims | 40 / 47 (85%) | ≥ 90% | ✗ |
 
-The judge cost $0.19 for the run (61 462 tokens in, 6 936 out), about $7.4 per 1000 questions; the answers themselves cost $0.01.
+The judge cost $0.20 for the run (64 602 tokens in, 6 682 out), about $7.5 per 1000 questions; the answers themselves cost $0.01.
 
-What the verdicts say, read by hand against the documents. The two misses on correct are q03 (unanswered: its clause is below the threshold) and s03 (п. 6.1 counts 3 days from the transfer of ownership and the receipt of the documents; the answer drops the documents). Of the 6 claims without support four are real errors: q01 and t05 widen п. 7.2 from the terms of п. 6.2 and 6.4 to any term of the contract, q05 gives the complainant's argument as the Supreme Court's view, t03 says the court heard the case in 2014 (the contract's period; the decision is of 2026). q11 is strict but defensible: the answer adds «лише» to Article 617 of the Civil Code. q13 is half right: the dropped «або прийняття товаророзпорядчих документів» is real, but the judge also wants the Commercial Code warning inside the claim — it does not see the warnings Python adds below the answer (step 5 of "How answers work").
+What the verdicts say, read by hand against the documents. The two misses on correct are q03 (unanswered: its clause is below the threshold) and s03 (п. 6.1 counts 3 days from the transfer of ownership and the receipt of the documents; the answer drops the documents). Each of the 7 claims without support has a real ground: q01 and t05 widen п. 7.2 from the terms of п. 6.2 and 6.4 to any term of the contract, q05 gives the complainant's argument as the Supreme Court's view, t03 says the court heard the case in 2014 (the contract's period; the decision is of 2026), q13 and s03 drop a condition (the acceptance of the documents of title; the receipt of the documents), q11 adds «лише» to Article 617 of the Civil Code — strict but defensible.
+
+`judge_faithful_v1` also wanted the Commercial Code warning inside q13's claim: it did not know that Python shows that warning below the answer (step 5 of "How answers work"). `judge_faithful_v2` tells it so; the warning in the judge's documents and the one below the answer come from one function, and a test keeps them equal. That reason is gone; q13 stays unsupported for the dropped condition alone. v1 and v2 differ in one verdict of 47: s03 claim 1, supported under v1. Nothing of v2 touches it (no warning there), so it is the spread of the model between two runs. So faithful misses 90% because of the answers, not the judge, and the threshold stays: the fix is on the answering side.
 
 ### Calibration of the judge on manual marks
 
@@ -271,17 +273,17 @@ Results on run `2026-11-10T10-08-19`:
 | check | all | unseen | seen | threshold | passed |
 | --- | --- | --- | --- | --- | --- |
 | correct | 19 / 20 (95%) | 13 / 13 (100%) | 6 / 7 (86%) | ≥ 80% | ✓ |
-| faithful | 40 / 47 (85%) | 27 / 28 (96%) | 13 / 19 (68%) | ≥ 80% | ✓ |
+| faithful | 39 / 47 (83%) | 27 / 28 (96%) | 12 / 19 (63%) | ≥ 80% | ✓ |
 
-The judge passes and is used. On the blind marks it agrees almost always; on the seen ones the author disagreed with it more often, so the marks did not follow its verdicts. Of the 8 disagreements, 2 are «judge yes, author no», a missed error (q01 claim 2, q04 claim 1), and 6 «judge no, author yes», a judge too strict (q01 claim 3, q05 claim 4, q11 claim 1, q13 claim 2, t03 claim 3, s03 correct). Read again against the documents, at least four are the author's errors, not the judge's: q01 claim 2 and q04 claim 1 say what п. 7.2 and п. 6.3 say; q01 claim 3 widens п. 7.2 just as t05 claim 2, which the author marked false; t03 claim 3 dates the hearing by the contract's period. The marks are not changed after reading the judge's reasons: then they would no longer be blind.
+The judge passes and is used (with `judge_faithful_v1` faithful agreed on 40 of 47, 85%). On the blind marks it agrees almost always; on the seen ones the author disagreed with it more often, so the marks did not follow its verdicts. Of the 9 disagreements, 2 are «judge yes, author no», a missed error (q01 claim 2, q04 claim 1), and 7 «judge no, author yes», a judge too strict (q01 claim 3, q05 claim 4, q11 claim 1, q13 claim 2, t03 claim 3, s03 claim 1, s03 correct). Read again against the documents, at least four are the author's errors, not the judge's: q01 claim 2 and q04 claim 1 say what п. 7.2 and п. 6.3 say; q01 claim 3 widens п. 7.2 just as t05 claim 2, which the author marked false; t03 claim 3 dates the hearing by the contract's period. The marks are not changed after reading the judge's reasons: then they would no longer be blind.
 
-**Left to do:** a faithful prompt that sees the warnings Python adds (q13).
+**Left to do:** the errors of the answers the judge finds, on the answering side: a party's arguments given as the court's view (q05, t03), a condition widened or dropped (q01, t05, q13, s03).
 
 ## CI
 
 GitHub Actions (`.github/workflows/ci.yml`) checks every push and pull request, free and with no key: `uv sync --locked` (exactly the versions of `uv.lock`), `pytest`, `mypy`, the rules on the newest run of the answers (`score_answers`, thresholds of `configs/eval.yaml`) and the calibration of the judge (`calibrate_judge`, agreement ≥ 80%). A threshold that is not met fails the run. The tests need neither Qdrant nor the models: Qdrant runs in memory, the embedder and the reranker are replaced by fakes.
 
-The paid judge runs only by hand: Actions → CI → Run workflow (the `limit` field judges only the first N questions). It needs the `ANTHROPIC_API_KEY` secret in Settings → Secrets and variables → Actions; its `judge.md` and `judge.jsonl` are kept as the run's artifact. Until a faithful prompt that sees the warnings, this job fails: faithful is 87% against 90%.
+The paid judge runs only by hand: Actions → CI → Run workflow (the `limit` field judges only the first N questions). It needs the `ANTHROPIC_API_KEY` secret in Settings → Secrets and variables → Actions; its `judge.md` and `judge.jsonl` are kept as the run's artifact. For now this job fails: faithful is 85% against 90%, for the errors of the answers above.
 
 The actions are pinned to a commit hash (a tag can be moved), the checkout keeps no GitHub token, and the workflow may only read the repository.
 
@@ -333,7 +335,7 @@ prompts/
   extract_v1.md            baseline prompt, version in the header
   extract_v2.md            prompt with per-field rules; {today} becomes the run date
   answer_v1.md … answer_v3.md  stage 2 answer prompts; v3 is in configs/answer.yaml
-  judge_correct_v1.md, judge_faithful_v1.md  the two prompts of the stage 2 judge
+  judge_correct_v1.md, judge_faithful_v1.md, judge_faithful_v2.md  the prompts of the stage 2 judge; faithful v2 is in configs/judge.yaml
   CHANGELOG.md             what changed between versions and why
 src/schemas/
   deal.py                  the Deal schema: grades with their prices and quality indicators

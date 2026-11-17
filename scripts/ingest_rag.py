@@ -1,6 +1,6 @@
 """Turn the stage 2 corpus in data/raw/ into clean, anonymised documents in data/rag/.
 
-Contracts go through the stage 1 masking of scripts/pdf_to_text.py with their pages kept, and the
+Contracts go through the stage 1 masking of src/documents/masking.py with their pages kept, and the
 masked text must match the reviewed data/texts/<doc_id>.txt: only masking a person has checked
 reaches git. A law keeps the article block of each kodeksy.com.ua page, a decision the text inside
 the reyestr.court.gov.ua page; menus, banners and the "copy may be outdated" note stay behind.
@@ -12,7 +12,6 @@ are only flagged in the manifest. Nothing is written while any document has a pr
 import argparse
 import re
 import sys
-import unicodedata
 from collections import Counter
 from collections.abc import Sequence
 from html.parser import HTMLParser
@@ -20,18 +19,8 @@ from itertools import combinations
 from pathlib import Path
 from typing import NamedTuple
 
-import pymupdf
-
-from scripts.pdf_to_text import (
-    EXTRA_ADDRESSES_NAME,
-    EXTRA_HIDDEN_NAME,
-    EXTRA_NAMES_NAME,
-    Found,
-    clean_text,
-    mask_pii,
-    read_reviewer_list,
-    suspicious_words,
-)
+from src.documents.masking import Found, mask_parts, suspicious_words
+from src.documents.pdf import clean_pages, normalize_text, pdf_pages
 from src.rag.documents import (
     Document,
     DocumentPart,
@@ -61,16 +50,9 @@ MANIFEST_NAME = "manifest.jsonl"
 OUTPUT_NAMES = (DOCUMENTS_NAME, MANIFEST_NAME)
 OWN_PREFIX = "own_"  # the author's private contracts: company codes are hidden too
 
-PAGE_BREAK = "⟦page⟧"  # a line no masking rule touches: parts are masked as one text
-MIN_PAGES_FOR_HEADERS = 3  # in a shorter document a repeated line is as likely to be content
-HEADER_PAGE_SHARE = 0.5  # a header or footer repeats on at least half of the pages
-EDGE_LINES = 2  # headers and footers are among the first and last lines of a page
-# own_013-018 reached us with names, stamps and contacts replaced by these labels, one per line
-REDACTION_LABELS = frozenset({"COMPANY", "EMAIL", "NAME", "PHONE"})
 SHINGLE_WORDS = 5
 NEAR_DUPLICATE_SIMILARITY = 0.8  # own contracts made from one template score 0.85-0.92
 
-HYPHEN_BREAK = re.compile(r"(?<=[^\W\d_])-\n(?=[^\W\d_])")  # "будь-\nяких": the hyphen is real
 ARTICLE_BLOCK = re.compile(r'<div id="statya">(.*?)</div>\s*<!-- statya -->', re.DOTALL)
 HEADING = re.compile(r"<h1>(.*?)</h1>", re.DOTALL)
 DECISION_BLOCK = re.compile(r'<textarea id="txtdepository">(.*?)</textarea>', re.DOTALL)
@@ -97,60 +79,7 @@ class _Read(NamedTuple):
     problem: str | None = None
 
 
-# --- cleaning ---
-
-
-def normalize_text(text: str) -> str:
-    """One form of every character (NFC), single spaces, words joined back across line breaks."""
-    lines = (" ".join(line.split()) for line in unicodedata.normalize("NFC", text).splitlines())
-    joined = HYPHEN_BREAK.sub("-", "\n".join(lines))
-    return re.sub(r"\n{3,}", "\n\n", joined).strip()
-
-
-def clean_pages(pages: Sequence[str]) -> tuple[str, ...]:
-    """Normalised pages without their page numbers, headers and footers; a page may end up empty."""
-    page_lines = [normalize_text(page).splitlines() for page in pages]
-    headers = _headers(page_lines)
-    return tuple(
-        _clean_page(number, lines, headers) for number, lines in enumerate(page_lines, start=1)
-    )
-
-
-def _edges(lines: list[str]) -> list[int]:
-    filled = [index for index, line in enumerate(lines) if line]
-    return filled[:EDGE_LINES] + filled[-EDGE_LINES:]
-
-
-def _headers(page_lines: list[list[str]]) -> frozenset[str]:
-    if len(page_lines) < MIN_PAGES_FOR_HEADERS:
-        return frozenset()
-    counts = Counter(
-        line for lines in page_lines for line in {lines[index] for index in _edges(lines)}
-    )
-    return frozenset(
-        line for line, count in counts.items() if count >= HEADER_PAGE_SHARE * len(page_lines)
-    )
-
-
-def _clean_page(number: int, lines: list[str], headers: frozenset[str]) -> str:
-    edges = _edges(lines)
-    ends = {edges[0], edges[-1]} if edges else set()  # a page number is the first or last line
-    kept = (
-        line
-        for index, line in enumerate(lines)
-        if not (index in edges and line in headers)
-        and not (index in ends and line == str(number))
-        and line not in REDACTION_LABELS
-    )
-    return normalize_text("\n".join(kept))
-
-
 # --- reading the raw formats ---
-
-
-def pdf_pages(path: Path) -> tuple[str, ...]:
-    with pymupdf.open(path) as doc:
-        return tuple(page.get_text() for page in doc)
 
 
 class _VisibleText(HTMLParser):
@@ -212,25 +141,6 @@ def decision_text(page_html: str) -> str:
 
 
 # --- masking ---
-
-
-def mask_parts(
-    texts: Sequence[str], raw_dir: Path, *, company_codes: bool = False
-) -> tuple[tuple[str, ...], Found]:
-    """Mask all parts as one text, as stage 1 did: a surname found on page 1 is hidden on page 5.
-    Lists a reviewer added (extra_names.txt and others) are read from the folder of the raw file."""
-    joined = f"\n{PAGE_BREAK}\n".join(texts)
-    masked, found = mask_pii(
-        clean_text(joined),
-        read_reviewer_list(raw_dir / EXTRA_NAMES_NAME),
-        read_reviewer_list(raw_dir / EXTRA_ADDRESSES_NAME),
-        read_reviewer_list(raw_dir / EXTRA_HIDDEN_NAME),
-        company_codes=company_codes,
-    )
-    parts = tuple(part.strip("\n") for part in masked.split(PAGE_BREAK))
-    if len(parts) != len(texts):
-        raise ValueError(f"masking merged parts: {len(texts)} in, {len(parts)} out")
-    return parts, found
 
 
 def _reviewed_problem(doc_id: str, masked_pages: Sequence[str], texts_dir: Path) -> str | None:

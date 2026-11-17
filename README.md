@@ -373,6 +373,9 @@ src/extraction/
   result.py                what is recorded about each answer
   scoring.py               compares one answer with the golden deal
   metrics.py               metrics table model × prompt × sampling
+src/documents/
+  pdf.py                   the text layer of a PDF; page numbers, headers and footers removed
+  masking.py               personal data in contracts, laws and decisions becomes tags like [ПІБ]
 src/rag/
   sources.py               reads and checks data/rag_sources.csv: types, articles of each law, course minimums
   documents.py             an ingested document (parts with a page or an article), its manifest entry, JSONL

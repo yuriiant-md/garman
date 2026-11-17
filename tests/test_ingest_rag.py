@@ -1,18 +1,14 @@
 import hashlib
 from pathlib import Path
 
-import pymupdf
 import pytest
 
 from scripts import ingest_rag
 from scripts.ingest_rag import (
-    clean_pages,
     decision_text,
     ingest,
     law_article,
     near_duplicates,
-    normalize_text,
-    pdf_pages,
     run,
     visible_text,
 )
@@ -104,65 +100,6 @@ def reviewed_text(tmp_path: Path, doc_id: str, text: str) -> Path:
     texts_dir = tmp_path / "texts"
     write(texts_dir / f"{doc_id}.txt", text)
     return texts_dir
-
-
-# --- cleaning ---
-
-
-@pytest.mark.parametrize(
-    ("raw", "clean"),
-    [
-        ("будь-\nяких оплат", "будь-яких оплат"),  # a line break inside a hyphenated word
-        ("контрагентів-\nпостачальників", "контрагентів-постачальників"),
-        ("Сторони:\n- Покупець", "Сторони:\n- Покупець"),  # a list dash is not a break
-        ("ціна\xa0\xa0100   грн\t за  тонну", "ціна 100 грн за тонну"),
-        ("пункт 1\n\n\n\nпункт 2", "пункт 1\n\nпункт 2"),
-        ("  відступ  \n", "відступ"),
-        ("його", "його"),  # a decomposed "й" from a PDF becomes one character (NFC)
-    ],
-)
-def test_normalize_text(raw: str, clean: str) -> None:
-    assert normalize_text(raw) == clean
-
-
-def test_clean_pages_drops_page_numbers_and_lines_repeated_on_most_pages() -> None:
-    assert clean_pages(CONTRACT_PAGES) == (
-        "ДОГОВІР ПОСТАВКИ № 1\nПостачальник ТОВ «Агро», код 12345678",
-        "7.3. Пеня 0,1% за кожен день прострочення.",
-        "12.1. Договір діє до 31.12.2026.",
-    )
-
-
-def test_clean_pages_drops_redaction_labels_left_in_the_pdf() -> None:
-    # own_013-018 came with names, stamps and contacts replaced by labels, several per page
-    pages = ("пункт 9.1\n\nNAME\nNAME\nCOMPANY\nCOMPANY\nCOMPANY\nEMAIL\nPHONE\nIBAN\n[IBAN]",)
-
-    assert clean_pages(pages) == ("пункт 9.1\n\nIBAN\n[IBAN]",)  # "IBAN" is a field label
-
-
-def test_clean_pages_keeps_numbers_that_are_not_the_page_number() -> None:
-    pages = (
-        "Специфікація\nКількість\n1\nтонна",  # "1" in a table, not a page number
-        "5\nпункт 9.1",  # page 2 cannot be numbered "5"
-    )
-
-    assert clean_pages(pages) == pages
-
-
-def test_clean_pages_keeps_repeated_lines_of_a_short_document() -> None:
-    pages = ("Покупець\nпункт 1", "Покупець\nпункт 2")  # two pages: no header to speak of
-
-    assert clean_pages(pages) == pages
-
-
-def test_pdf_pages_reads_every_page(tmp_path: Path) -> None:
-    path = tmp_path / "contract.pdf"
-    with pymupdf.open() as doc:
-        for text in ("Page one", "Page two"):
-            doc.new_page().insert_text((72, 72), text)
-        doc.save(path)
-
-    assert [page.strip() for page in pdf_pages(path)] == ["Page one", "Page two"]
 
 
 # --- HTML pages ---

@@ -23,6 +23,7 @@ class ToolCall(BaseModel):
 
     id: str  # the model's id of the call: ties the result to the request in the messages
     name: str
+    tool_version: str | None = None  # of tools/<name>.yaml; None for a tool the agent lacks
     arguments: dict[str, JsonValue]
     result: str | None = None
     error: str | None = None  # timeout, unknown tool, invalid arguments or the tool's exception

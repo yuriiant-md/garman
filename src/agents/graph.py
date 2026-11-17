@@ -10,11 +10,12 @@ The step limit is our own, not LangGraph's recursion_limit: that one raises and 
 while a stop here keeps it and turns it into a partial answer. recursion_limit stays as a guard
 against a bug in this graph only.
 
-A tool's failure (timeout, unknown tool, exception, no text) goes back to the model as an error
-result and the run goes on: the model may try another way. A model's failure ends the run: an API
-error left after the SDK's retries, a malformed reply, or any stop but end_turn and tool_use
-(refusal, max_tokens, a full context window, ...). An API error that means the request itself is
-wrong (bad key, bad request) is raised, as in stages 1 and 2.
+A tool's failure (invalid arguments, timeout, unknown tool, exception, no text) goes back to the
+model as an error result and the run goes on: the model may fix the call or try another way.
+A model's failure ends the run: an API error left after the SDK's retries, a malformed reply,
+or any stop but end_turn and tool_use (refusal, max_tokens, a full context window, ...).
+An API error that means the request itself is wrong (bad key, bad request) is raised, as in
+stages 1 and 2.
 
 The tool calls of one turn run in parallel and share one wait of tool_timeout_s. Python cannot
 kill a thread, so a call over the timeout is abandoned, not stopped: the agent stops waiting and
@@ -30,11 +31,11 @@ from concurrent.futures import Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Literal, TypedDict
+from typing import Any, Literal, TypedDict
 from uuid import uuid4
 
 import anthropic
-from anthropic.types import MessageParam, ToolParam
+from anthropic.types import MessageParam
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from pydantic import JsonValue
@@ -47,6 +48,7 @@ from src.agents.model import (
     ToolRequest,
     tool_results_message,
 )
+from src.agents.tools import InvalidArguments, Tool
 from src.agents.trace import ToolCall, Trace, TraceStep, append_trace
 from src.extraction.retry import is_retryable
 
@@ -65,14 +67,6 @@ type ToolRun = Callable[[Mapping[str, JsonValue]], str]
 type Update = dict[str, object]
 
 
-@dataclass(frozen=True)
-class AgentTool:
-    """A tool as the model sees it (spec) and as the agent runs it."""
-
-    spec: ToolParam
-    run: ToolRun
-
-
 class AgentState(TypedDict):
     started_s: float  # the agent's clock at the start of the request
     messages: list[MessageParam]
@@ -87,12 +81,19 @@ class AgentState(TypedDict):
 @dataclass(frozen=True)
 class Agent:
     model: ChatModel
-    tools: tuple[AgentTool, ...]
+    tools: tuple[Tool[Any], ...]  # Any: each tool has its own arguments model
     system: str
     limits: Limits
     prices: tuple[float, float]  # USD per 1M input and output tokens, from models.yaml
     model_name: str  # the models.yaml section, for the trace
     clock: Callable[[], float] = field(default=time.monotonic)
+
+    def __post_init__(self) -> None:
+        # the API refuses two tools with one name; here the last one would silently win
+        names = [tool.name for tool in self.tools]
+        duplicates = sorted({name for name in names if names.count(name) > 1})
+        if duplicates:
+            raise ValueError(f"duplicate tool names: {', '.join(duplicates)}")
 
     def run(self, question: str, trace_file: Path | None = None) -> Trace:
         """Answer one question; append the trace to `trace_file` when one is given."""
@@ -207,34 +208,38 @@ class Agent:
 
     def _execute(self, requests: tuple[ToolRequest, ...]) -> tuple[ToolCall, ...]:
         """Run the calls of one turn in parallel; wait for them at most tool_timeout_s."""
-        by_name = {tool.spec["name"]: tool for tool in self.tools}
+        by_name = {tool.name: tool for tool in self.tools}
+        tools = [by_name.get(request.name) for request in requests]
         executor = ThreadPoolExecutor(max_workers=len(requests))
         started = time.perf_counter()
         try:
             # a list in the order of the requests, not a dict by id: two calls never merge
             futures = [
-                executor.submit(_timed, by_name[request.name].run, request.arguments)
-                if request.name in by_name
-                else None
-                for request in requests
+                None if tool is None else executor.submit(_timed, tool.run, request.arguments)
+                for request, tool in zip(requests, tools, strict=True)
             ]
             wait([f for f in futures if f is not None], timeout=self.limits.tool_timeout_s)
             waited = time.perf_counter() - started
             return tuple(
-                self._tool_call(request, future, waited)
-                for request, future in zip(requests, futures, strict=True)
+                self._tool_call(request, tool, future, waited)
+                for request, tool, future in zip(requests, tools, futures, strict=True)
             )
         finally:
             # not `with`: leaving a with-block waits for every thread, a stuck one included
             executor.shutdown(wait=False, cancel_futures=True)
 
     def _tool_call(
-        self, request: ToolRequest, future: Future[tuple[object, float]] | None, waited: float
+        self,
+        request: ToolRequest,
+        tool: Tool[Any] | None,
+        future: Future[tuple[object, float]] | None,
+        waited: float,
     ) -> ToolCall:
         def done(latency_s: float = waited, **outcome: str) -> ToolCall:
             return ToolCall(
                 id=request.id,
                 name=request.name,
+                tool_version=None if tool is None else tool.version,
                 arguments=request.arguments,
                 latency_s=latency_s,
                 **outcome,
@@ -245,6 +250,8 @@ class Agent:
         if not future.done():
             return done(error=f"timeout after {self.limits.tool_timeout_s:g} s")
         error = future.exception()
+        if isinstance(error, InvalidArguments):  # already names the tool and every bad field
+            return done(error=str(error))
         if error is not None:  # the tool's failure goes back to the model, the run goes on
             return done(error=f"{type(error).__name__}: {error}")
         result, latency_s = future.result()

@@ -1,17 +1,19 @@
 import threading
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
+from typing import Any
 
 import anthropic
 import httpx2
 import pytest
 from anthropic.types import MessageParam, ToolParam
-from pydantic import JsonValue
+from pydantic import Field, JsonValue
 
-from src.agents.graph import Agent, AgentTool
+from src.agents.graph import Agent
 from src.agents.limits import Limits, StopReason
 from src.agents.model import MalformedReply, ModelTurn, ToolRequest
+from src.agents.tools import Tool, ToolArgs, ToolDescription
 from src.agents.trace import Trace
 from src.rag.documents import read_jsonl
 
@@ -70,13 +72,23 @@ def ask(name: str = "search_corpus", call_id: str = "t1", **arguments: JsonValue
     return ToolRequest(id=call_id, name=name, arguments=arguments)
 
 
-def tool(name: str, run: object) -> AgentTool:
-    spec: ToolParam = {"name": name, "description": name, "input_schema": {"type": "object"}}
-    return AgentTool(spec=spec, run=run)  # type: ignore[arg-type]
+class QueryArgs(ToolArgs):
+    query: str = Field(min_length=1)
 
 
-def search(arguments: Mapping[str, JsonValue]) -> str:
-    return f"знайдено: {arguments.get('query')}"
+class NoArgs(ToolArgs):
+    pass
+
+
+def tool(name: str, run: Callable[..., object], args: type[ToolArgs] = QueryArgs) -> Tool[Any]:
+    description = ToolDescription(
+        name=name, version="v1", side_effect=False, description=f"{name} for tests"
+    )
+    return Tool(description=description, args=args, func=run)  # type: ignore[arg-type]
+
+
+def search(args: QueryArgs) -> str:
+    return f"знайдено: {args.query}"
 
 
 SEARCH = tool("search_corpus", search)
@@ -84,7 +96,7 @@ SEARCH = tool("search_corpus", search)
 
 def make_agent(
     model: FakeModel,
-    tools: tuple[AgentTool, ...] = (SEARCH,),
+    tools: tuple[Tool[Any], ...] = (SEARCH,),
     limits: Limits = LIMITS,
     clock: Clock | None = None,
 ) -> Agent:
@@ -207,7 +219,7 @@ def test_the_dollar_budget_stops_the_run() -> None:
 def test_the_request_timeout_stops_the_run_before_the_next_model_call() -> None:
     clock = Clock()
 
-    def slow_search(arguments: Mapping[str, JsonValue]) -> str:
+    def slow_search(args: QueryArgs) -> str:
         clock.now += 61  # the request has run past its 60 s
         return "знайдено"
 
@@ -227,7 +239,7 @@ def test_the_request_timeout_stops_the_run_before_the_next_model_call() -> None:
 def test_a_tool_over_its_timeout_becomes_an_error_result_and_the_run_goes_on() -> None:
     release = threading.Event()
 
-    def stuck(arguments: Mapping[str, JsonValue]) -> str:
+    def stuck(args: QueryArgs) -> str:
         release.wait(timeout=5)
         return "too late"
 
@@ -241,6 +253,7 @@ def test_a_tool_over_its_timeout_becomes_an_error_result_and_the_run_goes_on() -
     assert trace.stop_reason == StopReason.ANSWERED
     call = trace.steps[0].tool_calls[0]
     assert (call.result, call.error) == (None, "timeout after 0.05 s")
+    assert call.tool_version == "v1"
     assert tool_results(model, 1)[0]["is_error"] is True
 
 
@@ -256,7 +269,7 @@ def test_an_unknown_tool_becomes_an_error_result() -> None:
 def test_a_tool_that_returns_no_text_becomes_an_error_result() -> None:
     model = FakeModel(turn("", ask(query="x")), turn("Не вийшло."))
 
-    trace = make_agent(model, tools=(tool("search_corpus", lambda arguments: None),)).run("?")
+    trace = make_agent(model, tools=(tool("search_corpus", lambda args: None),)).run("?")
 
     assert trace.steps[0].tool_calls[0].error == "tool returned NoneType, not text"
     assert trace.stop_reason == StopReason.ANSWERED
@@ -274,7 +287,7 @@ def test_two_calls_with_the_same_id_both_run() -> None:
 
 
 def test_each_tool_call_reports_its_own_latency() -> None:
-    def slow(arguments: Mapping[str, JsonValue]) -> str:
+    def slow(args: NoArgs) -> str:
         time.sleep(0.1)
         return "повільно"
 
@@ -282,14 +295,14 @@ def test_each_tool_call_reports_its_own_latency() -> None:
         turn("", ask(call_id="a", query="x"), ask(name="slow", call_id="b")), turn("готово")
     )
 
-    trace = make_agent(model, tools=(SEARCH, tool("slow", slow))).run("?")
+    trace = make_agent(model, tools=(SEARCH, tool("slow", slow, NoArgs))).run("?")
 
     fast_call, slow_call = trace.steps[0].tool_calls
     assert fast_call.latency_s < 0.05 <= 0.1 <= slow_call.latency_s
 
 
 def test_a_tool_that_raises_becomes_an_error_result_with_the_exception() -> None:
-    def broken(arguments: Mapping[str, JsonValue]) -> str:
+    def broken(args: QueryArgs) -> str:
         raise ValueError("no such contract")
 
     model = FakeModel(turn("", ask(query="x")), turn("Не знайшов договір."))
@@ -298,6 +311,42 @@ def test_a_tool_that_raises_becomes_an_error_result_with_the_exception() -> None
 
     assert trace.steps[0].tool_calls[0].error == "ValueError: no such contract"
     assert trace.stop_reason == StopReason.ANSWERED
+
+
+def test_invalid_arguments_go_back_to_the_model_which_fixes_the_call() -> None:
+    model = FakeModel(
+        turn("", ask(query="")),
+        turn("", ask(call_id="t2", query="строк оплати")),
+        turn("Через 5 днів [S1]."),
+    )
+
+    trace = make_agent(model).run("Коли мені заплатять?")
+
+    rejected = trace.steps[0].tool_calls[0]
+    assert rejected.error is not None
+    assert rejected.error.startswith("invalid arguments for search_corpus: query:")
+    assert tool_results(model, 1)[0]["is_error"] is True
+    assert tool_results(model, 1)[0]["content"] == rejected.error
+    assert trace.steps[1].tool_calls[0].result == "знайдено: строк оплати"
+    assert trace.stop_reason == StopReason.ANSWERED
+
+
+def test_the_trace_keeps_the_version_of_each_tool_called() -> None:
+    model = FakeModel(
+        turn("", ask(call_id="a", query="ціна"), ask(name="send_email", call_id="b")),
+        turn("готово"),
+    )
+
+    trace = make_agent(model).run("?")
+
+    found, unknown = trace.steps[0].tool_calls
+    assert (found.name, found.tool_version) == ("search_corpus", "v1")
+    assert (unknown.name, unknown.tool_version) == ("send_email", None)
+
+
+def test_two_tools_with_one_name_are_refused_when_the_agent_is_built() -> None:
+    with pytest.raises(ValueError, match="duplicate tool names: search_corpus"):
+        make_agent(FakeModel(turn("ok")), tools=(SEARCH, tool("search_corpus", search)))
 
 
 # --- model failures stop the run

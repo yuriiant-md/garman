@@ -60,6 +60,14 @@ def test_a_tool_call_keeps_its_result_or_its_error() -> None:
     assert failed.error == "timeout after 20 s"
 
 
+def test_a_tool_call_written_before_tool_versions_still_reads() -> None:
+    line = '{"id": "t", "name": "search_corpus", "arguments": {}, "result": "S1", "latency_s": 1}'
+
+    call = ToolCall.model_validate_json(line)
+
+    assert call.tool_version is None
+
+
 @pytest.mark.parametrize("result, error", [(None, None), ("S1", "timeout")])
 def test_a_tool_call_needs_exactly_one_of_result_and_error(
     result: str | None, error: str | None

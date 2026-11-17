@@ -1,0 +1,13 @@
+# Stage 3 agent: which model thinks and where the agent must stop.
+# The model is a section of configs/models.yaml, so its id, timeout and prices stay in one place.
+# Every limit is checked before each model call; the first one reached stops the run, writes its
+# reason to the trace and returns what the agent has so far.
+model: haiku-5.5
+limits:
+  max_steps: 8            # model calls per request; a farmer's question needs 2-4
+  max_tokens: 50000       # input + output summed over every call: the tokens paid for
+  # On Haiku 5.5 (0.1 / 0.5 USD per 1M) 50K tokens cost ≈ 0.005 USD, so max_tokens stops first.
+  # max_cost_usd guards a dearer model: on gpt-4o the same tokens would cost ≈ 0.13 USD.
+  max_cost_usd: 0.01
+  tool_timeout_s: 20      # the calls of one turn, run in parallel; a reranked search takes ≈ 2 s
+  request_timeout_s: 120  # the whole request; one model call may take up to 60 s (models.yaml)

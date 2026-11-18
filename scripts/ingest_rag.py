@@ -19,8 +19,9 @@ from itertools import combinations
 from pathlib import Path
 from typing import NamedTuple
 
+from src.documents.contract import contract_document, mask_contract
 from src.documents.masking import Found, mask_parts, suspicious_words
-from src.documents.pdf import clean_pages, normalize_text, pdf_pages
+from src.documents.pdf import normalize_text
 from src.rag.documents import (
     Document,
     DocumentPart,
@@ -168,16 +169,10 @@ def _read(source: Source, raw_root: Path, texts_dir: Path) -> _Read:
 
 
 def _read_contract(doc_id: str, path: Path, texts_dir: Path) -> _Read:
-    private = doc_id.startswith(OWN_PREFIX)
-    masked, found = mask_parts(pdf_pages(path), path.parent, company_codes=private)
-    if problem := _reviewed_problem(doc_id, masked, texts_dir):
-        return _Read(None, found, problem)
-    pages = tuple(
-        DocumentPart(page=number, text=text)
-        for number, text in enumerate(clean_pages(masked), start=1)
-        if text  # a page of only a stamp or a footer
-    )
-    return _Read(Document(doc_id=doc_id, parts=pages), found)
+    masked = mask_contract(path, company_codes=doc_id.startswith(OWN_PREFIX))
+    if problem := _reviewed_problem(doc_id, masked.pages, texts_dir):
+        return _Read(None, masked.found, problem)
+    return _Read(contract_document(doc_id, masked.pages), masked.found)
 
 
 def law_pages(source: Source, folder: Path) -> tuple[Path, ...]:

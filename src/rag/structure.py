@@ -18,8 +18,10 @@ MAX_HEADING_CHARS = 100
 MIN_HEADING_LETTERS = 4  # "ВСТАНОВИВ:" is a heading, a judge's "О. [ПІБ]" is not
 FINAL_PUNCTUATION = (".", ":", ";", ",", "!", "?")
 
-# "7.3. Текст", "7.3 .Текст" (OCR) or "1.1." alone; "7.3.1." is a subclause and stays inside 7.3
-CLAUSE = re.compile(r"(\d{1,2})\.(\d{1,2})(?:\s*\.)?(?=\s|$|[^\d.])")
+# "7.3. Текст", "7.3 .Текст" (OCR) or "1.1." alone; "7.3.1." is a subclause and stays inside 7.3;
+# "5.10)", "5.10%", "5.10–5.12" are a list item, a rate and a range, not a clause
+CLAUSE = re.compile(r"(\d{1,2})\.(\d{1,2})(?:\s*\.)?(?=\s|$|[^\d.)%–-])")
+MAX_SKIPPED = 2  # clause numbers a contract may skip: 7.1 → 7.3 and 5.11 → 6.3 in real ones
 SUBCLAUSE = re.compile(r"(\d{1,2}\.\d{1,2})\.(\d{1,2})(?:\s*\.)?(?=\s|$|[^\d.])")
 CLAUSE_REF = "п. "
 # "7. Відповідальність сторін" or "IV. Якість товару"; OCR gives Cyrillic І and Х as well
@@ -69,6 +71,7 @@ class _Start(NamedTuple):
 
 
 type _Mark = _Heading | _Start | None  # None: the line goes on with the open unit
+type _Clause = tuple[int, int]  # 7.3 -> (7, 3)
 
 
 def contract_units(document: Document, *, max_chars: int) -> tuple[Unit, ...]:
@@ -119,16 +122,16 @@ def _regroup(unit: Unit, marks: Sequence[_Mark]) -> tuple[Unit, ...]:
 
 
 def _contract_marks(lines: Sequence[Line]) -> Iterator[_Mark]:
-    next_majors = _next_clause_majors(lines)
-    last = (0, 0)  # clause numbers only grow: "1.1 цього Договору" after 3.1 is a wrapped reference
-    for index, line in enumerate(lines):
-        clause = _clause_number(line.text)
-        if clause and clause > last:
-            last = clause
+    clauses = _accepted_clauses(lines)
+    next_majors = _next_clause_majors(clauses)
+    has_clause = False  # the requisites come after the clauses
+    for index, (line, clause) in enumerate(zip(lines, clauses, strict=True)):
+        if clause:
+            has_clause = True
             yield _Start(f"{CLAUSE_REF}{clause[0]}.{clause[1]}")
         elif _section_number(line.text) in {next_majors[index]} - {None}:
             yield _Heading(line.text)  # a real section "5." goes on with clause 5.1
-        elif last > (0, 0) and _starts_requisites(line.text):
+        elif has_clause and _starts_requisites(line.text):
             yield _Start(None, REQUISITES_SECTION)
         elif index == 0:
             yield _Start(PREAMBLE_REF)
@@ -136,7 +139,49 @@ def _contract_marks(lines: Sequence[Line]) -> Iterator[_Mark]:
             yield None
 
 
-def _clause_number(text: str) -> tuple[int, int] | None:
+def _accepted_clauses(lines: Sequence[Line]) -> tuple[_Clause | None, ...]:
+    """The clause each line starts, or None: clauses come in runs such as 3.1, 3.2, 3.3."""
+    candidates = tuple(_clause_number(line.text) for line in lines)
+    accepted: list[_Clause | None] = []
+    last: _Clause | None = None
+    for clause, after in zip(candidates, _next_after(candidates), strict=True):
+        is_clause = clause is not None and _is_clause(clause, last, after)
+        accepted.append(clause if is_clause else None)
+        last = clause if is_clause else last
+    return tuple(accepted)
+
+
+def _is_clause(clause: _Clause, last: _Clause | None, after: _Clause | None) -> bool:
+    """after is the next line that looks like a clause; a run starts when it follows this one."""
+    starts_run = after is not None and _follows(after, clause)
+    if last is None:  # "24.10 Дата укладення" before 1.1 is neither
+        return _opens_section(clause) or starts_run
+    if _follows(clause, last):
+        return True
+    # pages lost (3.2, then 7.1, 7.2): a new run, but only from a section's start, so that
+    # dates in a row ("20.10", "20.11") never take over the clauses after them
+    return clause > last and _opens_section(clause) and starts_run
+
+
+def _opens_section(clause: _Clause) -> bool:
+    """7.1, or 7.3 with up to MAX_SKIPPED numbers lost before it."""
+    return clause[1] <= 1 + MAX_SKIPPED
+
+
+def _follows(clause: _Clause, last: _Clause) -> bool:
+    """7.3 after 7.2, or 8.1 after 7.5, with up to MAX_SKIPPED numbers lost between them.
+
+    A number going back is a wrapped reference (a line "1.1 цього Договору" after 3.1);
+    one far ahead is a date ("15.11 – 15.12.2026" after 14.5)."""
+    section, number = clause
+    last_section, last_number = last
+    if section == last_section:
+        return last_number < number <= last_number + 1 + MAX_SKIPPED
+    is_next_section = last_section < section <= last_section + 1 + MAX_SKIPPED
+    return is_next_section and _opens_section(clause)
+
+
+def _clause_number(text: str) -> _Clause | None:
     """None for "5.1. цього Договору.": a clause never starts with a lowercase word."""
     match = CLAUSE.match(text)
     if match is None or text[match.end() :].lstrip(" .")[:1].islower():
@@ -156,15 +201,19 @@ def _subclause_mark(text: str, clause: str) -> _Mark:
     return _Start(f"{CLAUSE_REF}{clause}.{match[2]}") if match and match[1] == clause else None
 
 
-def _next_clause_majors(lines: Sequence[Line]) -> tuple[int | None, ...]:
-    """For each line, the section number of the first clause after it."""
-    majors: list[int | None] = []
-    upcoming: int | None = None
-    for line in reversed(lines):
-        majors.append(upcoming)
-        clause = _clause_number(line.text)
-        upcoming = clause[0] if clause else upcoming
-    return tuple(reversed(majors))
+def _next_clause_majors(clauses: Sequence[_Clause | None]) -> tuple[int | None, ...]:
+    """For each line, the section number of the first accepted clause after it."""
+    return tuple(clause[0] if clause else None for clause in _next_after(clauses))
+
+
+def _next_after[T](values: Sequence[T | None]) -> tuple[T | None, ...]:
+    """For each position, the first value after it that is not None."""
+    found: list[T | None] = []
+    upcoming: T | None = None
+    for value in reversed(values):
+        found.append(upcoming)
+        upcoming = value if value is not None else upcoming
+    return tuple(reversed(found))
 
 
 def _section_number(text: str) -> int | None:

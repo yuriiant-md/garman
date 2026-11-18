@@ -7,7 +7,7 @@ import pytest
 from src.extraction.prompts import Prompt
 from src.rag.answer import NOT_IN_DOCUMENTS_TEXT
 from src.rag.answerer import ANSWER_TOOL, Answerer, Outcome, RagResult, user_turn
-from src.rag.context import Context, ContextSettings, document_block
+from src.rag.context import Context, ContextSettings, UnknownContractError, document_block
 from src.rag.sources import DocType
 from tests.test_anthropic_extractor import (
     HAIKU_55,
@@ -29,6 +29,8 @@ OLD_ARTICLE = chunk(
 )
 # the lists take turns: S1 = the clause, S2 = ЦК, S3 = ГК
 SEARCH_HITS = {DocType.CONTRACT: hits(CLAUSE), DocType.LAW: hits(ARTICLE, OLD_ARTICLE)}
+# the contract is in the index, but its chunks are all below min_score: nothing to answer from
+NOTHING_RELEVANT = {DocType.CONTRACT: hits(CLAUSE, score=-5.0)}
 PENALTY = "Покупець сплачує пеню в розмірі подвійної облікової ставки НБУ."
 
 
@@ -64,7 +66,7 @@ def ask(
 
 
 def test_an_empty_context_is_not_in_documents_without_asking_the_model() -> None:
-    result, client = ask(GOOD, found={})
+    result, client = ask(GOOD, found=NOTHING_RELEVANT)
 
     assert client.calls == []
     assert result.outcome is Outcome.NOT_IN_DOCUMENTS
@@ -240,6 +242,16 @@ def test_a_question_cannot_close_the_documents_or_open_a_fake_one() -> None:
 
     assert turn.lower().count("</documents") == 1
     assert '<document id="S1">' not in turn
+
+
+def test_an_unknown_contract_is_refused_without_asking_the_model() -> None:
+    client = FakeClient(GOOD)
+    search = FakeSearch({DocType.LAW: hits(ARTICLE)})
+    answerer = Answerer(search, SETTINGS, HAIKU_55, PROMPT, client=client)  # type: ignore[arg-type]
+
+    with pytest.raises(UnknownContractError, match="own_999"):
+        answerer.ask(QUESTION, "own_999")
+    assert client.calls == []
 
 
 def test_an_empty_question_is_refused() -> None:

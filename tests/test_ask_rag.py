@@ -16,13 +16,16 @@ from scripts.ask_rag import (
     render_report,
     run_questions,
     select_questions,
+    unknown_contracts,
     write_run,
 )
 from src.rag.answer import NOT_IN_DOCUMENTS_TEXT, AnswerStatus
 from src.rag.answer_config import ANSWER_CONFIG_PATH
 from src.rag.answer_eval import summarize
 from src.rag.answerer import Outcome, RagResult
+from src.rag.sources import DocType
 from tests.test_answer_eval import question, result
+from tests.test_rag_context import chunk
 
 QUESTIONS = (
     question(id="q01", should_cite=("own_003#030",)),
@@ -169,7 +172,29 @@ def no_ids(_: Path) -> list[str]:
     return ["--ids", ","]
 
 
-@pytest.mark.parametrize("bad_args", [broken_yaml, missing_prompt, unknown_model, no_ids])
+def no_such_contracts(tmp_path: Path) -> list[str]:
+    """An index of no chunks: the contracts the questions name are not in it."""
+    chunks = tmp_path / "chunks.jsonl"
+    chunks.write_text("", encoding="utf-8")
+    return ["--chunks", str(chunks)]
+
+
+def test_contracts_the_index_has_no_chunk_of_are_named_once_in_order() -> None:
+    questions = (
+        question(id="q01", contract_id="own_999"),
+        question(id="q02", contract_id="own_003"),
+        question(id="q03", contract_id="law_civil_code"),  # a law is not a contract
+        question(id="q04", contract_id="own_999"),
+        question(id="t01"),  # a general question names no contract
+    )
+    chunks = (chunk("own_003#030"), chunk("law_civil_code#026", DocType.LAW))
+
+    assert unknown_contracts(questions, chunks) == ("law_civil_code", "own_999")
+
+
+@pytest.mark.parametrize(
+    "bad_args", [broken_yaml, missing_prompt, unknown_model, no_ids, no_such_contracts]
+)
 def test_a_bad_setup_stops_with_code_2_before_qdrant_and_the_models(
     bad_args: Callable[[Path], list[str]],
     tmp_path: Path,

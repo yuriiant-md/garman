@@ -6,6 +6,7 @@ from pydantic import ValidationError
 from src.rag.chunking import Chunk
 from src.rag.context import (
     ContextSettings,
+    UnknownContractError,
     build_context,
     document_block,
     estimate_tokens,
@@ -97,6 +98,22 @@ def test_a_general_question_never_searches_contracts() -> None:
     searched = [f.doc_types for _, _, _, f in search.calls if f is not None]
     assert searched == [frozenset({DocType.LAW}), frozenset({DocType.COURT_DECISION})]
     assert all(c.doc_type is not DocType.CONTRACT for c in context.sources.values())
+
+
+def test_an_unknown_contract_is_an_error_not_an_empty_context() -> None:
+    search = FakeSearch({DocType.LAW: ARTICLES, DocType.COURT_DECISION: DECISIONS})
+
+    with pytest.raises(UnknownContractError, match="own_999"):
+        build_context(search, "Яку пеню платить покупець?", "own_999", SETTINGS)
+
+
+def test_a_known_contract_with_nothing_relevant_is_an_empty_context() -> None:
+    search = FakeSearch({DocType.CONTRACT: hits(chunk("own_003#030"), score=-5.0)})
+
+    context = build_context(search, "Яку пеню платить покупець?", "own_003", SETTINGS)
+
+    assert dict(context.sources) == {}
+    assert context.below_threshold == ("own_003#030",)
 
 
 def test_the_lists_take_turns_and_labels_follow_in_that_order() -> None:

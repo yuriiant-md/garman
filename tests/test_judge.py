@@ -25,7 +25,7 @@ from tests.test_anthropic_extractor import (
     status_error,
     text_reply,
 )
-from tests.test_rag_answerer import GOOD, PENALTY, ask
+from tests.test_rag_answerer import GOOD, NOTHING_RELEVANT, PENALTY, ask
 
 SONNET = JudgeModel(
     id="claude-sonnet-5-5", timeout_s=120, max_retries=3, max_tokens=8192, effort="medium",
@@ -228,7 +228,7 @@ def test_an_answer_saved_without_its_documents_is_refused() -> None:
 
 
 def test_an_answer_with_no_claims_is_refused() -> None:
-    result, _ = ask(GOOD, found={})  # «У документах цього немає», no model call
+    result, _ = ask(GOOD, found=NOTHING_RELEVANT)  # «У документах цього немає», no model call
     judge_, _ = judge(verdict_reply(supported()))
 
     with pytest.raises(ValueError, match="claims"):

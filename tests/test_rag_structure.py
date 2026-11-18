@@ -1,3 +1,5 @@
+import pytest
+
 from src.rag.documents import Document, DocumentPart
 from src.rag.structure import (
     REQUISITES_SECTION,
@@ -114,6 +116,106 @@ def test_wrapped_reference_to_a_later_clause_does_not_start_a_clause() -> None:
         ("п. 4.2", "4.2. У разі зміни ставки ПДВ."),
         ("п. 5.1", "5.1. Постачальник передає Товар."),
     ]
+
+
+def test_date_range_at_a_line_start_does_not_start_a_clause() -> None:
+    document = contract("14.1. Строк поставки:\n15.11 – 15.12.2026 року.\n14.2. Ціна товару.")
+
+    assert [(u.ref, u.text) for u in contract_units(document, max_chars=LIMIT)] == [
+        ("п. 14.1", "14.1. Строк поставки:\n15.11 – 15.12.2026 року."),
+        ("п. 14.2", "14.2. Ціна товару."),
+    ]
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "5.10) Друга частина — до 01.12;",
+        "5.10% Річних від суми боргу;",
+        "5.10–5.12 Не застосовуються;",
+        "5.10-5.12 Не застосовуються;",
+    ],
+)
+def test_number_followed_by_a_bracket_percent_or_dash_does_not_start_a_clause(line: str) -> None:
+    document = contract(f"5.9. Оплата частинами:\n{line}\n5.10. Штраф.")
+
+    assert [(u.ref, u.text) for u in contract_units(document, max_chars=LIMIT)] == [
+        ("п. 5.9", f"5.9. Оплата частинами:\n{line}"),
+        ("п. 5.10", "5.10. Штраф."),
+    ]
+
+
+def test_skipped_clause_numbers_still_start_clauses() -> None:
+    document = contract("7.1. Строк.\n7.3. Порядок зміни.\n8.3. Ціна.")
+
+    refs = [u.ref for u in contract_units(document, max_chars=LIMIT)]
+
+    assert refs == ["п. 7.1", "п. 7.3", "п. 8.3"]
+
+
+@pytest.mark.parametrize(
+    ("line", "refs"),
+    [
+        ("7.4. Ціна.", ["п. 7.1", "п. 7.4"]),  # two numbers lost in the section
+        ("7.5. Ціна.", ["п. 7.1"]),
+        ("8.3. Ціна.", ["п. 7.1", "п. 8.3"]),  # the next section from its third clause
+        ("8.4. Ціна.", ["п. 7.1"]),
+        ("10.1. Ціна.", ["п. 7.1", "п. 10.1"]),  # two sections lost
+        ("11.1. Ціна.", ["п. 7.1"]),  # a lone number: nothing after it follows it
+    ],
+)
+def test_a_clause_may_follow_the_last_with_up_to_two_numbers_lost(
+    line: str, refs: list[str]
+) -> None:
+    document = contract(f"7.1. Строк.\n{line}")
+
+    assert [u.ref for u in contract_units(document, max_chars=LIMIT)] == refs
+
+
+def test_ocr_spacing_before_the_dot_still_follows_the_last_clause() -> None:
+    document = contract("7.2. Строк.\n7.3 .Порядок зміни.")
+
+    assert [u.ref for u in contract_units(document, max_chars=LIMIT)] == ["п. 7.2", "п. 7.3"]
+
+
+def test_a_number_before_the_first_clause_does_not_hide_the_contract() -> None:
+    document = contract(
+        "ДОГОВІР № 7\n24.10 Дата укладення.\n1.1. Продавець передає товар.\n1.2. Покупець платить."
+    )
+
+    assert [(u.ref, u.text) for u in contract_units(document, max_chars=LIMIT)] == [
+        ("преамбула", "ДОГОВІР № 7\n24.10 Дата укладення."),
+        ("п. 1.1", "1.1. Продавець передає товар."),
+        ("п. 1.2", "1.2. Покупець платить."),
+    ]
+
+
+def test_clauses_after_lost_pages_start_a_new_run() -> None:
+    document = contract("3.1. Строк.\n3.2. Порядок.\n7.1. Форс-мажор.\n7.2. Повідомлення.")
+
+    refs = [u.ref for u in contract_units(document, max_chars=LIMIT)]
+
+    assert refs == ["п. 3.1", "п. 3.2", "п. 7.1", "п. 7.2"]
+
+
+def test_dates_in_a_row_do_not_start_a_new_run() -> None:
+    document = contract(
+        "14.1. Строки поставки:\n20.10 Перша партія;\n20.11 Друга партія;\n14.2. Ціна."
+    )
+
+    assert [u.ref for u in contract_units(document, max_chars=LIMIT)] == ["п. 14.1", "п. 14.2"]
+
+
+def test_false_clause_after_a_section_heading_does_not_hide_the_heading() -> None:
+    document = contract(
+        "4.1. Ціна товару.\n5. Строки поставки\n15.11 – 15.12.2026 року.\n5.1. Поставка партіями."
+    )
+
+    assert contract_units(document, max_chars=LIMIT) == (
+        unit("4.1. Ціна товару.", ref="п. 4.1"),
+        unit("15.11 – 15.12.2026 року.", section="5. Строки поставки"),
+        unit("5.1. Поставка партіями.", section="5. Строки поставки", ref="п. 5.1"),
+    )
 
 
 def test_numbered_list_inside_a_clause_is_not_a_section() -> None:

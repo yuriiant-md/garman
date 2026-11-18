@@ -43,6 +43,10 @@ DOC_TYPE_NAMES = {
 }
 
 
+class UnknownContractError(ValueError):
+    """The contract_id names no contract in the index: the caller's mistake, not an answer."""
+
+
 class Search(Protocol):
     """The part of Searcher this module uses; tests pass a fake."""
 
@@ -108,6 +112,9 @@ def retrieve(
         )
         searches.insert(0, (this_contract, settings.contract_k))
     lists = [search.search(question, MODE, k, search_filter) for search_filter, k in searches]
+    # a contract in the index always gives some chunks: the search has no threshold, pack has
+    if contract_id is not None and not lists[0]:
+        raise UnknownContractError(f"no contract {contract_id!r} in the index")
     return tuple(hit for turn in zip_longest(*lists) for hit in turn if hit is not None)
 
 

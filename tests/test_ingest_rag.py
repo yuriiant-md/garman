@@ -12,6 +12,7 @@ from scripts.ingest_rag import (
     run,
     visible_text,
 )
+from src.documents import contract
 from src.rag.documents import Document, DocumentPart, ManifestEntry, read_documents
 from src.rag.sources import DocFormat, DocType, Source
 
@@ -92,7 +93,7 @@ def kodeksy_page(article: str) -> str:
 @pytest.fixture
 def contract_pdf(monkeypatch: pytest.MonkeyPatch) -> None:
     """Every contract PDF reads as CONTRACT_PAGES: Cyrillic PDFs are awkward to build in a test."""
-    monkeypatch.setattr(ingest_rag, "pdf_pages", lambda path: CONTRACT_PAGES)
+    monkeypatch.setattr(contract, "pdf_pages", lambda path: CONTRACT_PAGES)
 
 
 def reviewed_text(tmp_path: Path, doc_id: str, text: str) -> Path:
@@ -270,7 +271,7 @@ def test_ingest_skips_a_page_left_empty_by_cleaning(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     pages = ("ДОГОВІР № 1\nCOMPANY\n", "2\nCOMPANY\n", "3\nпункт 3\nCOMPANY\n")
-    monkeypatch.setattr(ingest_rag, "pdf_pages", lambda path: pages)
+    monkeypatch.setattr(contract, "pdf_pages", lambda path: pages)
     write(tmp_path / "raw" / "prozorro" / "a.pdf", "")
     texts_dir = reviewed_text(tmp_path, "prozorro_001", "".join(pages))
     sources = (source("prozorro_001", DocType.CONTRACT, "prozorro/a.pdf"),)

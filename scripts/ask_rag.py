@@ -51,6 +51,7 @@ from src.rag.documents import read_jsonl
 from src.rag.embedding import bge_m3
 from src.rag.index import StaleIndexError, index_stamp
 from src.rag.search import RERANKER_NAME, Searcher, bge_reranker
+from src.rag.sources import DocType
 
 API_KEY = "ANTHROPIC_API_KEY"
 RESULTS_DIR = Path("results/stage2/answers")
@@ -86,6 +87,7 @@ class RunSetup:
     price_input: float
     price_output: float
     questions: tuple[AnswerQuestion, ...]
+    chunks: tuple[Chunk, ...]  # what the index must hold
 
 
 def select_questions(
@@ -100,6 +102,16 @@ def select_questions(
     if unknown := sorted(wanted - {question.id for question in questions}):
         raise ValueError(f"no such questions: {', '.join(unknown)}")
     return tuple(question for question in questions if question.id in wanted)
+
+
+def unknown_contracts(
+    questions: Sequence[AnswerQuestion], chunks: Sequence[Chunk]
+) -> tuple[str, ...]:
+    """Contracts the questions name that have no chunk: asking about one stops the run halfway,
+    and the answers paid for before it are lost."""
+    indexed = {chunk.doc_id for chunk in chunks if chunk.doc_type is DocType.CONTRACT}
+    named = {question.contract_id for question in questions if question.contract_id is not None}
+    return tuple(sorted(named - indexed))
 
 
 def run_questions(answerer: Asks, questions: Sequence[AnswerQuestion]) -> list[AnswerRecord]:
@@ -254,15 +266,20 @@ def load_setup(args: argparse.Namespace) -> RunSetup:
     if model_provider(config.model) != ANTHROPIC:
         raise ValueError(f"{args.config}: model {config.model} is not an anthropic model")
     price_input, price_output = load_prices(section=config.model)
+    questions = select_questions(
+        load_answer_questions(args.questions, args.search_questions), args.ids
+    )
+    chunks = read_jsonl(args.chunks, Chunk)
+    if unknown := unknown_contracts(questions, chunks):
+        raise ValueError(f"no contract {', '.join(unknown)} in {args.chunks}")
     return RunSetup(
         config=config,
         prompt=load_prompt(prompt_path(args, config.prompt)),
         model=load_anthropic_config(section=config.model),
         price_input=price_input,
         price_output=price_output,
-        questions=select_questions(
-            load_answer_questions(args.questions, args.search_questions), args.ids
-        ),
+        questions=questions,
+        chunks=chunks,
     )
 
 
@@ -283,13 +300,11 @@ def main(argv: list[str] | None = None) -> int:
     client = reachable_client(args.qdrant_url)
     if client is None:
         return 1
-    chunks = read_jsonl(args.chunks, Chunk)
     print("loading bge-m3 and the reranker …", flush=True)
     embedder = bge_m3()
+    stamp = index_stamp(setup.chunks, embedder)
     try:
-        searcher = Searcher(
-            client, STRUCTURAL_COLLECTION, embedder, index_stamp(chunks, embedder), bge_reranker()
-        )
+        searcher = Searcher(client, STRUCTURAL_COLLECTION, embedder, stamp, bge_reranker())
     except StaleIndexError as error:
         print(error, file=sys.stderr)
         return 1

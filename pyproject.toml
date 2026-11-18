@@ -7,6 +7,7 @@ dependencies = [
     "fastembed>=0.9.1",
     "httpx>=0.28.1",
     "langgraph>=1.2.22",
+    "mcp>=2.3.0",
     "ollama>=0.6.3",
     "openai>=3.37.0",
     "pydantic>=2.14.1",

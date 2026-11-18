@@ -4,7 +4,7 @@ import pymupdf
 import pytest
 
 from src.documents import contract
-from src.documents.contract import contract_clauses, read_contract
+from src.documents.contract import NoTextError, contract_clauses, read_contract
 from src.rag.documents import Document, DocumentPart
 
 PAGES = (
@@ -70,7 +70,7 @@ def test_a_pdf_without_text_is_an_error_that_names_it(
 ) -> None:
     reads_as(monkeypatch, ("", "\n"))  # a scan with no text layer
 
-    with pytest.raises(ValueError, match="scan.*no text"):
+    with pytest.raises(NoTextError, match="scan.*no text"):  # a ValueError, as ingest expects
         read_contract(tmp_path / "scan.pdf")
 
 

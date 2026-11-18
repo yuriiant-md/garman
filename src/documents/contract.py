@@ -14,6 +14,10 @@ from src.rag.documents import Document, DocumentPart
 from src.rag.structure import Unit, contract_units
 
 
+class NoTextError(ValueError):
+    """A PDF with no text on any page: a scan that needs OCR first; the message names no path."""
+
+
 class MaskedContract(NamedTuple):
     pages: tuple[str, ...]  # masked but not cleaned: the text stage 1 reviewed in data/texts/
     found: Found  # the personal data put behind tags such as [ПІБ]
@@ -33,7 +37,7 @@ def contract_document(doc_id: str, masked_pages: Sequence[str]) -> Document:
         if text
     )
     if not parts:
-        raise ValueError(f"{doc_id}: no text on any page; a scanned PDF needs OCR first")
+        raise NoTextError(f"{doc_id}: no text on any page; a scanned PDF needs OCR first")
     return Document(doc_id=doc_id, parts=parts)
 
 

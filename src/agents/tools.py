@@ -8,11 +8,15 @@ The argument schema the model sees is generated from the Pydantic model, so the 
 The model's arguments are validated before the function runs. Invalid ones raise
 InvalidArguments with every bad field named; the agent sends that text back to the model as the
 tool's error (graph.py), and the model can fix the call. The function itself never sees them.
+
+The graph needs only what AgentTool names, so a tool may also live on an MCP server
+(mcp_tools.py): there the server holds the description and checks the arguments.
 """
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol
 
 import yaml
 from anthropic.types import ToolParam
@@ -44,6 +48,25 @@ class ToolDescription(BaseModel):
 
 class InvalidArguments(ValueError):
     """The model called a tool with arguments its schema does not allow."""
+
+
+class ToolRefused(Exception):
+    """The tool said no (403, not found, bad arguments): its text is for the model, as is."""
+
+
+class AgentTool(Protocol):
+    """What the agent needs of a tool, wherever the tool runs."""
+
+    @property
+    def name(self) -> str: ...
+
+    @property
+    def version(self) -> str: ...
+
+    @property
+    def spec(self) -> ToolParam: ...
+
+    def run(self, arguments: Mapping[str, JsonValue]) -> str: ...
 
 
 @dataclass(frozen=True)

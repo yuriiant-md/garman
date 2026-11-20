@@ -313,6 +313,23 @@ GARMAN_FARMER_ID=farmer_a uv run python -m src.servers.calculators_server  # eff
 
 Tests talk to each server through an MCP client, in memory and once as a subprocess: `tests/test_contracts_server.py`, `tests/test_calculators_server.py`.
 
+### The agent as an MCP client
+
+The stage 3 agent does not import these functions: it starts both servers as subprocesses and calls their tools through an MCP client (`src/agents/mcp_tools.py`). Each server starts once per session, not per call. The agent takes each tool's description, argument schema and version from the server, so the trace records which version answered (`tool_version`), and the servers' instructions are added to the agent's prompt (`prompts/agent_v1.md`). A refusal (a 403 for another farmer's contract, a bad argument) reaches the model as the server's own text, marked as an error; the prompt tells the model not to look for a workaround and to explain the refusal to the farmer. A server process gets only the farmer's id and a short safe list of variables (PATH, HOME, ...), never the API key.
+
+Tests: `tests/test_agent_mcp_tools.py`, both servers in memory with a scripted model, and once as subprocesses.
+
+### Why MCP and not function calling
+
+With function calling the tools would be functions inside the agent's process, and only this agent could use them. Over MCP:
+
+- **One tool, several clients.** The same servers serve the agent, the Telegram bot (stage 4) and Claude Desktop or Claude Code (`claude mcp add ...`) with no extra code, and a fix reaches all of them.
+- **Access is checked by the server, not by the model.** The farmer is fixed when the server starts. The model cannot pass another farmer, and a request for another farmer's contract is refused on the server's side (403), whatever the prompt says.
+- **The money is counted outside the model.** The calculators return numbers with their sources and dates; the model only reads them.
+- **The description travels with the tool.** Its versioned description and schema come from the server, so no client keeps a stale copy.
+
+The cost: a process per server (about 1 s to start) and an async SDK behind a sync agent (one event loop in a thread of its own).
+
 ## CI
 
 GitHub Actions (`.github/workflows/ci.yml`) checks every push and pull request, free and with no key: `uv sync --locked` (exactly the versions of `uv.lock`), `pytest`, `mypy`, the rules on the newest run of the answers (`score_answers`, thresholds of `configs/eval.yaml`) and the calibration of the judge (`calibrate_judge`, agreement ≥ 80%). A threshold that is not met fails the run. The tests need neither Qdrant nor the models: Qdrant runs in memory, the embedder and the reranker are replaced by fakes.
@@ -372,6 +389,7 @@ prompts/
   extract_v2.md            prompt with per-field rules; {today} becomes the run date
   answer_v1.md … answer_v3.md  stage 2 answer prompts; v3 is in configs/answer.yaml
   judge_correct_v1.md, judge_faithful_v1.md, judge_faithful_v2.md  the prompts of the stage 2 judge; faithful v2 is in configs/judge.yaml
+  agent_v1.md              the stage 3 agent's system prompt; the MCP servers' instructions are added to it
   CHANGELOG.md             what changed between versions and why
 tools/                     stage 3 tool descriptions the model reads: <name>.yaml with a version + CHANGELOG.md
 src/schemas/
@@ -403,6 +421,13 @@ src/servers/               stage 3 MCP servers, read-only, one farmer each
   contracts_server.py      MCP server contracts: list_contracts, contract_outline, get_clause
   calculators_server.py    MCP server calculators: effective_price, penalty_risk
   registry.py              a function becomes a read-only tool with its description from tools/
+src/agents/                stage 3 agent: a LangGraph loop of model and tool calls under limits
+  graph.py                 the loop; a limit stops it with a partial answer, a tool error goes back to the model
+  limits.py                steps, tokens, cost and time per request, from configs/agent.yaml
+  model.py                 Claude behind a narrow interface, so tests use a scripted model
+  tools.py                 a local tool: tools/<name>.yaml + Pydantic arguments + a function
+  mcp_tools.py             the tools of the MCP servers for the agent: one connection per session
+  trace.py                 the trace of one request, one JSONL line
 src/rag/
   sources.py               reads and checks data/rag_sources.csv: types, articles of each law, course minimums
   documents.py             an ingested document (parts with a page or an article), its manifest entry, JSONL

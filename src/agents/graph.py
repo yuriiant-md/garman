@@ -31,7 +31,7 @@ from concurrent.futures import Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Literal, TypedDict
+from typing import Literal, TypedDict
 from uuid import uuid4
 
 import anthropic
@@ -48,7 +48,7 @@ from src.agents.model import (
     ToolRequest,
     tool_results_message,
 )
-from src.agents.tools import InvalidArguments, Tool
+from src.agents.tools import AgentTool, InvalidArguments, ToolRefused
 from src.agents.trace import ToolCall, Trace, TraceStep, append_trace
 from src.extraction.retry import is_retryable
 
@@ -81,7 +81,7 @@ class AgentState(TypedDict):
 @dataclass(frozen=True)
 class Agent:
     model: ChatModel
-    tools: tuple[Tool[Any], ...]  # Any: each tool has its own arguments model
+    tools: tuple[AgentTool, ...]  # local (tools.Tool) or on an MCP server (mcp_tools.McpTool)
     system: str
     limits: Limits
     prices: tuple[float, float]  # USD per 1M input and output tokens, from models.yaml
@@ -231,7 +231,7 @@ class Agent:
     def _tool_call(
         self,
         request: ToolRequest,
-        tool: Tool[Any] | None,
+        tool: AgentTool | None,
         future: Future[tuple[object, float]] | None,
         waited: float,
     ) -> ToolCall:
@@ -250,7 +250,8 @@ class Agent:
         if not future.done():
             return done(error=f"timeout after {self.limits.tool_timeout_s:g} s")
         error = future.exception()
-        if isinstance(error, InvalidArguments):  # already names the tool and every bad field
+        # already worded for the model: the bad fields, or the server's refusal (403, ...)
+        if isinstance(error, InvalidArguments | ToolRefused):
             return done(error=str(error))
         if error is not None:  # the tool's failure goes back to the model, the run goes on
             return done(error=f"{type(error).__name__}: {error}")

@@ -339,6 +339,8 @@ configs/
   answer.yaml              stage 2 answers: the model, the prompt and how the context is built
   eval.yaml                stage 2 thresholds of the rule checks
   judge.yaml               the stage 2 LLM judge: the model, its prompts, prices and thresholds
+  rates.yaml               stage 3 calculators, the same for every farmer: NBU discount rate, NBU exchange rates, VAT; each number with its date
+  playbooks/               one farmer's numbers for the calculators: warehouse, freight with dates, cost of money (farmer_a.yaml is synthetic)
 data/
   texts/                   the 48 texts the models get
   synthetic/               golden Deal and "dirtiness" parameters of each synthetic text
@@ -376,6 +378,11 @@ src/extraction/
 src/documents/
   pdf.py                   the text layer of a PDF; page numbers, headers and footers removed
   masking.py               personal data in contracts, laws and decisions becomes tags like [ПІБ]
+src/tools/                 stage 3 calculators: money in plain Python, never by the model
+  money.py                 Decimal arithmetic: rounding to the kopeck, the cost of waiting, banking days
+  playbook.py              reads a farmer's playbook and configs/rates.yaml; dated numbers, stale after 30 days
+  price.py                 effective price, UAH/t at the farmer's warehouse: currency, VAT, freight, discounts, waiting
+  risk.py                  a contract penalty in UAH and whether it is above the farmer's threshold
 src/rag/
   sources.py               reads and checks data/rag_sources.csv: types, articles of each law, course minimums
   documents.py             an ingested document (parts with a page or an article), its manifest entry, JSONL

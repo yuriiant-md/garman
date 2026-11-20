@@ -1,0 +1,28 @@
+# Shared numbers of the stage 3 calculators (src/tools/playbook.py, Rates): the same for every
+# farmer. A farmer's own numbers (freight, cost of money) are in configs/playbooks/<farmer_id>.yaml.
+#
+# Every number that goes out of date has the day it was taken (as_of) and where from (source);
+# the calculation shows both next to the number and marks it stale after 30 days.
+# The NBU discount rate is an EXAMPLE value: check it on bank.gov.ua before a demo.
+
+nbu_discount_rate_pct:   # % a year; used when the farmer's playbook has no money_rate_pct
+  value: 15.5
+  as_of: 2026-11-20
+  source: "облікова ставка НБУ"
+
+# UAH for one unit of the currency, NBU official rate, taken once by hand from the NBU API:
+#   https://bank.gov.ua/NBUStatService/v1/statdirectory/exchange?valcode=USD&date=YYYYMMDD&json
+# In production the rate is fetched once a day (later); until then update these by hand.
+fx_uah:
+  - {currency: USD, value: 45.0532, as_of: 2026-11-20, source: "курс НБУ"}
+  - {currency: EUR, value: 49.5335, as_of: 2026-11-20, source: "курс НБУ"}
+
+vat:
+  default_pct: 20
+  reduced_pct: 14        # operations with these crops (ПКУ, ст. 193.1, п. «в»)
+  reduced_crops: [wheat, corn, barley, sunflower, soy, rapeseed]
+  source: "ПКУ, ст. 193.1"
+
+# Days the VAT part waits when a contract pays it only after the tax invoice is registered
+# (trap 2): an estimate, the registration may take until the middle of the next month.
+vat_registration_days: 30

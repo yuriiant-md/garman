@@ -1,0 +1,35 @@
+# Playbook of farmer_a for the stage 3 calculators (src/tools/playbook.py, Playbook).
+# SYNTHETIC: no real farm, the places are towns and ports, the numbers are examples.
+# The file name is the farmer id the servers start with (GARMAN_FARMER_ID).
+#
+# Every number that goes out of date has the day it was taken (as_of) and where from (source);
+# the calculation shows both and marks the number stale after 30 days, so the bot asks again.
+
+farmer_id: farmer_a
+
+warehouse:               # delivery here costs no freight (FCA or EXW at the farm)
+  name: "Склад фермера, с. Зелене"
+  aliases: ["с. Зелене", "склад продавця"]
+
+compare_with_vat: false  # a VAT payer compares prices without VAT
+
+money_rate_pct:          # % a year the farmer pays for money; without it the NBU rate is used
+  value: 18
+  as_of: 2026-11-01
+  source: "кредитна ставка фермера"
+
+penalty_threshold_pct_per_day: 0.1  # a contract penalty above this is flagged (trap 1)
+documents_days: 7        # for the originals of the documents to reach the buyer (trap 6)
+
+freight:                 # UAH per tonne from the warehouse, without VAT like the prices
+  - name: "Одеса"
+    aliases: ["порт Одеса", "м. Одеса"]
+    uah_per_t: {value: 750, as_of: 2026-11-01, source: "плейбук фермера"}
+  - name: "Чорноморськ"
+    aliases: ["порт Чорноморськ"]
+    uah_per_t: {value: 780, as_of: 2026-11-01, source: "плейбук фермера"}
+  - name: "Миколаїв"
+    aliases: ["порт Миколаїв", "м. Миколаїв"]
+    uah_per_t: {value: 620, as_of: 2026-11-01, source: "плейбук фермера"}
+  - name: "Елеватор Південний"
+    uah_per_t: {value: 180, as_of: 2026-11-01, source: "плейбук фермера"}

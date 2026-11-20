@@ -7,8 +7,8 @@ Desktop), never by the model; GARMAN_CONTRACTS_DIR overrides the folder (data/ra
 The rules of access live in contract_access.py; this file only puts them behind MCP.
 
 A tool's description is the one in tools/<name>.yaml, its version goes to the client in the
-tool's meta. The SDK checks the arguments against the schema built from the type hints, so an
-id that could be a path is refused before contract_access sees it (and there again).
+tool's meta (registry.py). The SDK checks the arguments against the schema built from the type
+hints, so an id that could be a path is refused before contract_access sees it (and there again).
 
 A refusal of ours (403, 404, an unreadable file, a bad argument) becomes a ToolError: the
 model reads its text and can explain it to the farmer. Any other exception the SDK reports
@@ -18,17 +18,15 @@ without its text, so a crash shows nothing of the server to the client.
 import logging
 import os
 import sys
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated
 
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
-from mcp.types import ToolAnnotations
 from pydantic import Field
 
-from src.agents.tools import load_tool_description
 from src.servers.contract_access import (
     CLAUSE_PATTERN,
     ID_PATTERN,
@@ -41,6 +39,7 @@ from src.servers.contract_access import (
     OutlineItem,
     UnreadableContract,
 )
+from src.servers.registry import register_read_only
 
 REPO = Path(__file__).resolve().parents[2]
 TOOLS_DIR = REPO / "tools"
@@ -53,7 +52,6 @@ INSTRUCTIONS = (
     "Порядок: list_contracts → contract_outline → get_clause. "
     "На 403 не шукай обхідних шляхів: поясни фермеру, що це не його договір."
 )
-READ_ONLY = ToolAnnotations(read_only_hint=True, open_world_hint=False)
 REFUSALS = (InvalidRequest, AccessDenied, NotFound, UnreadableContract)
 
 ContractId = Annotated[
@@ -83,21 +81,8 @@ def build_server(shelf: ContractShelf, *, tools_dir: Path = TOOLS_DIR) -> MCPSer
 
     server = MCPServer(SERVER_NAME, instructions=INSTRUCTIONS)
     for func in (list_contracts, contract_outline, get_clause):
-        _register(server, func, tools_dir)
+        register_read_only(server, func, tools_dir)
     return server
-
-
-def _register(server: MCPServer, func: Callable[..., Any], tools_dir: Path) -> None:
-    description = load_tool_description(tools_dir / f"{func.__name__}.yaml")
-    if description.side_effect:
-        raise ValueError(f"{description.name}: the contracts server is read-only")
-    server.add_tool(
-        func,
-        name=description.name,
-        description=description.description,
-        annotations=READ_ONLY,
-        meta={"version": description.version},
-    )
 
 
 @contextmanager

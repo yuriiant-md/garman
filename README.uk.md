@@ -299,6 +299,20 @@ uv run python -m scripts.calibrate_judge                                        
 
 **Що лишилось:** помилки відповідей, які знаходить суддя, — на боці відповідей: довід сторони як позиція суду (q05, t03), розширена або пропущена умова (q01, t05, q13, s03).
 
+## MCP-сервери (етап 3)
+
+Два MCP-сервери лише для читання, через stdio, кожен для одного фермера. Фермера задає при запуску той, хто запускає сервер, у `GARMAN_FARMER_ID`, а не модель: жоден інструмент не має аргументу «фермер». Опис інструмента — `tools/<name>.yaml` (його версія йде клієнту в meta інструмента, зміни — у `tools/CHANGELOG.md`); інструмент, описаний із побічним ефектом, зупиняє сервер на старті.
+
+```bash
+GARMAN_FARMER_ID=farmer_a uv run python -m src.servers.contracts_server    # list_contracts, contract_outline, get_clause
+GARMAN_FARMER_ID=farmer_a uv run python -m src.servers.calculators_server  # effective_price, penalty_risk
+```
+
+- `contracts` читає PDF фермера з `data/raw/farmers/<farmer_id>/` (інша папка — `GARMAN_CONTRACTS_DIR`); чужий договір — 403.
+- `calculators` читає `configs/playbooks/<farmer_id>.yaml` і `configs/rates.yaml` на старті (інші шляхи — `GARMAN_PLAYBOOKS_DIR`, `GARMAN_RATES_PATH`). Аргументи перевіряються моделями `PriceTerms` і `PenaltyCase` (строгі числа, межі, відомі валюти й одиниці, без зайвих полів); відмова називає поле. Сьогоднішню дату сервер бере сам, тож модель не може видати старий курс за свіжий. Число, якого бракує для розрахунку, повертається в `missing`, а не як помилка.
+
+Тести говорять із кожним сервером через MCP-клієнт, у пам'яті й один раз як підпроцес: `tests/test_contracts_server.py`, `tests/test_calculators_server.py`.
+
 ## CI
 
 GitHub Actions (`.github/workflows/ci.yml`) перевіряє кожен push і pull request, безкоштовно й без ключа: `uv sync --locked` (точно версії з `uv.lock`), `pytest`, `mypy`, правила на найновішому прогоні відповідей (`score_answers`, пороги з `configs/eval.yaml`) і калібрування судді (`calibrate_judge`, згода ≥ 80%). Непройдений поріг валить запуск. Тестам не потрібні ні Qdrant, ні моделі: Qdrant працює в пам'яті, embedder і reranker замінені підробками.
@@ -359,6 +373,7 @@ prompts/
   answer_v1.md … answer_v3.md  промпти відповідей етапу 2; v3 стоїть у configs/answer.yaml
   judge_correct_v1.md, judge_faithful_v1.md, judge_faithful_v2.md  промпти судді етапу 2; faithful v2 — у configs/judge.yaml
   CHANGELOG.md             що змінювалось між версіями і чому
+tools/                     описи інструментів етапу 3, які читає модель: <name>.yaml з версією + CHANGELOG.md
 src/schemas/
   deal.py                  схема угоди Deal: класи з цінами й показниками якості
 src/extraction/
@@ -383,6 +398,11 @@ src/tools/                 калькулятори етапу 3: гроші р�
   playbook.py              читання плейбуку фермера й configs/rates.yaml; числа з датою, застарілі після 30 днів
   price.py                 ефективна ціна, грн/т на складі фермера: валюта, ПДВ, фрахт, знижки, очікування
   risk.py                  неустойка договору в гривнях і чи вона вища за поріг фермера
+src/servers/               MCP-сервери етапу 3, лише читання, кожен для одного фермера
+  contract_access.py       які договори може читати фермер: 403 / 404, пункти і зміст
+  contracts_server.py      MCP-сервер contracts: list_contracts, contract_outline, get_clause
+  calculators_server.py    MCP-сервер calculators: effective_price, penalty_risk
+  registry.py              функція стає інструментом лише для читання з описом із tools/
 src/rag/
   sources.py               читання й перевірка data/rag_sources.csv: типи, статті кожного закону, мінімуми курсу
   documents.py             документ після ingestion (частини зі сторінкою або статтею), запис маніфесту, JSONL

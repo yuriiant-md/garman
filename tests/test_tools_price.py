@@ -352,3 +352,10 @@ def test_the_effective_price_is_the_sum_of_its_steps() -> None:
 def test_terms_out_of_range_are_refused(changes: dict[str, Any]) -> None:
     with pytest.raises(ValidationError):
         terms(**changes)
+
+
+def test_stale_cannot_disagree_with_the_steps() -> None:
+    old = compute(terms(amount_per_t=Decimal("9200"), basis=Basis.CPT, place="Одеса"))
+
+    with pytest.raises(ValidationError, match="stale must be true exactly when a step is stale"):
+        EffectivePrice(uah_per_t=old.uah_per_t, steps=old.steps, stale=False)

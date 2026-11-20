@@ -299,6 +299,20 @@ The judge passes and is used (with `judge_faithful_v1` faithful agreed on 40 of 
 
 **Left to do:** the errors of the answers the judge finds, on the answering side: a party's arguments given as the court's view (q05, t03), a condition widened or dropped (q01, t05, q13, s03).
 
+## MCP servers (stage 3)
+
+Two read-only MCP servers over stdio, each for one farmer. The farmer is named at start in `GARMAN_FARMER_ID`, by whoever launches the server, never by the model: no tool has a farmer argument. A tool's description is `tools/<name>.yaml` (its version goes to the client in the tool's meta, changes in `tools/CHANGELOG.md`); a tool described with a side effect stops the server at start.
+
+```bash
+GARMAN_FARMER_ID=farmer_a uv run python -m src.servers.contracts_server    # list_contracts, contract_outline, get_clause
+GARMAN_FARMER_ID=farmer_a uv run python -m src.servers.calculators_server  # effective_price, penalty_risk
+```
+
+- `contracts` reads the farmer's PDFs from `data/raw/farmers/<farmer_id>/` (`GARMAN_CONTRACTS_DIR` overrides it); another farmer's contract is a 403.
+- `calculators` reads `configs/playbooks/<farmer_id>.yaml` and `configs/rates.yaml` at start (`GARMAN_PLAYBOOKS_DIR`, `GARMAN_RATES_PATH` override them). The arguments are checked against `PriceTerms` and `PenaltyCase` (strict numbers, ranges, known currencies and units, no extra fields); a refusal names the field. The server takes today's date itself, so the model cannot make an old rate look fresh. A number the calculation lacks comes back in `missing`, not as an error.
+
+Tests talk to each server through an MCP client, in memory and once as a subprocess: `tests/test_contracts_server.py`, `tests/test_calculators_server.py`.
+
 ## CI
 
 GitHub Actions (`.github/workflows/ci.yml`) checks every push and pull request, free and with no key: `uv sync --locked` (exactly the versions of `uv.lock`), `pytest`, `mypy`, the rules on the newest run of the answers (`score_answers`, thresholds of `configs/eval.yaml`) and the calibration of the judge (`calibrate_judge`, agreement ≥ 80%). A threshold that is not met fails the run. The tests need neither Qdrant nor the models: Qdrant runs in memory, the embedder and the reranker are replaced by fakes.
@@ -359,6 +373,7 @@ prompts/
   answer_v1.md … answer_v3.md  stage 2 answer prompts; v3 is in configs/answer.yaml
   judge_correct_v1.md, judge_faithful_v1.md, judge_faithful_v2.md  the prompts of the stage 2 judge; faithful v2 is in configs/judge.yaml
   CHANGELOG.md             what changed between versions and why
+tools/                     stage 3 tool descriptions the model reads: <name>.yaml with a version + CHANGELOG.md
 src/schemas/
   deal.py                  the Deal schema: grades with their prices and quality indicators
 src/extraction/
@@ -383,6 +398,11 @@ src/tools/                 stage 3 calculators: money in plain Python, never by 
   playbook.py              reads a farmer's playbook and configs/rates.yaml; dated numbers, stale after 30 days
   price.py                 effective price, UAH/t at the farmer's warehouse: currency, VAT, freight, discounts, waiting
   risk.py                  a contract penalty in UAH and whether it is above the farmer's threshold
+src/servers/               stage 3 MCP servers, read-only, one farmer each
+  contract_access.py       which contracts a farmer may read: 403 / 404, clauses and outline
+  contracts_server.py      MCP server contracts: list_contracts, contract_outline, get_clause
+  calculators_server.py    MCP server calculators: effective_price, penalty_risk
+  registry.py              a function becomes a read-only tool with its description from tools/
 src/rag/
   sources.py               reads and checks data/rag_sources.csv: types, articles of each law, course minimums
   documents.py             an ingested document (parts with a page or an article), its manifest entry, JSONL

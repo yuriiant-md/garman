@@ -26,7 +26,7 @@ and the delivery as the start of the term when the event is not written.
 from datetime import date
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from src.schemas.deal import Basis, Crop, Currency, DaysType, PaymentTrigger
 from src.tools.money import (
@@ -99,11 +99,15 @@ class EffectivePrice(_Model):
     uah_per_t: Decimal | None  # None when something is missing
     steps: tuple[Step, ...]
     missing: tuple[str, ...] = ()  # what to ask the farmer before the price can be computed
+    # A field, not a computed_field: an MCP output schema is built in validation mode, where a
+    # computed field is absent, so a client would refuse the answer that carries it (#23)
+    stale: bool = False
 
-    @computed_field  # type: ignore[prop-decorator]
-    @property
-    def stale(self) -> bool:
-        return any(step.stale for step in self.steps)
+    @model_validator(mode="after")
+    def stale_as_the_steps(self) -> "EffectivePrice":
+        if self.stale != any(step.stale for step in self.steps):
+            raise ValueError("stale must be true exactly when a step is stale")
+        return self
 
 
 def effective_price(
@@ -127,7 +131,9 @@ def effective_price(
         *_vat_waiting_steps(terms, playbook, rates, today, (gross - net) * paid_share),
     )
     total = sum((step.uah_per_t for step in steps), Decimal(0))
-    return EffectivePrice(uah_per_t=total, steps=steps)
+    return EffectivePrice(
+        uah_per_t=total, steps=steps, stale=any(step.stale for step in steps)
+    )
 
 
 def _gaps(terms: PriceTerms, playbook: Playbook, rates: Rates) -> tuple[str, ...]:

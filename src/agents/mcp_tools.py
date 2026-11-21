@@ -7,7 +7,10 @@ A server over stdio takes about a second to start, so it is started once, not pe
 tool keeps what its server says of it: the description and the argument schema the model reads,
 and the version (meta.version, from tools/<name>.yaml) that goes to the trace. The server checks
 the arguments itself; its refusal (403, a bad field) comes back as ToolRefused with the server's
-own text, which the model reads and can explain to the farmer.
+own text, which the model reads and can explain to the farmer. Each answer is checked by the
+tool's outputSchema from the server (JSON Schema) like a local tool's by its Pydantic model, and
+a tool is safe to retry only when the server marks it read-only (annotations.read_only_hint);
+a tool with no outputSchema stops the start, as one with no version does.
 
 Sync and async. The agent runs tool calls in threads (graph.py), the MCP SDK is async. So the
 connection runs one event loop in a thread of its own, and one task in that loop holds every
@@ -36,6 +39,9 @@ from types import TracebackType
 from typing import Self
 
 from anthropic.types import ToolParam
+from jsonschema import SchemaError
+from jsonschema.protocols import Validator
+from jsonschema.validators import validator_for
 from mcp import Client
 from mcp.client.stdio import StdioServerParameters
 from mcp.server.mcpserver import MCPServer
@@ -43,7 +49,7 @@ from mcp.types import CallToolResult, TextContent
 from mcp.types import Tool as ServerTool
 from pydantic import JsonValue
 
-from src.agents.tools import TOOL_NAME_PATTERN, ToolRefused
+from src.agents.tools import MAX_PROBLEMS, TOOL_NAME_PATTERN, SchemaMismatch, ToolRefused
 from src.extraction.prompts import VERSION_PATTERN
 from src.servers.contracts_server import FARMER_ENV
 
@@ -74,9 +80,27 @@ class McpTool:
     version: str
     spec: ToolParam
     call: CallTool
+    output: Validator  # of the server's outputSchema
+    side_effect: bool  # False only for a tool the server marks read-only
 
     def run(self, arguments: Mapping[str, JsonValue]) -> str:
         return _result_text(self.call(dict(arguments)))
+
+    def check_output(self, text: str) -> None:
+        try:
+            answer = json.loads(text)
+        except json.JSONDecodeError:
+            raise SchemaMismatch(f"{self.name} answered off its output schema: not JSON") from None
+        # a path may mix names and indexes: sorted as text, never compared str with int
+        errors = sorted(
+            self.output.iter_errors(answer), key=lambda error: [str(part) for part in error.path]
+        )
+        if errors:
+            problems = "; ".join(
+                f"{'.'.join(str(part) for part in error.path) or 'answer'}: {error.message}"
+                for error in errors[:MAX_PROBLEMS]
+            )
+            raise SchemaMismatch(f"{self.name} answered off its output schema: {problems}")
 
 
 class McpConnection:
@@ -243,7 +267,31 @@ def _agent_tool(server: str, tool: ServerTool, call: CallTool) -> McpTool:
         "description": tool.description or "",
         "input_schema": tool.input_schema,
     }
-    return McpTool(server=server, name=tool.name, version=version, spec=spec, call=call)
+    read_only = tool.annotations is not None and tool.annotations.read_only_hint is True
+    return McpTool(
+        server=server,
+        name=tool.name,
+        version=version,
+        spec=spec,
+        call=call,
+        output=_output_validator(server, tool),
+        side_effect=not read_only,
+    )
+
+
+def _output_validator(server: str, tool: ServerTool) -> Validator:
+    """A validator of the tool's outputSchema; none, or a broken one, stops the start."""
+    if tool.output_schema is None:
+        raise ValueError(f"server {server}: tool {tool.name} has no output schema")
+    schema = tool.output_schema
+    cls = validator_for(schema)
+    try:
+        cls.check_schema(schema)
+    except SchemaError as error:
+        raise ValueError(
+            f"server {server}: tool {tool.name}: bad output schema: {error.message}"
+        ) from None
+    return cls(schema)
 
 
 def _cause(error: BaseException) -> BaseException:

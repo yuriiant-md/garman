@@ -109,7 +109,7 @@ def search_corpus_tool(
         # compact, no nulls, Ukrainian as is: fewer tokens for the model
         return search_corpus(search, settings, args.query).model_dump_json(exclude_none=True)
 
-    return load_tool(path, SearchCorpusArgs, run)
+    return load_tool(path, SearchCorpusArgs, run, output=CorpusHits)
 
 
 def _is_contract(hit: Hit) -> bool:

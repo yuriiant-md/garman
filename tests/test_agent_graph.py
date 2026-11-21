@@ -7,7 +7,7 @@ from typing import Any
 import anthropic
 import httpx2
 import pytest
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 from src.agents.graph import Agent
 from src.agents.limits import Limits, StopReason
@@ -32,15 +32,25 @@ class NoArgs(ToolArgs):
     pass
 
 
+class Found(BaseModel):
+    """The output schema of the test tools."""
+
+    text: str
+
+
+def found(text: str) -> str:
+    return Found(text=text).model_dump_json()
+
+
 def tool(name: str, run: Callable[..., object], args: type[ToolArgs] = QueryArgs) -> Tool[Any]:
     description = ToolDescription(
         name=name, version="v1", side_effect=False, description=f"{name} for tests"
     )
-    return Tool(description=description, args=args, func=run)  # type: ignore[arg-type]
+    return Tool(description=description, args=args, func=run, output=Found)  # type: ignore[arg-type]
 
 
 def search(args: QueryArgs) -> str:
-    return f"знайдено: {args.query}"
+    return found(f"знайдено: {args.query}")
 
 
 SEARCH = tool("search_corpus", search)
@@ -98,12 +108,12 @@ def test_a_tool_result_goes_back_to_the_model_and_lands_in_the_trace() -> None:
 
     assert trace.stop_reason == StopReason.ANSWERED
     assert tool_results(model, 1) == [
-        {"type": "tool_result", "tool_use_id": "t1", "content": "знайдено: строк оплати"}
+        {"type": "tool_result", "tool_use_id": "t1", "content": found("знайдено: строк оплати")}
     ]
     first = trace.steps[0]
     assert first.text == "Шукаю."
     assert [(c.name, c.arguments, c.result) for c in first.tool_calls] == [
-        ("search_corpus", {"query": "строк оплати"}, "знайдено: строк оплати")
+        ("search_corpus", {"query": "строк оплати"}, found("знайдено: строк оплати"))
     ]
     assert trace.steps[1].tool_calls == ()
 
@@ -167,7 +177,7 @@ def test_the_request_timeout_stops_the_run_before_the_next_model_call() -> None:
 
     def slow_search(args: QueryArgs) -> str:
         clock.now += 61  # the request has run past its 60 s
-        return "знайдено"
+        return found("знайдено")
 
     model = FakeModel(turn("", ask(query="x")), turn("never"))
     agent = make_agent(model, tools=(tool("search_corpus", slow_search),), clock=clock)
@@ -227,15 +237,15 @@ def test_two_calls_with_the_same_id_both_run() -> None:
     trace = make_agent(model).run("?")
 
     assert [call.result for call in trace.steps[0].tool_calls] == [
-        "знайдено: ціна",
-        "знайдено: штраф",
+        found("знайдено: ціна"),
+        found("знайдено: штраф"),
     ]
 
 
 def test_each_tool_call_reports_its_own_latency() -> None:
     def slow(args: NoArgs) -> str:
         time.sleep(0.1)
-        return "повільно"
+        return found("повільно")
 
     model = FakeModel(
         turn("", ask(call_id="a", query="x"), ask(name="slow", call_id="b")), turn("готово")
@@ -273,7 +283,7 @@ def test_invalid_arguments_go_back_to_the_model_which_fixes_the_call() -> None:
     assert rejected.error.startswith("invalid arguments for search_corpus: query:")
     assert tool_results(model, 1)[0]["is_error"] is True
     assert tool_results(model, 1)[0]["content"] == rejected.error
-    assert trace.steps[1].tool_calls[0].result == "знайдено: строк оплати"
+    assert trace.steps[1].tool_calls[0].result == found("знайдено: строк оплати")
     assert trace.stop_reason == StopReason.ANSWERED
 
 

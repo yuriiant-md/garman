@@ -5,6 +5,9 @@ The description is a prompt: it decides when the model calls the tool, so it liv
 code with a version, like prompts/ (a change → a new version and a line in tools/CHANGELOG.md).
 The argument schema the model sees is generated from the Pydantic model, so the two cannot drift.
 
+The answer is checked too, by a Pydantic model of the output (check_output, called for every
+attempt in faults.run_guarded): an answer off its schema is an error, never a silent gap.
+
 The model's arguments are validated before the function runs. Invalid ones raise
 InvalidArguments with every bad field named; the agent sends that text back to the model as the
 tool's error (graph.py), and the model can fix the call. The function itself never sees them.
@@ -54,6 +57,10 @@ class ToolRefused(Exception):
     """The tool said no (403, not found, bad arguments): its text is for the model, as is."""
 
 
+class SchemaMismatch(Exception):
+    """The tool's answer does not match its output schema: the tool changed, not the question."""
+
+
 class AgentTool(Protocol):
     """What the agent needs of a tool, wherever the tool runs."""
 
@@ -66,7 +73,12 @@ class AgentTool(Protocol):
     @property
     def spec(self) -> ToolParam: ...
 
+    @property
+    def side_effect(self) -> bool: ...  # True: never retried automatically (faults.py)
+
     def run(self, arguments: Mapping[str, JsonValue]) -> str: ...
+
+    def check_output(self, text: str) -> None: ...  # raises SchemaMismatch
 
 
 @dataclass(frozen=True)
@@ -74,6 +86,7 @@ class Tool[A: ToolArgs]:
     description: ToolDescription
     args: type[A]
     func: Callable[[A], str]
+    output: type[BaseModel]  # the shape of the answer, checked for every answer
 
     @property
     def name(self) -> str:
@@ -82,6 +95,10 @@ class Tool[A: ToolArgs]:
     @property
     def version(self) -> str:
         return self.description.version
+
+    @property
+    def side_effect(self) -> bool:
+        return self.description.side_effect
 
     @property
     def spec(self) -> ToolParam:
@@ -101,6 +118,14 @@ class Tool[A: ToolArgs]:
             ) from None
         return self.func(parsed)
 
+    def check_output(self, text: str) -> None:
+        try:
+            self.output.model_validate_json(text)
+        except ValidationError as error:
+            raise SchemaMismatch(
+                f"{self.name} answered off its output schema: {_problems(error)}"
+            ) from None
+
 
 def load_tool_description(path: Path) -> ToolDescription:
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
@@ -115,8 +140,10 @@ def load_tool_description(path: Path) -> ToolDescription:
     return description
 
 
-def load_tool[A: ToolArgs](path: Path, args: type[A], func: Callable[[A], str]) -> Tool[A]:
-    return Tool(description=load_tool_description(path), args=args, func=func)
+def load_tool[A: ToolArgs](
+    path: Path, args: type[A], func: Callable[[A], str], *, output: type[BaseModel]
+) -> Tool[A]:
+    return Tool(description=load_tool_description(path), args=args, func=func, output=output)
 
 
 def _problems(error: ValidationError) -> str:

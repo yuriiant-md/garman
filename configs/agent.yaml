@@ -11,3 +11,9 @@ limits:
   max_cost_usd: 0.01
   tool_timeout_s: 20      # the calls of one turn, run in parallel; a reranked search takes ≈ 2 s
   request_timeout_s: 120  # the whole request; one model call may take up to 60 s (models.yaml)
+# A tool without a side effect is tried again on a timeout, 429, 5xx or a lost connection
+# (src/agents/faults.py); a tool with one never is. The pauses (0.5 + 1 s) must fit in
+# tool_timeout_s, or the turn would abandon the call mid-retry.
+retries:
+  max_attempts: 3
+  backoff_s: 0.5         # before the 2nd attempt; doubles before each next one

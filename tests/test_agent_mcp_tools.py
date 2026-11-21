@@ -11,19 +11,30 @@ import pytest
 from mcp.client.stdio import StdioServerParameters, get_default_environment
 from mcp.server.mcpserver import MCPServer
 from mcp.shared.exceptions import MCPError
-from mcp.types import ListToolsResult, Tool
+from mcp.types import ListToolsResult, Tool, ToolAnnotations
+from pydantic import JsonValue
 
+from src.agents.faults import (
+    FAULTS_ENV,
+    NO_FAULTS,
+    FaultPlan,
+    RetryPolicy,
+    ToolUnavailable,
+    drift,
+    run_guarded,
+)
 from src.agents.graph import Agent
 from src.agents.limits import Limits, StopReason
 from src.agents.mcp_tools import (
     LOOP_THREAD_NAME,
     McpConnection,
     McpTool,
+    _agent_tool,
     _all_tools,
     garman_servers,
     system_prompt,
 )
-from src.agents.tools import ToolRefused, load_tool_description
+from src.agents.tools import SchemaMismatch, ToolRefused, load_tool_description
 from src.documents import contract
 from src.extraction.prompts import load_prompt
 from src.servers import calculators_server, contract_access, contracts_server
@@ -88,7 +99,7 @@ def loop_threads() -> list[threading.Thread]:
     return [thread for thread in threading.enumerate() if thread.name == LOOP_THREAD_NAME]
 
 
-def versioned_server(*, version: str | None) -> MCPServer:
+def versioned_server(*, version: str | None, read_only: bool = False) -> MCPServer:
     """A one-tool server; its tool sleeps as long as asked, to test the call timeout."""
     server = MCPServer("test-server", instructions="Тестовий сервер.")
 
@@ -96,7 +107,11 @@ def versioned_server(*, version: str | None) -> MCPServer:
         await anyio.sleep(seconds)
         return "прокинувся"
 
-    server.add_tool(nap, meta=None if version is None else {"version": version})
+    server.add_tool(
+        nap,
+        annotations=ToolAnnotations(read_only_hint=True) if read_only else None,
+        meta=None if version is None else {"version": version},
+    )
     return server
 
 
@@ -183,10 +198,107 @@ def test_a_call_over_the_timeout_fails_instead_of_hanging() -> None:
     assert time.perf_counter() - started < 3
 
 
+# --- retries and the output schema
+
+
+def test_every_tool_of_our_servers_is_read_only_so_safe_to_retry(
+    connection: McpConnection,
+) -> None:
+    assert [tool.name for tool in connection.tools if tool.side_effect] == []
+
+
+@pytest.mark.parametrize("read_only", [True, False])
+def test_only_a_tool_the_server_marks_read_only_is_safe_to_retry(read_only: bool) -> None:
+    server = versioned_server(version="v1", read_only=read_only)
+    with McpConnection({"test": server}, call_timeout_s=1) as opened:
+        assert opened.tools[0].side_effect is not read_only
+
+
+@pytest.mark.parametrize("read_only", [True, False])
+def test_an_mcp_timeout_is_retried_only_for_a_read_only_tool(read_only: bool) -> None:
+    policy = RetryPolicy(max_attempts=2, backoff_s=0)
+    server = versioned_server(version="v1", read_only=read_only)
+    with McpConnection({"test": server}, call_timeout_s=0.2) as opened:
+        outcome = run_guarded(opened.tools[0], {"seconds": 10}, NO_FAULTS, policy)
+
+    assert isinstance(outcome.error, ToolUnavailable)
+    assert outcome.attempts == (2 if read_only else 1)
+
+
+REAL_CALLS: tuple[tuple[str, dict[str, JsonValue]], ...] = (
+    ("list_contracts", {}),
+    ("contract_outline", {"contract_id": "k_001"}),
+    ("get_clause", {"contract_id": "k_001", "clause": "2.2"}),
+    (
+        "effective_price",
+        {"terms": {"crop": "wheat", "amount_per_t": 9000, "currency": "UAH", "place": "Село"}},
+    ),
+    (
+        "penalty_risk",
+        {"case": {"sum_uah": 1000000, "days": 10, "amount": 0.5, "unit": "pct_per_day"}},
+    ),
+)
+
+
+def test_real_calls_cover_every_tool_of_both_servers() -> None:
+    assert sorted(name for name, _ in REAL_CALLS) == sorted(CONTRACT_TOOLS + CALCULATOR_TOOLS)
+
+
+@pytest.mark.parametrize(("name", "arguments"), REAL_CALLS, ids=[name for name, _ in REAL_CALLS])
+def test_a_real_answer_passes_its_output_schema_and_its_drift_fails_it(
+    connection: McpConnection, name: str, arguments: dict[str, JsonValue]
+) -> None:
+    tool = by_name(connection, name)
+    answer = tool.run(arguments)
+
+    tool.check_output(answer)
+    with pytest.raises(SchemaMismatch):  # the schema fault works on every tool we have
+        tool.check_output(drift(answer))
+
+
+@pytest.mark.parametrize(
+    ("answer", "named"),
+    [("{}", "number"), ('{"number": 7}', "number"), ("не json", "not JSON")],
+)
+def test_an_answer_off_the_servers_output_schema_is_refused(
+    connection: McpConnection, answer: str, named: str
+) -> None:
+    with pytest.raises(SchemaMismatch, match=f"get_clause answered off its output schema.*{named}"):
+        by_name(connection, "get_clause").check_output(answer)
+
+
+def test_the_schema_fault_on_an_mcp_tool_is_an_error_in_the_trace(
+    connection: McpConnection,
+) -> None:
+    model = FakeModel(turn("", ask("list_contracts")), turn("Не вийшло."))
+    agent = make_agent(model, connection, FaultPlan.from_env({FAULTS_ENV: "schema"}))
+
+    trace = agent.run("Які в мене договори?")
+
+    [call] = trace.steps[0].tool_calls
+    assert call.result is None
+    assert call.error is not None
+    assert call.error.startswith("list_contracts answered off its output schema")
+
+
+def test_a_tool_without_an_output_schema_stops_the_start() -> None:
+    with pytest.raises(ValueError, match="tool bare has no output schema"):
+        _agent_tool("test", server_tool("bare"), call=lambda arguments: None)  # type: ignore[arg-type, return-value]
+
+
+def test_a_broken_output_schema_stops_the_start() -> None:
+    tool = server_tool("odd").model_copy(update={"output_schema": {"type": "nonsense"}})
+
+    with pytest.raises(ValueError, match="tool odd: bad output schema"):
+        _agent_tool("test", tool, call=lambda arguments: None)  # type: ignore[arg-type, return-value]
+
+
 # --- the agent with MCP tools
 
 
-def make_agent(model: FakeModel, connection: McpConnection) -> Agent:
+def make_agent(
+    model: FakeModel, connection: McpConnection, faults: FaultPlan = NO_FAULTS
+) -> Agent:
     return Agent(
         model=model,
         tools=connection.tools,
@@ -194,6 +306,7 @@ def make_agent(model: FakeModel, connection: McpConnection) -> Agent:
         limits=LIMITS,
         prices=(1.0, 5.0),
         model_name="haiku-5.5",
+        faults=faults,
     )
 
 

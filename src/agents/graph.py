@@ -10,16 +10,21 @@ The step limit is our own, not LangGraph's recursion_limit: that one raises and 
 while a stop here keeps it and turns it into a partial answer. recursion_limit stays as a guard
 against a bug in this graph only.
 
-A tool's failure (invalid arguments, timeout, unknown tool, exception, no text) goes back to the
-model as an error result and the run goes on: the model may fix the call or try another way.
+A tool's failure (invalid arguments, timeout, unknown tool, exception, no text, an answer off its
+schema) goes back to the model as an error result and the run goes on: the model may fix the
+call or try another way. Every call goes through faults.run_guarded, which injects the faults of
+FAULTS, retries a tool without a side effect on a transient error, and checks the answer by the
+tool's output schema; the trace keeps the attempts of each call. A tool's error is cut to
+MAX_ERROR_CHARS: a stack of text must not fill the model's context.
 A model's failure ends the run: an API error left after the SDK's retries, a malformed reply,
 or any stop but end_turn and tool_use (refusal, max_tokens, a full context window, ...).
 An API error that means the request itself is wrong (bad key, bad request) is raised, as in
 stages 1 and 2.
 
-The tool calls of one turn run in parallel and share one wait of tool_timeout_s. Python cannot
-kill a thread, so a call over the timeout is abandoned, not stopped: the agent stops waiting and
-goes on, the thread finishes in the background. That is safe for read-only tools; a tool with a
+The tool calls of one turn run in parallel and share one wait of tool_timeout_s, retries
+included: no retry pause is started past it. Python cannot kill a thread, so a call over the
+timeout is abandoned, not stopped: the agent stops waiting and goes on, the thread finishes its
+attempt in the background. That is safe for read-only tools; a tool with a
 side effect needs an idempotency key (issue #20). A thread that never finishes also keeps the
 process from exiting, since Python joins worker threads at exit: real tools must have their own
 timeouts (HTTP, Qdrant) shorter than tool_timeout_s.
@@ -30,6 +35,7 @@ from collections.abc import Callable, Mapping
 from concurrent.futures import Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
 from datetime import datetime
+from functools import partial
 from pathlib import Path
 from typing import Literal, TypedDict
 from uuid import uuid4
@@ -40,6 +46,15 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from pydantic import JsonValue
 
+from src.agents.faults import (
+    NO_FAULTS,
+    FaultPlan,
+    Outcome,
+    RetryPolicy,
+    Sleep,
+    ToolUnavailable,
+    run_guarded,
+)
 from src.agents.limits import Limits, StopReason, Usage, stop_reason
 from src.agents.model import (
     ChatModel,
@@ -48,7 +63,7 @@ from src.agents.model import (
     ToolRequest,
     tool_results_message,
 )
-from src.agents.tools import AgentTool, InvalidArguments, ToolRefused
+from src.agents.tools import AgentTool, InvalidArguments, SchemaMismatch, ToolRefused
 from src.agents.trace import ToolCall, Trace, TraceStep, append_trace
 from src.extraction.retry import is_retryable
 
@@ -56,6 +71,10 @@ USABLE_FINISHES = frozenset({"end_turn", "tool_use"})  # any other stop cannot b
 NODES_PER_STEP = 3  # check, model, tools
 RECURSION_MARGIN = 5  # the first check and finish, with room to spare
 PARTIAL_RESULT_CHARS = 500  # of each tool result quoted in a partial answer
+MAX_ERROR_CHARS = 500  # of a tool's error the model reads
+CUT_MARK = "…"
+# errors already worded for the model: shown as they are, not as "Type: message"
+WORDED_FOR_MODEL = (InvalidArguments, ToolRefused, ToolUnavailable, SchemaMismatch)
 PARTIAL_HEADERS = {
     StopReason.MAX_STEPS: "Зупинився: запит потребує забагато кроків.",
     StopReason.BUDGET: "Зупинився: вичерпано бюджет запиту.",
@@ -63,7 +82,7 @@ PARTIAL_HEADERS = {
     StopReason.ERROR: "Зупинився: модель зараз недоступна.",
 }
 
-type ToolRun = Callable[[Mapping[str, JsonValue]], str]
+type Guarded = Callable[[AgentTool, ToolRequest], Outcome]
 type Update = dict[str, object]
 
 
@@ -87,6 +106,9 @@ class Agent:
     prices: tuple[float, float]  # USD per 1M input and output tokens, from models.yaml
     model_name: str  # the models.yaml section, for the trace
     clock: Callable[[], float] = field(default=time.monotonic)
+    retry: RetryPolicy = RetryPolicy()  # configs/agent.yaml `retries`
+    faults: FaultPlan = NO_FAULTS  # FaultPlan.from_env() when FAULTS is set
+    sleep: Sleep = field(default=time.sleep)  # between retries; tests pass one that only counts
 
     def __post_init__(self) -> None:
         # the API refuses two tools with one name; here the last one would silently win
@@ -112,6 +134,7 @@ class Agent:
             stop_reason=state["stop_reason"],
             answer=state["answer"],
             error=state["error"],
+            faults=self.faults.kinds,
             latency_s=self.clock() - state["started_s"],
         )
         if trace_file is not None:
@@ -212,10 +235,12 @@ class Agent:
         tools = [by_name.get(request.name) for request in requests]
         executor = ThreadPoolExecutor(max_workers=len(requests))
         started = time.perf_counter()
+        # real time, not self.clock: the wait below is real too
+        guarded = partial(self._guarded, deadline_s=time.monotonic() + self.limits.tool_timeout_s)
         try:
             # a list in the order of the requests, not a dict by id: two calls never merge
             futures = [
-                None if tool is None else executor.submit(_timed, tool.run, request.arguments)
+                None if tool is None else executor.submit(_timed, guarded, tool, request)
                 for request, tool in zip(requests, tools, strict=True)
             ]
             wait([f for f in futures if f is not None], timeout=self.limits.tool_timeout_s)
@@ -228,19 +253,32 @@ class Agent:
             # not `with`: leaving a with-block waits for every thread, a stuck one included
             executor.shutdown(wait=False, cancel_futures=True)
 
+    def _guarded(self, tool: AgentTool, request: ToolRequest, *, deadline_s: float) -> Outcome:
+        return run_guarded(
+            tool,
+            request.arguments,
+            self.faults,
+            self.retry,
+            deadline_s=deadline_s,
+            sleep=self.sleep,
+        )
+
     def _tool_call(
         self,
         request: ToolRequest,
         tool: AgentTool | None,
-        future: Future[tuple[object, float]] | None,
+        future: Future[tuple[Outcome, float]] | None,
         waited: float,
     ) -> ToolCall:
-        def done(latency_s: float = waited, **outcome: str) -> ToolCall:
+        def done(latency_s: float = waited, attempts: int = 0, **outcome: str) -> ToolCall:
+            if "error" in outcome:
+                outcome = {"error": _cut(outcome["error"])}
             return ToolCall(
                 id=request.id,
                 name=request.name,
                 tool_version=None if tool is None else tool.version,
                 arguments=request.arguments,
+                attempts=attempts,
                 latency_s=latency_s,
                 **outcome,
             )
@@ -249,23 +287,35 @@ class Agent:
             return done(latency_s=0, error=f"unknown tool: {request.name}")
         if not future.done():
             return done(error=f"timeout after {self.limits.tool_timeout_s:g} s")
-        error = future.exception()
-        # already worded for the model: the bad fields, or the server's refusal (403, ...)
-        if isinstance(error, InvalidArguments | ToolRefused):
-            return done(error=str(error))
-        if error is not None:  # the tool's failure goes back to the model, the run goes on
-            return done(error=f"{type(error).__name__}: {error}")
-        result, latency_s = future.result()
-        if not isinstance(result, str):
-            return done(latency_s, error=f"tool returned {type(result).__name__}, not text")
-        return done(latency_s, result=result)
+        if (bug := future.exception()) is not None:  # run_guarded itself failed
+            return done(error=f"{type(bug).__name__}: {bug}")
+        outcome, latency_s = future.result()
+        attempts = outcome.attempts
+        if isinstance(outcome.error, WORDED_FOR_MODEL):
+            return done(latency_s, attempts, error=str(outcome.error))
+        if outcome.error is not None:  # the tool's failure goes back to the model, the run goes on
+            error = f"{type(outcome.error).__name__}: {outcome.error}"
+            return done(latency_s, attempts, error=error)
+        if not isinstance(outcome.result, str):
+            error = f"tool returned {type(outcome.result).__name__}, not text"
+            return done(latency_s, attempts, error=error)
+        return done(latency_s, attempts, result=outcome.result)
 
 
-def _timed(run: ToolRun, arguments: Mapping[str, JsonValue]) -> tuple[object, float]:
-    """A tool's result and its own run time; object, not str: a tool may break its type."""
+def _timed(
+    guarded: Guarded, tool: AgentTool, request: ToolRequest
+) -> tuple[Outcome, float]:
+    """A guarded call's outcome and its own run time, retries included."""
     started = time.perf_counter()
-    result: object = run(arguments)
-    return result, time.perf_counter() - started
+    outcome = guarded(tool, request)
+    return outcome, time.perf_counter() - started
+
+
+def _cut(error: str) -> str:
+    """The error, short enough for the model's context."""
+    if len(error) <= MAX_ERROR_CHARS:
+        return error
+    return error[: MAX_ERROR_CHARS - len(CUT_MARK)] + CUT_MARK
 
 
 def _after_check(state: AgentState) -> Literal["model", "finish"]:

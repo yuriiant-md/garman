@@ -336,6 +336,26 @@ The cost: a process per server (about 1 s to start) and an async SDK behind a sy
 
 Tests: `tests/test_corpus_tool.py`, a fake search and an in-memory Qdrant.
 
+### Faults and retries
+
+Every tool call of the agent goes through `src/agents/faults.py`, so no tool can skip it:
+
+- **Retries only for safe tools.** A timeout, 429, 5xx or a lost connection is tried again, up to `retries.max_attempts` (3) with pauses of 0.5 s and 1 s (`configs/agent.yaml`; the pauses must fit in `tool_timeout_s`). Only a tool without a side effect is retried: `side_effect: false` in its YAML, or `read_only_hint` from its MCP server. A tool that changes something is never repeated automatically, since it may have done it before failing. A refusal, bad arguments or a bug are not retried at all: waiting does not cure them.
+- **An honest "unavailable".** When the attempts run out, the model reads that the tool is unavailable and that it must say so to the farmer, not answer from memory.
+- **The answer is checked by a schema.** A local tool has a Pydantic model of its output (`search_corpus` → `CorpusHits`), an MCP tool the server's `outputSchema` (checked with `jsonschema`; a tool without one stops the start). An answer off its schema is an error in the trace, never a result with a field silently missing.
+- **The trace** keeps the attempts of each call (`attempts`) and the faults of the run (`faults`). A tool's error is cut to 500 characters.
+
+`FAULTS` turns faults on: one fault per attempt of every tool call, in order; the attempts after the list are real.
+
+| `FAULTS=` | what each tool call does |
+| --- | --- |
+| `503` | 503, then the real answer on the retry (`attempts: 2`) |
+| `timeout,429` | timeout, 429, then the real answer (`attempts: 3`) |
+| `503,503,503` | three attempts used up: "unavailable" |
+| `schema` | the real answer with its first field renamed (`hits` → `hits_v2`): a schema error, not retried |
+
+An unknown fault stops the start. Tests: `tests/test_agent_faults.py` (every fault, retry or not, the schema, the policy), and MCP timeouts and schemas in `tests/test_agent_mcp_tools.py`.
+
 ## CI
 
 GitHub Actions (`.github/workflows/ci.yml`) checks every push and pull request, free and with no key: `uv sync --locked` (exactly the versions of `uv.lock`), `pytest`, `mypy`, the rules on the newest run of the answers (`score_answers`, thresholds of `configs/eval.yaml`) and the calibration of the judge (`calibrate_judge`, agreement ≥ 80%). A threshold that is not met fails the run. The tests need neither Qdrant nor the models: Qdrant runs in memory, the embedder and the reranker are replaced by fakes.
@@ -434,6 +454,7 @@ src/agents/                stage 3 agent: a LangGraph loop of model and tool cal
   tools.py                 a local tool: tools/<name>.yaml + Pydantic arguments + a function
   mcp_tools.py             the tools of the MCP servers for the agent: one connection per session
   corpus_tool.py           search_corpus: the stage 2 search over laws and decisions, never contracts
+  faults.py                every tool call: FAULTS on demand, retries of safe tools, the output schema
   trace.py                 the trace of one request, one JSONL line
 src/rag/
   sources.py               reads and checks data/rag_sources.csv: types, articles of each law, course minimums

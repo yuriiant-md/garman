@@ -1,10 +1,11 @@
 from pathlib import Path
 
 import pytest
-from pydantic import Field, JsonValue
+from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 from src.agents.tools import (
     InvalidArguments,
+    SchemaMismatch,
     Tool,
     ToolArgs,
     ToolDescription,
@@ -29,6 +30,15 @@ class SearchArgs(ToolArgs):
     limit: int = Field(default=3, ge=1, le=10)
 
 
+class Fragments(BaseModel):
+    """The output schema of the test tool."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    fragments: list[str]
+    total: int
+
+
 def write(tmp_path: Path, text: str = DESCRIPTION, name: str = "search_corpus") -> Path:
     path = tmp_path / f"{name}.yaml"
     path.write_text(text, encoding="utf-8")
@@ -41,7 +51,7 @@ def make_tool(tmp_path: Path, calls: list[SearchArgs] | None = None) -> Tool[Sea
             calls.append(args)
         return f"знайдено {args.limit}: {args.query}"
 
-    return load_tool(write(tmp_path), SearchArgs, search)
+    return load_tool(write(tmp_path), SearchArgs, search, output=Fragments)
 
 
 # --- descriptions
@@ -188,7 +198,7 @@ def items_tool() -> Tool[ItemsArgs]:
     description = ToolDescription(
         name="sum_tonnes", version="v1", side_effect=False, description="Сума тонн."
     )
-    return Tool(description=description, args=ItemsArgs, func=lambda args: "ok")
+    return Tool(description=description, args=ItemsArgs, func=lambda args: "ok", output=Fragments)
 
 
 def test_a_bad_field_inside_a_list_is_named_by_its_path() -> None:
@@ -207,3 +217,39 @@ def test_the_message_names_at_most_ten_problems_and_counts_the_rest() -> None:
     message = str(error.value)
     assert message.count("items.") == 10
     assert message.endswith("... and 40 more")
+
+
+# --- the answer's schema and the side effect
+
+
+def test_an_answer_of_the_output_schema_passes(tmp_path: Path) -> None:
+    make_tool(tmp_path).check_output('{"fragments": ["п. 7.3"], "total": 1}')
+
+
+@pytest.mark.parametrize(
+    ("answer", "named"),
+    [
+        ('{"fragments": ["п. 7.3"]}', "total:"),
+        ('{"fragments_v2": [], "total": 0}', "fragments:"),
+        ('{"fragments": [], "total": "one"}', "total:"),
+        ("знайдено", "Invalid JSON"),
+    ],
+    ids=["missing", "renamed", "wrong-type", "not-json"],
+)
+def test_an_answer_off_the_output_schema_is_refused_with_the_field_named(
+    tmp_path: Path, answer: str, named: str
+) -> None:
+    with pytest.raises(SchemaMismatch) as error:
+        make_tool(tmp_path).check_output(answer)
+
+    message = str(error.value)
+    assert message.startswith("search_corpus answered off its output schema:")
+    assert named in message
+
+
+@pytest.mark.parametrize("side_effect", [True, False])
+def test_the_side_effect_comes_from_the_description(tmp_path: Path, side_effect: bool) -> None:
+    text = DESCRIPTION.replace("side_effect: false", f"side_effect: {str(side_effect).lower()}")
+    tool = load_tool(write(tmp_path, text), SearchArgs, lambda args: "", output=Fragments)
+
+    assert tool.side_effect is side_effect

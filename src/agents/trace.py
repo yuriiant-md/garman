@@ -10,6 +10,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
+from src.agents.faults import FaultKind
 from src.agents.limits import StopReason, Usage
 from src.extraction.run import RUN_STAMP_FORMAT
 
@@ -27,6 +28,9 @@ class ToolCall(BaseModel):
     arguments: dict[str, JsonValue]
     result: str | None = None
     error: str | None = None  # timeout, unknown tool, invalid arguments or the tool's exception
+    # attempts the call took (faults.py retries a safe tool); 0 when none finished: an unknown
+    # tool, or a call abandoned at the turn's timeout
+    attempts: int = Field(default=0, ge=0)
     latency_s: float = Field(ge=0)
 
     @model_validator(mode="after")
@@ -64,6 +68,7 @@ class Trace(BaseModel):
     stop_reason: StopReason
     answer: str | None  # on a stop by a limit: what the agent had so far, or None
     error: str | None = None  # what went wrong when stop_reason is error
+    faults: tuple[FaultKind, ...] = ()  # injected by FAULTS for this run (faults.py)
     latency_s: float = Field(ge=0)  # the whole request
 
     @property

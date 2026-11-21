@@ -10,10 +10,12 @@ Money is counted here in Python from the prices in configs/models.yaml, never by
 
 from enum import StrEnum
 from pathlib import Path
+from typing import Self
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
+from src.agents.faults import RetryPolicy
 from src.extraction.metrics import cost_usd as tokens_cost_usd
 from src.extraction.run import MODELS
 
@@ -47,6 +49,19 @@ class AgentConfig(BaseModel):
 
     model: str  # a section of configs/models.yaml
     limits: Limits
+    retries: RetryPolicy = RetryPolicy()
+
+    @model_validator(mode="after")
+    def _retries_fit_the_tool_timeout(self) -> Self:
+        # the pauses alone must leave time for the calls: run_guarded starts no pause that would
+        # end past the turn's tool_timeout_s, so with longer pauses a tool would never be retried
+        waits = self.retries.total_wait_s
+        if waits >= self.limits.tool_timeout_s:
+            raise ValueError(
+                f"retries waits {waits:g} s, not less than tool_timeout_s "
+                f"{self.limits.tool_timeout_s:g} s: the turn would abandon the call mid-retry"
+            )
+        return self
 
 
 def load_agent_config(path: Path = AGENT_CONFIG_PATH) -> AgentConfig:

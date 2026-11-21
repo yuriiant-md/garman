@@ -330,6 +330,12 @@ With function calling the tools would be functions inside the agent's process, a
 
 The cost: a process per server (about 1 s to start) and an async SDK behind a sync agent (one event loop in a thread of its own).
 
+### Corpus search for the agent
+
+`search_corpus` (`src/agents/corpus_tool.py`, description `tools/search_corpus.yaml`) is a local tool over the stage 2 search: one argument, `query`. It searches exactly as a stage 2 answer does: the laws and the court decisions apart and taking turns, reranked, chunks under `min_score` dropped, whole chunks within the token budget, with the settings of `configs/answer.yaml`. It never searches contracts: the index holds every farmer's contracts, and reading one here would bypass the 403 of the `contracts` server. The filter is set in code, a contract chunk is dropped even if the search returns one, and the output schema (`CorpusHits`) refuses one too. Each hit carries the citation and the warning Python makes (`[ЦК, ст. 625]`, a repealed Commercial Code), its source and date. Nothing found is an empty list, not an error.
+
+Tests: `tests/test_corpus_tool.py`, a fake search and an in-memory Qdrant.
+
 ## CI
 
 GitHub Actions (`.github/workflows/ci.yml`) checks every push and pull request, free and with no key: `uv sync --locked` (exactly the versions of `uv.lock`), `pytest`, `mypy`, the rules on the newest run of the answers (`score_answers`, thresholds of `configs/eval.yaml`) and the calibration of the judge (`calibrate_judge`, agreement ≥ 80%). A threshold that is not met fails the run. The tests need neither Qdrant nor the models: Qdrant runs in memory, the embedder and the reranker are replaced by fakes.
@@ -427,6 +433,7 @@ src/agents/                stage 3 agent: a LangGraph loop of model and tool cal
   model.py                 Claude behind a narrow interface, so tests use a scripted model
   tools.py                 a local tool: tools/<name>.yaml + Pydantic arguments + a function
   mcp_tools.py             the tools of the MCP servers for the agent: one connection per session
+  corpus_tool.py           search_corpus: the stage 2 search over laws and decisions, never contracts
   trace.py                 the trace of one request, one JSONL line
 src/rag/
   sources.py               reads and checks data/rag_sources.csv: types, articles of each law, course minimums

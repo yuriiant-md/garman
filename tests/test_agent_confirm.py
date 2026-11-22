@@ -59,6 +59,7 @@ def make_agent(model: FakeModel, reminder_tool: AgentTool, clock: Clock | None =
         limits=LIMITS,
         prices=PRICES,
         model_name="haiku-5.5",
+        prompt_version="v1",
         clock=clock or Clock(),
     )
 
@@ -407,6 +408,7 @@ def test_a_trace_awaits_a_confirmation_only_when_it_stopped_for_one() -> None:
         "thread_id": "t",
         "started_at": NOW,
         "model": "haiku-5.5",
+        "prompt_version": "v1",
         "question": "?",
         "steps": (),
         "usage": {},

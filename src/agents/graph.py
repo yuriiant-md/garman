@@ -147,6 +147,7 @@ class Agent:
     limits: Limits
     prices: tuple[float, float]  # USD per 1M input and output tokens, from models.yaml
     model_name: str  # the models.yaml section, for the trace
+    prompt_version: str  # of the agent prompt `system` is built from, for the trace
     clock: Callable[[], float] = field(default=time.monotonic)
     retry: RetryPolicy = RetryPolicy()  # configs/agent.yaml `retries`
     faults: FaultPlan = NO_FAULTS  # FaultPlan.from_env() when FAULTS is set
@@ -198,6 +199,7 @@ class Agent:
             thread_id=thread_id,
             started_at=started_at,
             model=self.model_name,
+            prompt_version=self.prompt_version,
             question=state["question"],
             steps=state["steps"],
             usage=state["usage"],

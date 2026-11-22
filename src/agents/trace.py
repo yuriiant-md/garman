@@ -79,6 +79,7 @@ class Trace(BaseModel):
     thread_id: str  # of the request: the same on every line of a confirmed request
     started_at: datetime
     model: str  # a section of configs/models.yaml
+    prompt_version: str  # of prompts/agent_v*.md, from its header
     question: str
     steps: tuple[TraceStep, ...]
     usage: Usage

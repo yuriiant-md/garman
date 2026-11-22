@@ -69,6 +69,7 @@ def make_agent(
         limits=limits,
         prices=PRICES,
         model_name="haiku-5.5",
+        prompt_version="v1",
         clock=clock or Clock(),
     )
 
@@ -88,6 +89,12 @@ def test_a_direct_answer_ends_the_run_as_answered_with_one_step_and_its_cost() -
     assert trace.usage.steps == 1
     assert trace.usage.cost_usd == pytest.approx((100 * 1 + 20 * 5) / 1_000_000)
     assert trace.steps[0].cost_usd == pytest.approx(trace.usage.cost_usd)
+
+
+def test_the_trace_names_the_model_and_the_version_of_the_prompt() -> None:
+    trace = make_agent(FakeModel(turn("ok"))).run("Коли мені заплатять?")
+
+    assert (trace.model, trace.prompt_version) == ("haiku-5.5", "v1")
 
 
 def test_the_model_gets_the_system_prompt_the_question_and_the_tool_specs() -> None:

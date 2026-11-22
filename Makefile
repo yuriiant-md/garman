@@ -1,4 +1,4 @@
-# Commands of stage 1 (install … metrics) and stage 2 (qdrant … ask); see README.md.
+# Commands of stage 1 (install … metrics), 2 (qdrant … ask) and 3 (farmers, agent); see README.md.
 ENV_FILE := $(if $(wildcard .env),--env-file .env,)
 # Print each line at once even when the output goes through a pipe (`make run | tee run.log`).
 export PYTHONUNBUFFERED := 1
@@ -7,7 +7,7 @@ KEEP_AWAKE := $(if $(shell command -v caffeinate),caffeinate -i,)
 QDRANT_READY_URL := http://127.0.0.1:6333/readyz
 QDRANT_WAIT_TRIES := 30
 
-.PHONY: install test run smoke metrics qdrant rag answers ask
+.PHONY: install test run smoke metrics qdrant rag answers ask farmers agent
 
 install:
 	uv sync
@@ -51,3 +51,14 @@ ask: qdrant
 	@test -n "$(IDS)" || { echo "name the questions: make ask IDS=q01,t05" >&2; exit 2; }
 	$(KEEP_AWAKE) uv run python -m scripts.index_rag
 	$(KEEP_AWAKE) uv run $(ENV_FILE) python -m scripts.ask_rag --ids $(IDS)
+
+# Stage 3: the farmers' contracts for the MCP server `contracts`, copied from data/raw/ as
+# data/farmers.csv lists them (data/raw/farmers/, never in git).
+farmers:
+	uv run python -m scripts.setup_farmers
+
+# Stage 3, paid (about $0.003 a task on Haiku 5.5): the agent's task set on the real model,
+# every tool real. A few tasks: make agent IDS=t01,t11
+agent: qdrant farmers
+	$(KEEP_AWAKE) uv run python -m scripts.index_rag
+	$(KEEP_AWAKE) uv run $(ENV_FILE) python -m scripts.run_agent_tasks $(if $(IDS),--ids $(IDS),)

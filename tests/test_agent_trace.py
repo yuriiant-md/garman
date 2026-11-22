@@ -42,6 +42,7 @@ def make_trace(stop: StopReason, answer: str | None = "Оплата протяг
         thread_id="t1",
         started_at=STARTED,
         model="haiku-5.5",
+        prompt_version="v1",
         question="Коли мені заплатять?",
         steps=(STEP_WITH_TOOL, FINAL_STEP),
         usage=Usage(steps=2, input_tokens=2000, output_tokens=210, cost_usd=0.0003),

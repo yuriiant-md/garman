@@ -393,6 +393,7 @@ def make_agent(model: FakeModel, tool: Tool[QueryArgs], faults: FaultPlan) -> Ag
         limits=LIMITS,
         prices=(1.0, 5.0),
         model_name="haiku-5.5",
+        prompt_version="v1",
         clock=Clock(),
         retry=POLICY,
         faults=faults,
@@ -457,6 +458,7 @@ def test_the_agent_starts_no_retry_pause_past_the_tool_timeout_of_the_turn() -> 
         limits=LIMITS.model_copy(update={"tool_timeout_s": 0.2}),  # shorter than the 0.5 s pause
         prices=(1.0, 5.0),
         model_name="haiku-5.5",
+        prompt_version="v1",
         clock=Clock(),
         retry=POLICY,
         faults=FaultPlan.from_env({FAULTS_ENV: "503"}),

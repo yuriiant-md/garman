@@ -287,6 +287,7 @@ def test_the_agent_gets_the_hits_and_records_the_tool_version() -> None:
         limits=LIMITS,
         prices=(1.0, 5.0),
         model_name="haiku-5.5",
+        prompt_version="v1",
         clock=Clock(),
     )
 

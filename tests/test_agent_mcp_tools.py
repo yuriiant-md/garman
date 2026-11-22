@@ -306,6 +306,7 @@ def make_agent(
         limits=LIMITS,
         prices=(1.0, 5.0),
         model_name="haiku-5.5",
+        prompt_version="v1",
         faults=faults,
     )
 

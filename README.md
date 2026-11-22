@@ -370,6 +370,38 @@ The run waits in a checkpoint in memory: a restart of the process forgets an una
 
 Tests: `tests/test_agent_confirm.py` (no yes → no write, no → no write, the same key twice → one record, a missing argument → a question without asking the farmer, a double tap, the pause), `tests/test_reminder_tool.py`, `tests/test_reminders.py`.
 
+### The agent's task set
+
+`configs/agent_tasks.yaml` holds 20 questions of a farmer and what a good run of each looks like. `make agent` runs them on the real model with every tool real and checks each run in plain Python, with no LLM judge (`src/agents/tasks.py`, `src/agents/runner.py`, `scripts/run_agent_tasks.py`).
+
+```bash
+make agent                                                # all 20 tasks, paid: about $0.06 on Haiku 5.5
+make agent IDS=t01_contracts,t12_other_farmers_contract   # a few
+```
+
+It needs Docker (Qdrant, as in stage 2) and the farmers' contracts. `make farmers` (a part of `make agent`) copies the PDFs that `data/farmers.csv` lists to `data/raw/farmers/<farmer_id>/` (not in git): own_001–003 are farmer_a's, own_004 is farmer_b's, the target of the 403 task. The PDF is copied with the masking lists of its folder, not linked: the server denies a symlink out of the farmer's folder.
+
+- **What a task checks.** The stop reason; the tools that must and must not be called; phrases the answer must and must not have; a number the answer must give exactly as a calculator returned it, never rounded; the error a task must meet (403, 404, a tool unavailable, an answer off its schema); the attempts of a retried call; the reminders it writes. Every task fails on an action without the farmer's yes: a call of a tool with a side effect that ran although the farmer approved no such call.
+- **What the set covers.** Answers from the contracts, the calculators and the law; questions that need no tool; questions the tools cannot answer; another farmer's contract (403, no workaround); one task per fault (a timeout then a retry, 503 on every attempt, a drifted schema); a duplicate reminder, a reminder without a date, a yes and a no; a token budget that runs out. A test checks that the set has at least 15 tasks and every kind, and that each task names real tools, the right farmer's contracts and dates ahead.
+- **The farmer's answer.** When the agent asks about an action, the runner answers with the task's `confirm`. A question the task does not expect is answered no and fails the task.
+- **Each task alone.** A task gets its own agent, with its faults and its tightened limits, and its own outbox, so a reminder of one task is never found by the next. `save_reminder` judges a date by the set's `today`, so the dates stay ahead.
+- **A run is never overwritten.** It is written to `results/stage3/tasks/<start>.partial/` (`results.jsonl`, a line per task; `traces.jsonl`; `outbox/`), then `summary.md`, then the folder is renamed to `<start>/`. A run that crashes stays `.partial`; a folder of the same start stops a run before any paid call. Steps and cost come from the last trace line of each task.
+
+The run of 22.11.2026 (`results/stage3/tasks/2026-11-22T23-27-00/`, Haiku 5.5, prompt `agent_v1`):
+
+| Metric | Value |
+| --- | --- |
+| Passed | 20 of 20 |
+| Required tools called | 100% of tasks |
+| Actions without the farmer's yes | 0 |
+| Steps per task | 2.6 on average, at most 5 |
+| Cost | $0.059 in all, $0.003 a task |
+| Latency | p50 3.9 s, p95 9.7 s |
+
+The trial run before it is kept (`2026-11-22T23-25-49/`, 3 tasks): its `t18_reminder_yes` failed on a check of the task set, not on the agent. The phrase «збереж» does not find «зберіг»; it became «збер», with «не збер» forbidden, before the full run.
+
+Tests run offline with a scripted model: `tests/test_agent_tasks.py` (the schema, every check, the repo's set), `tests/test_agent_runner.py` (the farmer's answers, an outbox per task, faults and limits per task, `.partial`, no overwrite, the metrics), `tests/test_run_agent_tasks.py`, `tests/test_setup_farmers.py`.
+
 ## CI
 
 GitHub Actions (`.github/workflows/ci.yml`) checks every push and pull request, free and with no key: `uv sync --locked` (exactly the versions of `uv.lock`), `pytest`, `mypy`, the rules on the newest run of the answers (`score_answers`, thresholds of `configs/eval.yaml`) and the calibration of the judge (`calibrate_judge`, agreement ≥ 80%). A threshold that is not met fails the run. The tests need neither Qdrant nor the models: Qdrant runs in memory, the embedder and the reranker are replaced by fakes.
@@ -400,7 +432,7 @@ The actions are pinned to a commit hash (a tag can be moved), the checkout keeps
 ### Folders and files
 
 ```
-Makefile                   make install / test / run / smoke / metrics (stage 1), qdrant / rag / answers / ask (stage 2)
+Makefile                   make install / test / run / smoke / metrics (stage 1), qdrant / rag / answers / ask (stage 2), farmers / agent (stage 3)
 .github/workflows/ci.yml   CI: tests, mypy, rules and judge calibration on every push; the paid judge by hand
 docker-compose.yml         Qdrant for the stage 2 search (docker compose up -d qdrant)
 main.py                    stage 1 in one command: the whole matrix, then the metrics table
@@ -412,6 +444,8 @@ configs/
   judge.yaml               the stage 2 LLM judge: the model, its prompts, prices and thresholds
   rates.yaml               stage 3 calculators, the same for every farmer: NBU discount rate, NBU exchange rates, VAT; each number with its date
   playbooks/               one farmer's numbers for the calculators: warehouse, freight with dates, cost of money (farmer_a.yaml is synthetic)
+  agent.yaml               the stage 3 agent: the model, the limits of a request, the retries of safe tools
+  agent_tasks.yaml         the stage 3 task set: 20 questions and the checks of each run
 data/
   texts/                   the 48 texts the models get
   synthetic/               golden Deal and "dirtiness" parameters of each synthetic text
@@ -419,11 +453,12 @@ data/
   prozorro_sources.csv     which Prozorro tender each contract comes from
   own_sources.csv          which PDF and contract number each own contract comes from
   rag_sources.csv          stage 2 corpus: 28 contracts (PDF), 6 laws and 11 Supreme Court decisions (HTML)
+  farmers.csv              stage 3: which contracts of the corpus each farmer owns (make farmers)
   rag/                     the stage 2 corpus after ingestion: documents.jsonl (text by page or article), manifest.jsonl, chunks.jsonl (chunks with metadata) and search_questions.yaml (15 questions with a known answer)
   rag/answer_questions.yaml  the 26 questions the answers are tried on: 15 by id from search_questions.yaml and 11 traps, each with a reference answer and key facts
   rag/judge_marks.yaml     the author's manual marks of the judged answers of one run, for the calibration of the judge
   README.md                how the data was collected, anonymised and labelled
-  raw/                     original PDFs, masking check files and the stage 2 HTML pages in raw/rag/ (not in git)
+  raw/                     original PDFs, masking check files, the stage 2 HTML pages in raw/rag/ and the farmers' contracts in raw/farmers/ (not in git)
   outbox/                  stage 3: what the agent saves for the farmer, outbox/<farmer_id>/reminders.jsonl (not in git)
 prompts/
   extract_v1.md            baseline prompt, version in the header
@@ -452,6 +487,7 @@ src/extraction/
 src/documents/
   pdf.py                   the text layer of a PDF; page numbers, headers and footers removed
   masking.py               personal data in contracts, laws and decisions becomes tags like [ПІБ]
+  contract.py              a contract PDF: masked pages and its clauses, for stage 2 and the contracts server
 src/tools/                 stage 3 calculators: money in plain Python, never by the model
   money.py                 Decimal arithmetic: rounding to the kopeck, the cost of waiting, banking days
   playbook.py              reads a farmer's playbook and configs/rates.yaml; dated numbers, stale after 30 days
@@ -471,6 +507,10 @@ src/agents/                stage 3 agent: a LangGraph loop of model and tool cal
   corpus_tool.py           search_corpus: the stage 2 search over laws and decisions, never contracts
   faults.py                every tool call: FAULTS on demand, retries of safe tools, the output schema
   trace.py                 the trace of one request, one JSONL line
+  reminders.py             a farmer's reminders: a JSONL line each, the idempotency key, a file lock
+  reminder_tool.py         save_reminder: the agent's only tool with a side effect
+  tasks.py                 the task set's schema and its checks in plain Python
+  runner.py                runs the task set: an agent per task, the farmer's answers, a folder per run
 src/rag/
   sources.py               reads and checks data/rag_sources.csv: types, articles of each law, course minimums
   documents.py             an ingested document (parts with a page or an article), its manifest entry, JSONL
@@ -504,12 +544,15 @@ scripts/
   judge_sheet.py           the sheet for the author's manual marks of a judged run, free
   calibrate_judge.py       the manual marks against judge.jsonl: calibration.md, free
   check_golden.py          validates the golden labels
+  setup_farmers.py         stage 3: copies the farmers' contracts to data/raw/farmers/
+  run_agent_tasks.py       the stage 3 task set on the real model: results/stage3/tasks/, paid
 tests/                     pytest tests: make test
 results/stage1_3/          one folder per launch, named with its start time: a *.jsonl file per configuration (one line per document) and the metrics tables (metrics.md, metrics_by_field.md)
 results/stage1_2/          the same for stage 1.2, on the schema before grades (read with the stage-1 tag)
 results/stage1/            the same for the first matrix (Claude and Lapa)
 results/stage2/search/     one folder per search evaluation: search_metrics.md and ranks.jsonl
 results/stage2/answers/    one folder per answers run: report.md and answers.jsonl, then scores.md, judge.jsonl, judge.md and calibration.md
+results/stage3/tasks/      one folder per task set run: results.jsonl, summary.md, traces.jsonl, outbox/
 ```
 
 The author keeps the work plan locally (`docs/`, outside the repository); its metric rules were moved to "How the metrics are counted".

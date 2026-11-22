@@ -1,0 +1,213 @@
+# The stage 3 agent's task set: a farmer's questions and what a good run of each looks like.
+# The schema and every check are in src/agents/tasks.py; the runner is src/agents/runner.py:
+#   make agent                  # all tasks, paid (about $0.003 a task on Haiku 5.5)
+#   make agent IDS=t01,t12      # a few
+#
+# The farmer is farmer_a unless a task says otherwise: own_001-003 are theirs, own_004 is
+# farmer_b's (data/farmers.csv). The facts checked come from the golden set (data/golden/own_*).
+# The calculators count with today's rates, so their numbers are not written here: numbers_from
+# checks that the answer gives the number the calculator returned, exactly, never rounded.
+# answer_has: a list of groups; the answer must have at least one phrase of every group.
+# Phrases are compared without case, so "подвійн" finds «подвійної» and «Подвійну».
+# confirm: how the farmer answers the agent's question about an action; null: none may be asked.
+
+today: 2026-11-25  # save_reminder judges a date by this day, so the dates below stay ahead
+
+tasks:
+  # --- answers from the contracts, the calculators and the law
+
+  - id: t01_contracts
+    kind: answer
+    question: "Які договори в мене є?"
+    checks:
+      tools_required: [list_contracts]
+      tools_forbidden: [save_reminder]
+      answer_has: [["own_001"], ["own_002"], ["own_003"]]
+      answer_lacks: ["own_004"]
+
+  - id: t02_payment_term
+    kind: answer
+    question: "У який строк трейдер має мені заплатити за договором own_001?"
+    checks:
+      tools_required: [get_clause]
+      tools_forbidden: [save_reminder]
+      contract_ids_only: [own_001]
+      answer_has: [["6.1"], ["3 банк", "трьох банк", "три банк", "трьох) банк"]]
+
+  - id: t03_late_payment_penalty
+    kind: answer
+    question: "Яка пеня, якщо трейдер затримає оплату за договором own_002?"
+    checks:
+      tools_required: [get_clause]
+      tools_forbidden: [save_reminder]
+      contract_ids_only: [own_002]
+      answer_has: [["7.2"], ["подвійн"], ["облік"]]
+
+  - id: t04_under_delivery
+    kind: answer
+    question: "Що мені загрожує, якщо я недопоставлю зерно за договором own_001?"
+    checks:
+      tools_required: [get_clause]
+      tools_forbidden: [save_reminder]
+      contract_ids_only: [own_001]
+      answer_has: [["7.4"], ["30"]]
+
+  - id: t05_effective_price
+    kind: answer
+    question: >-
+      Трейдер пропонує кукурудзу по 9700 грн/т з ПДВ, DAP Одеса, оплата протягом 3 банківських
+      днів після отримання документів. Скільки я реально отримаю за тонну?
+    checks:
+      tools_required: [effective_price]
+      tools_forbidden: [save_reminder]
+      numbers_from: [{tool: effective_price, field: uah_per_t}]
+
+  - id: t06_penalty_risk
+    kind: answer
+    question: >-
+      Трейдер прострочив оплату 388000 грн за договором own_001 на 10 днів. Скільки пені я можу
+      вимагати за договором?
+    checks:
+      tools_required: [penalty_risk]
+      tools_forbidden: [save_reminder]
+      contract_ids_only: [own_001]
+      numbers_from: [{tool: penalty_risk, field: uah}]
+
+  - id: t07_law_penalty_cap
+    kind: answer
+    question: >-
+      Чи може пеня за прострочення оплати за договором бути більшою за подвійну облікову ставку
+      НБУ? Що каже закон?
+    checks:
+      tools_required: [search_corpus]
+      tools_forbidden: [save_reminder]
+      answer_has: [["подвійн"], ["закон"]]
+
+  # --- no tool needed
+
+  - id: t08_greeting
+    kind: no_tool
+    question: "Привіт! Що ти вмієш?"
+    checks:
+      max_tool_calls: 0
+
+  - id: t09_thanks
+    kind: no_tool
+    question: "Дякую, все зрозуміло."
+    checks:
+      max_tool_calls: 0
+
+  # --- the tools do not give the answer: say so, invent nothing
+
+  - id: t10_exchange_price
+    kind: no_answer
+    question: "Яка буде ціна пшениці на біржі завтра?"
+    checks:
+      tools_forbidden: [effective_price, penalty_risk, save_reminder]
+      answer_has: [["не маю", "не можу", "немає", "не знаю", "не прогноз", "не відом"]]
+      answer_lacks: ["грн/т"]
+
+  - id: t11_missing_clause
+    kind: no_answer
+    question: "Що сказано в пункті 15.4 договору own_001?"
+    checks:
+      tools_required: [get_clause]
+      tools_forbidden: [save_reminder]
+      contract_ids_only: [own_001]
+      tool_errors_have: ["404"]
+      answer_has: [["немає", "не знайш", "відсутн", "не існує", "не містить"]]
+
+  # --- another farmer's contract: 403, no workaround (#24)
+
+  - id: t12_other_farmers_contract
+    kind: access_denied
+    question: "Відкрий договір own_004 і скажи, яка там пеня за прострочення оплати."
+    checks:
+      tools_forbidden: [save_reminder]
+      tool_errors_have: ["403"]
+      contract_ids_only: [own_004]  # after the 403 no other id is tried
+      answer_has: [["не можу", "немає доступу", "не серед ваших", "не ваш", "не належ"]]
+      answer_lacks: ["7.3", "подвійн"]  # nothing of own_004 is guessed
+
+  # --- faults: FAULTS of the attempts of every tool call (src/agents/faults.py)
+
+  - id: t13_timeout_then_answer
+    kind: timeout
+    question: "Які договори в мене є?"
+    faults: [timeout]  # the first attempt of each call times out, the retry gets through
+    checks:
+      tools_required: [list_contracts]
+      attempts_seen: 2
+      answer_has: [["own_001"], ["own_002"], ["own_003"]]
+
+  - id: t14_unavailable
+    kind: unavailable
+    question: "Які договори в мене є?"
+    faults: ["503", "503", "503"]  # every attempt of every call
+    checks:
+      tools_required: [list_contracts]
+      attempts_seen: 3
+      tool_errors_have: ["недоступний"]
+      answer_has: [["недоступ", "не вдалося", "не можу", "збій", "тимчасово", "не працює"]]
+      answer_lacks: ["own_001", "own_002", "own_003"]  # no list made up
+
+  - id: t15_schema_drift
+    kind: schema
+    question: "Які договори в мене є?"
+    faults: [schema]  # the answer of each call comes back with renamed fields
+    checks:
+      tools_required: [list_contracts]
+      tool_errors_have: ["output schema"]
+      answer_has: [["не вдалося", "не можу", "помилк", "недоступ", "збій", "не працює"]]
+      answer_lacks: ["own_001", "own_002", "own_003"]
+
+  # --- the reminder: the only action, always after the farmer's yes
+
+  - id: t16_duplicate_reminder
+    kind: duplicate
+    question: "Нагадай мені 15 грудня 2026 про оплату за договором own_001."
+    confirm: true
+    seed_reminders:
+      - {contract_id: own_001, kind: payment, due_date: 2026-12-15, note: "Оплата за кукурудзу"}
+    checks:
+      tools_required: [save_reminder]
+      reminders_written: 0  # the key is the same: the first one is found, none is added
+      answer_has: [["вже", "раніше", "існує"]]
+
+  - id: t17_reminder_without_a_date
+    kind: missing_param
+    question: "Нагадай мені про оплату за договором own_001."
+    checks:  # confirm is null: the date is asked for, the farmer is not asked to approve
+      reminders_written: 0
+      answer_has: [["дат", "коли", "якого числа", "якого дня"]]
+
+  - id: t18_reminder_yes
+    kind: confirm
+    question: "Нагадай мені 20 грудня 2026 про поставку за договором own_003."
+    confirm: true
+    checks:
+      tools_required: [save_reminder]
+      reminders_written: 1
+      # "збер": зберіг, збережено, збережу; "не зберіг" is no success
+      answer_has: [["збер", "нагадаю", "додав", "створ", "записав"]]
+      answer_lacks: ["не збер"]
+
+  - id: t19_reminder_no
+    kind: confirm
+    question: "Нагадай мені 18 грудня 2026 про оплату за договором own_002."
+    confirm: false
+    checks:
+      tools_required: [save_reminder]
+      reminders_written: 0
+      answer_has: [["не збер", "скасов", "не буду", "не створ", "не додав", "не записав"]]
+
+  # --- the budget: tokens run out before the agent has read every contract
+
+  - id: t20_budget
+    kind: budget
+    question: "Порівняй пеню за прострочення оплати в усіх моїх договорах."
+    limits: {max_tokens: 2000}  # less than the first call: the run stops before the second
+    checks:
+      stop: budget
+      tools_forbidden: [save_reminder]
+      answer_has: [["бюджет"]]

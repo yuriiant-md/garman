@@ -3,6 +3,11 @@
 A launch writes one JSONL file, results/stage3/traces/<start>.jsonl, with one Trace per request,
 so a run of the task set is one file and each line can be read on its own. The file is appended
 to after each request: if a later request crashes, the traces before it are already on disk.
+
+A request that waits for the farmer's confirmation (a tool with a side effect, graph.py) is one
+thread of several lines: one line awaiting_confirmation per question to the farmer, then the line
+of its end. Each line holds the whole thread up to its moment, so the last one is the request:
+count the steps and the cost of that line only, never the sum of the thread's lines.
 """
 
 from datetime import datetime
@@ -54,12 +59,24 @@ class TraceStep(BaseModel):
     tool_calls: tuple[ToolCall, ...] = ()
 
 
-class Trace(BaseModel):
-    """One request from the question to the stop."""
+class PendingAction(BaseModel):
+    """A call with a side effect the farmer is asked about; it runs only after a yes."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    request_id: str
+    call_id: str  # the model's id of the call
+    tool: str
+    tool_version: str
+    arguments: dict[str, JsonValue]  # checked: the call would go through as it is
+
+
+class Trace(BaseModel):
+    """One request from the question to the stop, or to a question to the farmer."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    request_id: str  # of this line
+    thread_id: str  # of the request: the same on every line of a confirmed request
     started_at: datetime
     model: str  # a section of configs/models.yaml
     question: str
@@ -69,12 +86,20 @@ class Trace(BaseModel):
     answer: str | None  # on a stop by a limit: what the agent had so far, or None
     error: str | None = None  # what went wrong when stop_reason is error
     faults: tuple[FaultKind, ...] = ()  # injected by FAULTS for this run (faults.py)
-    latency_s: float = Field(ge=0)  # the whole request
+    awaiting: tuple[PendingAction, ...] = ()  # when stopped for a confirmation: what is asked
+    paused_s: float = Field(default=0, ge=0)  # the farmer deciding; not in latency_s nor limits
+    latency_s: float = Field(ge=0)  # the whole request so far, the pauses left out
+
+    @model_validator(mode="after")
+    def _awaiting_only_when_stopped_for_it(self) -> "Trace":
+        if bool(self.awaiting) != (self.stop_reason == StopReason.AWAITING_CONFIRMATION):
+            raise ValueError("awaiting is set exactly when the run stopped for a confirmation")
+        return self
 
     @property
     def partial(self) -> bool:
         """True when a limit or an error ended the run before the model's final answer."""
-        return self.stop_reason != StopReason.ANSWERED
+        return self.stop_reason not in (StopReason.ANSWERED, StopReason.AWAITING_CONFIRMATION)
 
 
 def trace_path(started: datetime, traces_dir: Path = TRACES_DIR) -> Path:

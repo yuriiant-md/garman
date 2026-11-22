@@ -39,6 +39,7 @@ FINAL_STEP = TraceStep(
 def make_trace(stop: StopReason, answer: str | None = "Оплата протягом 5 днів [S1].") -> Trace:
     return Trace(
         request_id="r1",
+        thread_id="t1",
         started_at=STARTED,
         model="haiku-5.5",
         question="Коли мені заплатять?",

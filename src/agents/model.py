@@ -13,10 +13,10 @@ left after them is not caught here: the graph stops the run with `error` and kee
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Protocol, cast
 
 import anthropic
-from anthropic.types import MessageParam, ToolParam, ToolResultBlockParam
+from anthropic.types import ContentBlockParam, MessageParam, ToolParam, ToolResultBlockParam
 from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
 
 from src.agents.trace import ToolCall
@@ -90,7 +90,19 @@ class AnthropicChatModel:
             output_tokens=response.usage.output_tokens,
             latency_s=time.perf_counter() - started,
             finish=response.stop_reason or "unknown",
-            assistant_message={"role": "assistant", "content": response.content},
+            # every block as plain JSON, unchanged: thinking must go back with its signature, and
+            # the graph's checkpoint keeps JSON as it is but refuses an SDK object it does not know
+            assistant_message={
+                "role": "assistant",
+                # the same fields as the SDK's *BlockParam: a response block dumped as a request one
+                "content": cast(
+                    list[ContentBlockParam],
+                    [
+                        block.model_dump(mode="json", exclude_none=True)
+                        for block in response.content
+                    ],
+                ),
+            },
         )
 
 

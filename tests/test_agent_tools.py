@@ -9,6 +9,7 @@ from src.agents.tools import (
     Tool,
     ToolArgs,
     ToolDescription,
+    ToolRefused,
     load_tool,
     load_tool_description,
 )
@@ -253,3 +254,54 @@ def test_the_side_effect_comes_from_the_description(tmp_path: Path, side_effect:
     tool = load_tool(write(tmp_path, text), SearchArgs, lambda args: "", output=Fragments)
 
     assert tool.side_effect is side_effect
+
+
+# --- check: a tool's own test of valid arguments, run before the function and before a
+# confirmation (graph.py asks the farmer only about a call that would pass)
+
+
+def refuse_long_queries(args: SearchArgs) -> None:
+    if len(args.query) > 5:
+        raise ToolRefused("запит задовгий")
+
+
+def checked_tool(tmp_path: Path, calls: list[SearchArgs]) -> Tool[SearchArgs]:
+    def search(args: SearchArgs) -> str:
+        calls.append(args)
+        return "знайдено"
+
+    return load_tool(
+        write(tmp_path), SearchArgs, search, output=Fragments, check=refuse_long_queries
+    )
+
+
+def test_check_arguments_passes_arguments_the_schema_and_the_check_allow(
+    tmp_path: Path,
+) -> None:
+    calls: list[SearchArgs] = []
+
+    checked_tool(tmp_path, calls).check_arguments({"query": "пеня"})
+
+    assert calls == []  # a check, not a call
+
+
+def test_check_arguments_refuses_arguments_off_the_schema(tmp_path: Path) -> None:
+    with pytest.raises(InvalidArguments, match="query"):
+        checked_tool(tmp_path, []).check_arguments({})
+
+
+def test_check_arguments_refuses_what_the_tools_check_refuses(tmp_path: Path) -> None:
+    with pytest.raises(ToolRefused, match="задовгий"):
+        checked_tool(tmp_path, []).check_arguments({"query": "проценти річних"})
+
+
+def test_run_never_calls_the_function_when_the_check_refuses(tmp_path: Path) -> None:
+    calls: list[SearchArgs] = []
+
+    with pytest.raises(ToolRefused):
+        checked_tool(tmp_path, calls).run({"query": "проценти річних"})
+    assert calls == []
+
+
+def test_a_tool_without_a_check_checks_only_the_schema(tmp_path: Path) -> None:
+    make_tool(tmp_path).check_arguments({"query": "проценти річних"})

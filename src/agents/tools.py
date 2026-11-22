@@ -78,7 +78,14 @@ class AgentTool(Protocol):
 
     def run(self, arguments: Mapping[str, JsonValue]) -> str: ...
 
+    # raises InvalidArguments or ToolRefused for a call that would fail; before a confirmation
+    def check_arguments(self, arguments: Mapping[str, JsonValue]) -> None: ...
+
     def check_output(self, text: str) -> None: ...  # raises SchemaMismatch
+
+
+def no_check(_args: ToolArgs) -> None:
+    """The check of a tool whose schema says all there is to say about valid arguments."""
 
 
 @dataclass(frozen=True)
@@ -87,6 +94,9 @@ class Tool[A: ToolArgs]:
     args: type[A]
     func: Callable[[A], str]
     output: type[BaseModel]  # the shape of the answer, checked for every answer
+    # what the schema cannot say (a date not in the past, the farmer's own contract); raises
+    # ToolRefused. It runs before the function, and before a confirmation is asked (graph.py)
+    check: Callable[[A], None] = no_check
 
     @property
     def name(self) -> str:
@@ -110,13 +120,21 @@ class Tool[A: ToolArgs]:
         }
 
     def run(self, arguments: Mapping[str, JsonValue]) -> str:
+        return self.func(self._parse(arguments))
+
+    def check_arguments(self, arguments: Mapping[str, JsonValue]) -> None:
+        """Raise InvalidArguments or ToolRefused for a call that would fail; never run it."""
+        self._parse(arguments)
+
+    def _parse(self, arguments: Mapping[str, JsonValue]) -> A:
         try:
             parsed = self.args.model_validate(arguments)
         except ValidationError as error:
             raise InvalidArguments(
                 f"invalid arguments for {self.name}: {_problems(error)}"
             ) from None
-        return self.func(parsed)
+        self.check(parsed)
+        return parsed
 
     def check_output(self, text: str) -> None:
         try:
@@ -141,9 +159,16 @@ def load_tool_description(path: Path) -> ToolDescription:
 
 
 def load_tool[A: ToolArgs](
-    path: Path, args: type[A], func: Callable[[A], str], *, output: type[BaseModel]
+    path: Path,
+    args: type[A],
+    func: Callable[[A], str],
+    *,
+    output: type[BaseModel],
+    check: Callable[[A], None] = no_check,
 ) -> Tool[A]:
-    return Tool(description=load_tool_description(path), args=args, func=func, output=output)
+    return Tool(
+        description=load_tool_description(path), args=args, func=func, output=output, check=check
+    )
 
 
 def _problems(error: ValidationError) -> str:

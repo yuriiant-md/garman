@@ -356,6 +356,20 @@ Every tool call of the agent goes through `src/agents/faults.py`, so no tool can
 
 An unknown fault stops the start. Tests: `tests/test_agent_faults.py` (every fault, retry or not, the schema, the policy), and MCP timeouts and schemas in `tests/test_agent_mcp_tools.py`.
 
+### Actions with confirmation
+
+`save_reminder` (`src/agents/reminder_tool.py`, description `tools/save_reminder.yaml`) is the agent's only tool with a side effect: it saves a reminder of a contract's date (a payment, a delivery, another date) to `data/outbox/<farmer_id>/reminders.jsonl`. Nothing is sent anywhere; the stage 4 bot will read the file.
+
+- **Confirmation in code, not in the prompt.** Before a call with a side effect the graph stops on LangGraph's `interrupt()` (`src/agents/graph.py`, node `confirm`). `Agent.run()` returns a trace `awaiting_confirmation` with what will be saved (`awaiting`) and its `thread_id`; only `Agent.resume(thread_id, approved=True/False)`, called by the bot with the farmer's answer, lets it go on. The model has no tool and no text that confirms. A no reaches the model as "not confirmed, do not retry", and nothing is written. A yes approves only the calls the farmer was shown. Resumes run one at a time, so a second `resume` of the same question, even at the same moment, is an error, not a second write.
+- **Missing or wrong arguments: a question, not a guess.** Every argument is required (`contract_id`, `kind`: `payment`/`delivery`/`other`, `due_date`, `note`). A call that would fail (a missing field, a date in the past, another farmer's contract: 403, an unknown one: 404) goes back to the model with the reason before the farmer is asked, so the farmer never confirms a reminder that cannot be saved. The description tells the model to ask the farmer, not to make the date up.
+- **Idempotency key.** Python makes it from the farmer, the contract, the kind and the date (`src/agents/reminders.py`); the note is not part of it. A retry after a timeout, a reconnect or the same request in other words gets `status: exists` and the reminder first saved, never a duplicate. The check and the write run under one file lock, so two calls at once write it once.
+- **The farmer is fixed at start**, as on the MCP servers: there is no argument for whose reminder it is.
+- **Time.** The farmer's time to decide (`paused_s`) counts neither against `request_timeout_s` nor in `latency_s`. A confirmed request is several trace lines with one `thread_id`; the last one holds the whole request, so its cost is counted from that line only.
+
+The run waits in a checkpoint in memory: a restart of the process forgets an unanswered question (a lasting store comes with the bot in stage 4). An MCP tool the server does not mark read-only is treated as one with a side effect and waits for a confirmation too.
+
+Tests: `tests/test_agent_confirm.py` (no yes → no write, no → no write, the same key twice → one record, a missing argument → a question without asking the farmer, a double tap, the pause), `tests/test_reminder_tool.py`, `tests/test_reminders.py`.
+
 ## CI
 
 GitHub Actions (`.github/workflows/ci.yml`) checks every push and pull request, free and with no key: `uv sync --locked` (exactly the versions of `uv.lock`), `pytest`, `mypy`, the rules on the newest run of the answers (`score_answers`, thresholds of `configs/eval.yaml`) and the calibration of the judge (`calibrate_judge`, agreement ≥ 80%). A threshold that is not met fails the run. The tests need neither Qdrant nor the models: Qdrant runs in memory, the embedder and the reranker are replaced by fakes.
@@ -410,6 +424,7 @@ data/
   rag/judge_marks.yaml     the author's manual marks of the judged answers of one run, for the calibration of the judge
   README.md                how the data was collected, anonymised and labelled
   raw/                     original PDFs, masking check files and the stage 2 HTML pages in raw/rag/ (not in git)
+  outbox/                  stage 3: what the agent saves for the farmer, outbox/<farmer_id>/reminders.jsonl (not in git)
 prompts/
   extract_v1.md            baseline prompt, version in the header
   extract_v2.md            prompt with per-field rules; {today} becomes the run date

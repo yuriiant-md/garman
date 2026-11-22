@@ -86,6 +86,13 @@ class McpTool:
     def run(self, arguments: Mapping[str, JsonValue]) -> str:
         return _result_text(self.call(dict(arguments)))
 
+    def check_arguments(self, arguments: Mapping[str, JsonValue]) -> None:
+        """Nothing to check here: the server checks the arguments of each call it gets.
+
+        Only a tool with a side effect is checked before a confirmation, and both garman servers
+        are read-only; a server tool with a side effect would be put to the farmer unchecked.
+        """
+
     def check_output(self, text: str) -> None:
         try:
             answer = json.loads(text)

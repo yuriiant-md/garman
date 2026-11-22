@@ -1,9 +1,11 @@
+import json
 from dataclasses import replace
 from types import SimpleNamespace
 
 import anthropic
 import httpx2
 import pytest
+from anthropic.types import TextBlock, ThinkingBlock, ToolUseBlock
 
 from src.agents.model import (
     AnthropicChatModel,
@@ -26,14 +28,15 @@ SEARCH_TOOL = {
 QUESTION = [{"role": "user", "content": "Коли мені заплатять?"}]
 REQUEST = httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
 
-THINKING = SimpleNamespace(type="thinking", thinking="", signature="sig")
-SAY = SimpleNamespace(type="text", text="Шукаю строк оплати.")
-SEARCH = SimpleNamespace(
+THINKING = ThinkingBlock(type="thinking", thinking="", signature="sig")
+SAY = TextBlock(type="text", text="Шукаю строк оплати.")
+SEARCH = ToolUseBlock(
     type="tool_use", id="toolu_1", name="search_corpus", input={"query": "строк оплати"}
 )
+type Block = ThinkingBlock | TextBlock | ToolUseBlock
 
 
-def reply(*content: SimpleNamespace, stop_reason: str = "end_turn") -> SimpleNamespace:
+def reply(*content: Block, stop_reason: str = "end_turn") -> SimpleNamespace:
     return SimpleNamespace(
         content=list(content),
         stop_reason=stop_reason,
@@ -105,7 +108,7 @@ def test_a_tool_use_reply_becomes_tool_requests_with_their_arguments() -> None:
 
 
 def test_a_text_reply_is_a_final_answer_with_no_tool_requests() -> None:
-    turn, _ = call(reply(SimpleNamespace(type="text", text="Через 5 днів [S1]."), THINKING))
+    turn, _ = call(reply(TextBlock(type="text", text="Через 5 днів [S1]."), THINKING))
 
     assert turn.tool_requests == ()
     assert turn.text == "Через 5 днів [S1]."
@@ -116,11 +119,33 @@ def test_the_assistant_message_keeps_every_block_for_the_next_request() -> None:
     turn, _ = call(reply(THINKING, SAY, SEARCH, stop_reason="tool_use"))
 
     # thinking blocks must go back unchanged, so the whole content is kept, not only the text
-    assert turn.assistant_message == {"role": "assistant", "content": [THINKING, SAY, SEARCH]}
+    assert turn.assistant_message == {
+        "role": "assistant",
+        "content": [
+            {"type": "thinking", "thinking": "", "signature": "sig"},
+            {"type": "text", "text": "Шукаю строк оплати."},
+            {
+                "type": "tool_use",
+                "id": "toolu_1",
+                "name": "search_corpus",
+                "input": {"query": "строк оплати"},
+            },
+        ],
+    }
+
+
+def test_the_assistant_message_is_plain_json_a_checkpoint_keeps_as_it_is() -> None:
+    turn, _ = call(reply(THINKING, SAY, SEARCH, stop_reason="tool_use"))
+
+    # graph.py checkpoints the messages; an SDK object there would be refused on load
+    assert json.loads(json.dumps(turn.assistant_message)) == turn.assistant_message
 
 
 def test_tool_input_that_is_not_a_json_object_is_a_malformed_reply() -> None:
-    broken = SimpleNamespace(type="tool_use", id="toolu_1", name="search_corpus", input="oops")
+    # the SDK's own type would refuse it: built unchecked, as a reply off its schema would come
+    broken = ToolUseBlock.model_construct(
+        type="tool_use", id="toolu_1", name="search_corpus", input="oops"
+    )
 
     with pytest.raises(MalformedReply, match="toolu_1"):
         call(reply(broken, stop_reason="tool_use"))

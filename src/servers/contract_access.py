@@ -121,6 +121,10 @@ class ContractShelf:
                 )
         raise NotFound(f"404 not found: no clause {number} in contract {contract_id}")
 
+    def require(self, contract_id: str) -> None:
+        """Pass the farmer's own contract, without reading it; refuse any other as _path does."""
+        self._path(contract_id)
+
     # --- the whitelist
 
     def _own_files(self) -> list[Path]:

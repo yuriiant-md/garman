@@ -229,6 +229,32 @@ def test_a_contract_id_that_could_be_a_path_is_invalid(
     assert reads == []
 
 
+# --- require: is it the farmer's own contract, without reading it
+
+
+def test_require_passes_an_own_contract_without_reading_it(
+    shelf: ContractShelf, reads: list[str]
+) -> None:
+    shelf.require("k_001")
+
+    assert reads == []
+
+
+def test_require_denies_another_farmers_contract_with_403(shelf: ContractShelf) -> None:
+    with pytest.raises(AccessDenied, match="403"):
+        shelf.require("k_900")
+
+
+def test_require_does_not_find_an_unknown_contract(shelf: ContractShelf) -> None:
+    with pytest.raises(NotFound, match="404"):
+        shelf.require("k_404")
+
+
+def test_require_refuses_a_contract_id_that_could_be_a_path(shelf: ContractShelf) -> None:
+    with pytest.raises(InvalidRequest, match="contract_id"):
+        shelf.require("../farmer_b/k_900")
+
+
 # --- contract_outline
 
 

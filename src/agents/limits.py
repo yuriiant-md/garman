@@ -30,6 +30,8 @@ class StopReason(StrEnum):
     BUDGET = "budget"  # tokens or dollars
     TIMEOUT = "timeout"  # the whole request took too long
     ERROR = "error"  # the model call failed after the SDK's retries
+    # not a limit: a tool with a side effect waits for the farmer's yes (graph.py, Agent.resume)
+    AWAITING_CONFIRMATION = "awaiting_confirmation"
 
 
 class Limits(BaseModel):

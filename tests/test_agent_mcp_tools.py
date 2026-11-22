@@ -415,7 +415,8 @@ def test_calls_of_one_turn_wait_for_each_other_only_as_long_as_the_slowest() -> 
     model = FakeModel(
         turn("", *(ask("nap", f"t{i}", seconds=0.5) for i in range(naps))), turn("Готово.")
     )
-    with McpConnection({"test": versioned_server(version="v1")}, call_timeout_s=5) as opened:
+    server = versioned_server(version="v1", read_only=True)  # runs without the farmer's yes
+    with McpConnection({"test": server}, call_timeout_s=5) as opened:
         started = time.perf_counter()
         trace = make_agent(model, opened).run("Поспи")
         elapsed = time.perf_counter() - started
@@ -423,6 +424,21 @@ def test_calls_of_one_turn_wait_for_each_other_only_as_long_as_the_slowest() -> 
     results = [call.result for call in trace.steps[0].tool_calls]
     assert results == ['{"result":"прокинувся"}'] * naps
     assert elapsed < naps * 0.5 / 2  # one after another would take 2 s
+
+
+def test_a_server_tool_not_marked_read_only_waits_for_the_farmers_yes() -> None:
+    model = FakeModel(turn("", ask("nap", "t1", seconds=0)), turn("Готово."))
+    with McpConnection({"test": versioned_server(version="v1")}, call_timeout_s=5) as opened:
+        agent = make_agent(model, opened)
+        waiting = agent.run("Поспи")
+
+        assert waiting.stop_reason == StopReason.AWAITING_CONFIRMATION
+        assert [action.tool for action in waiting.awaiting] == ["nap"]
+        assert len(model.requests) == 1
+
+        trace = agent.resume(waiting.thread_id, approved=True)
+
+    assert trace.steps[0].tool_calls[0].result == '{"result":"прокинувся"}'
 
 
 # --- our servers as subprocesses

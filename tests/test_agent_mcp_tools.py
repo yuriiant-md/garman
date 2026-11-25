@@ -45,7 +45,7 @@ from tests.tools_fixtures import TODAY, make_playbook, make_rates
 
 REPO = Path(__file__).resolve().parents[1]
 TOOLS_DIR = REPO / "tools"
-AGENT_PROMPT = REPO / "prompts" / "agent_v1.md"
+PROMPTS = REPO / "prompts"
 CALL_TIMEOUT_S = 5
 STDIO_TIMEOUT_S = 30  # two cold subprocess starts take ~1.5 s
 CONTRACT_TOOLS = ("list_contracts", "contract_outline", "get_clause")
@@ -517,11 +517,20 @@ def test_the_system_prompt_adds_each_servers_instructions_under_its_name() -> No
     assert "calculators" not in system  # a server without instructions adds nothing
 
 
-def test_the_agent_prompt_has_a_version_and_the_rule_for_a_refused_contract() -> None:
-    prompt = load_prompt(AGENT_PROMPT)
+@pytest.mark.parametrize("version", ["v1", "v2"])
+def test_the_agent_prompt_has_a_version_and_the_rule_for_a_refused_contract(version: str) -> None:
+    prompt = load_prompt(PROMPTS / f"agent_{version}.md")
 
-    assert prompt.version == "v1"
+    assert prompt.version == version
     assert "403" in prompt.text
+
+
+def test_the_agent_prompt_v2_says_when_to_search_how_to_cite_and_not_to_round() -> None:
+    text = load_prompt(PROMPTS / "agent_v2.md").text
+
+    musts = ("search_corpus", "search again", "citation", "square brackets", "never merged")
+    for must in (*musts, "близько"):
+        assert must in text
 
 
 # --- a server that lists its tools in pages

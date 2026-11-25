@@ -18,6 +18,7 @@ from src.agents.tasks import (
     TaskKind,
     TaskRun,
     TaskSet,
+    ToolCalls,
     ToolNumber,
     check_task,
     coverage_problems,
@@ -159,9 +160,15 @@ def test_a_task_the_runner_could_not_run_as_written_is_refused(fields: dict[str,
         task(**fields)
 
 
-def test_an_empty_group_of_answer_has_is_refused() -> None:
-    with pytest.raises(ValidationError, match="answer_has"):
-        Checks(answer_has=((),))
+@pytest.mark.parametrize("field", ["answer_has", "citations"])
+def test_an_empty_group_of_phrases_is_refused(field: str) -> None:
+    with pytest.raises(ValidationError, match=field):
+        Checks.model_validate({field: [[]]})
+
+
+def test_a_minimum_of_calls_counts_from_one() -> None:
+    with pytest.raises(ValidationError, match="calls_at_least"):
+        Checks.model_validate({"calls_at_least": [{"tool": "search_corpus", "calls": 0}]})
 
 
 def test_a_task_overrides_only_the_limits_it_names() -> None:
@@ -456,6 +463,170 @@ def test_the_number_comes_from_the_last_result_of_the_tool() -> None:
     assert not check_task(task(checks), run(trace(first, fixed, answer="9 000 грн"))).passed
 
 
+# --- citations from the corpus search (agentic RAG)
+
+
+LAW_625 = "[ЦК, ст. 625; текст станом на 04.11.2026]"
+LAW_3 = "[Закон про несвоєчасне виконання грошових зобов'язань, ст. 3; текст станом на 04.11.2026]"
+TAX_201_10 = "[ПКУ, ст. 201, п. 201.10; текст станом на 04.11.2026]"
+TWO_SEARCHES = (ToolCalls(tool="search_corpus", calls=2),)
+
+
+def searched(*citations: str, call_id: str = "s1", query: str = "проценти річних") -> ToolCall:
+    """A search_corpus call whose hits carry these citations, as the tool writes them."""
+    hits: list[JsonValue] = [{"citation": citation, "text": "…"} for citation in citations]
+    return call("search_corpus", call_id, result={"hits": hits}, query=query)
+
+
+def test_a_citation_no_search_returned_fails_any_task() -> None:
+    # Arrange
+    done = trace(searched(LAW_625), answer=f"3% річних {LAW_625}. Пеня — {LAW_3}.")
+
+    # Act
+    result = check_task(task(), run(done))
+
+    # Assert
+    assert result.failures == (f"cites {LAW_3}, which no search returned",)
+
+
+def test_a_citation_from_memory_fails_without_any_search() -> None:
+    result = check_task(task(), run(trace(answer=f"Так каже закон {LAW_625}.")))
+
+    assert result.failures == (f"cites {LAW_625}, which no search returned",)
+
+
+def test_only_a_search_gives_a_wanted_citation_whatever_another_tool_returns() -> None:
+    # quoted from a tool's text, the citation is no invention, but no search found it either
+    hits: list[JsonValue] = [{"citation": LAW_625}]
+    look_alike = call("get_clause", result={"hits": hits}, contract_id="own_001", clause="7.3")
+    checks = Checks(citations=(("ст. 625",),))
+
+    result = check_task(task(checks), run(trace(look_alike, answer=f"Так каже закон {LAW_625}.")))
+
+    assert result.failures == ("no citation from a search has: ст. 625",)
+
+
+def test_a_failed_search_gives_no_citation() -> None:
+    failed = call("search_corpus", error="search_corpus недоступний", query="пеня")
+
+    result = check_task(task(), run(trace(failed, answer=f"Пеня обмежена {LAW_3}.")))
+
+    assert result.failures == (f"cites {LAW_3}, which no search returned",)
+
+
+@pytest.mark.parametrize(
+    "odd", [{"hits": None}, {"hits": LAW_625}, {"hits": [LAW_625]}, {"found": [LAW_625]}, LAW_625]
+)
+def test_a_search_result_off_its_shape_gives_no_citation(odd: JsonValue) -> None:
+    off_shape = call("search_corpus", result=odd, query="проценти річних")
+    checks = Checks(citations=(("ст. 625",),))
+
+    result = check_task(task(checks), run(trace(off_shape, answer=f"3% річних {LAW_625}.")))
+
+    assert "no citation from a search has: ст. 625" in result.failures
+
+
+def test_a_bracket_quoted_from_a_tools_text_is_data_not_a_citation() -> None:
+    # Arrange: contracts are masked to tags in brackets (src/documents/masking.py)
+    clause = call(
+        "get_clause",
+        result={"number": "8.2", "text": "8.2. Директор [ПІБ] повідомляє протягом 1 дня."},
+        contract_id="own_002",
+        clause="8.2",
+    )
+    answer = "За п. 8.2 директор [ПІБ] повідомляє протягом 1 дня."
+
+    # Act
+    quoted = check_task(task(), run(trace(clause, answer=answer)))
+    invented = check_task(task(), run(trace(answer=answer)))
+
+    # Assert
+    assert quoted.passed, quoted.failures
+    assert invented.failures == ("cites [ПІБ], which no search returned",)
+
+
+def test_a_citation_is_matched_without_case_apostrophes_or_odd_spaces() -> None:
+    copied = LAW_3.replace("'", "’").replace(" ст. 3", "  ст. 3").upper()
+    done = trace(searched(LAW_3), answer=f"Не більше подвійної ставки {copied}.")
+
+    assert check_task(task(Checks(citations=(("ст. 3",),))), run(done)).passed
+
+
+def test_a_partial_answer_is_not_read_for_citations() -> None:
+    # a stop by a limit returns what the tools gave, raw JSON brackets and all (graph.py)
+    partial = '[{"contract_id":"own_001","clauses":62}]'
+    done = trace(call("list_contracts"), answer=partial, stop=StopReason.BUDGET)
+
+    assert check_task(task(Checks(stop=StopReason.BUDGET)), run(done)).passed
+
+
+def test_a_wanted_citation_must_be_one_a_search_returned() -> None:
+    checks = Checks(citations=(("ст. 625",),))
+    in_prose = trace(searched(LAW_625), answer="Так каже ЦК, ст. 625.")
+    from_memory = trace(answer=f"Так каже закон {LAW_625}.")
+    cited = trace(searched(LAW_625), answer=f"Так каже закон {LAW_625}.")
+
+    assert check_task(task(checks), run(in_prose)).failures == (
+        "no citation from a search has: ст. 625",
+    )
+    assert check_task(task(checks), run(from_memory)).failures == (
+        f"cites {LAW_625}, which no search returned",
+        "no citation from a search has: ст. 625",
+    )
+    assert check_task(task(checks), run(cited)).passed
+
+
+@pytest.mark.parametrize(
+    ("phrase", "found"),
+    [
+        ("ПКУ, ст. 201", True),
+        ("п. 201.10", True),
+        ("п. 201.1", False),  # another point: 201.1 is not 201.10
+        ("ст. 20", False),  # another article
+        ("КУ, ст. 201", False),  # a phrase starts where a word does
+    ],
+)
+def test_a_wanted_citation_phrase_is_matched_whole(phrase: str, found: bool) -> None:
+    done = trace(searched(TAX_201_10), answer=f"До 15 числа наступного місяця {TAX_201_10}.")
+
+    result = check_task(task(Checks(citations=((phrase,),))), run(done))
+
+    assert result.passed is found, result.failures
+
+
+def test_a_citation_may_come_from_any_search_of_the_request() -> None:
+    # Arrange: the first search finds nothing, the second one, in other words, finds the norm
+    first = searched(call_id="s1", query="штраф за те, що трейдер затягнув з грошима")
+    second = searched(LAW_625, call_id="s2", query="проценти річних за прострочення оплати")
+    checks = Checks(citations=(("ст. 625",),), calls_at_least=TWO_SEARCHES)
+
+    # Act
+    result = check_task(task(checks), run(trace(first, second, answer=f"3% річних {LAW_625}.")))
+
+    # Assert
+    assert result.passed, result.failures
+
+
+def test_a_task_that_needs_a_second_search_fails_on_one() -> None:
+    checks = Checks(calls_at_least=TWO_SEARCHES)
+
+    result = check_task(task(checks), run(trace(searched(LAW_625), answer=f"3% {LAW_625}.")))
+
+    assert result.failures == ("search_corpus: 1 calls with a result, at least 2 expected",)
+
+
+def test_a_failed_or_repeated_search_is_no_second_search() -> None:
+    first = searched(LAW_625, call_id="s1", query="проценти річних")
+    same = searched(LAW_625, call_id="s2", query="проценти річних")
+    failed = call("search_corpus", "s3", error="search_corpus недоступний", query="інфляційні")
+    checks = Checks(calls_at_least=TWO_SEARCHES)
+    answer = f"3% {LAW_625}."
+
+    for second in (same, failed):
+        result = check_task(task(checks), run(trace(first, second, answer=answer)))
+        assert result.failures == ("search_corpus: 1 calls with a result, at least 2 expected",)
+
+
 # --- the repo's task set
 
 
@@ -478,6 +649,7 @@ def test_every_task_names_real_tools_and_contracts_and_future_dates(real: Task) 
     named = {
         *real.checks.tools_required,
         *real.checks.tools_forbidden,
+        *(minimum.tool for minimum in real.checks.calls_at_least),
         *(number.tool for number in real.checks.numbers_from),
     }
     assert named <= TOOL_NAMES
@@ -492,3 +664,13 @@ def test_every_task_names_real_tools_and_contracts_and_future_dates(real: Task) 
         assert FAULT_OF_KIND[real.kind] in real.faults
     else:
         assert real.faults == ()
+
+
+@pytest.mark.parametrize("real", REAL_SET.tasks, ids=lambda t: t.id)
+def test_every_search_task_checks_what_its_kind_is_about(real: Task) -> None:
+    minimums = real.checks.calls_at_least
+    searches_needed = max((m.calls for m in minimums if m.tool == "search_corpus"), default=0)
+    assert (real.kind is TaskKind.NO_SEARCH) is ("search_corpus" in real.checks.tools_forbidden)
+    assert (real.kind is TaskKind.SEARCH_AGAIN) is (searches_needed >= 2)
+    if real.checks.citations:  # a citation from a search needs the search to happen
+        assert "search_corpus" in real.checks.tools_required

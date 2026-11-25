@@ -315,7 +315,7 @@ Tests talk to each server through an MCP client, in memory and once as a subproc
 
 ### The agent as an MCP client
 
-The stage 3 agent does not import these functions: it starts both servers as subprocesses and calls their tools through an MCP client (`src/agents/mcp_tools.py`). Each server starts once per session, not per call. The agent takes each tool's description, argument schema and version from the server, so the trace records which version answered (`tool_version`), and the servers' instructions are added to the agent's prompt (`prompts/agent_v1.md`). A refusal (a 403 for another farmer's contract, a bad argument) reaches the model as the server's own text, marked as an error; the prompt tells the model not to look for a workaround and to explain the refusal to the farmer. A server process gets only the farmer's id and a short safe list of variables (PATH, HOME, ...), never the API key.
+The stage 3 agent does not import these functions: it starts both servers as subprocesses and calls their tools through an MCP client (`src/agents/mcp_tools.py`). Each server starts once per session, not per call. The agent takes each tool's description, argument schema and version from the server, so the trace records which version answered (`tool_version`), and the servers' instructions are added to the agent's prompt (`prompts/agent_v2.md`). A refusal (a 403 for another farmer's contract, a bad argument) reaches the model as the server's own text, marked as an error; the prompt tells the model not to look for a workaround and to explain the refusal to the farmer. A server process gets only the farmer's id and a short safe list of variables (PATH, HOME, ...), never the API key.
 
 Tests: `tests/test_agent_mcp_tools.py`, both servers in memory with a scripted model, and once as subprocesses.
 
@@ -332,9 +332,19 @@ The cost: a process per server (about 1 s to start) and an async SDK behind a sy
 
 ### Corpus search for the agent
 
-`search_corpus` (`src/agents/corpus_tool.py`, description `tools/search_corpus.yaml`) is a local tool over the stage 2 search: one argument, `query`. It searches exactly as a stage 2 answer does: the laws and the court decisions apart and taking turns, reranked, chunks under `min_score` dropped, whole chunks within the token budget, with the settings of `configs/answer.yaml`. It never searches contracts: the index holds every farmer's contracts, and reading one here would bypass the 403 of the `contracts` server. The filter is set in code, a contract chunk is dropped even if the search returns one, and the output schema (`CorpusHits`) refuses one too. Each hit carries the citation and the warning Python makes (`[ЦК, ст. 625]`, a repealed Commercial Code), its source and date. Nothing found is an empty list, not an error.
+`search_corpus` (`src/agents/corpus_tool.py`, description `tools/search_corpus.yaml`) is a local tool over the stage 2 search: one argument, `query`. It searches exactly as a stage 2 answer does: the laws and the court decisions apart and taking turns, reranked, chunks under `min_score` dropped, whole chunks within the token budget, with the settings of `configs/answer.yaml`. It never searches contracts: the index holds every farmer's contracts, and reading one here would bypass the 403 of the `contracts` server. The filter is set in code, a contract chunk is dropped even if the search returns one, and the output schema (`CorpusHits`) refuses one too. Each hit carries the citation and the warning Python makes (a repealed Commercial Code), its source and date. The citation is the stage 2 one with the date of the text it quotes: `[ЦК, ст. 625; текст станом на 04.11.2026]` for a law (the version downloaded that day), `[ВС, справа № 905/20/23, …; від 15.11.2024]` for a decision. Stage 2 citations are unchanged. Nothing found is an empty list, not an error.
 
 Tests: `tests/test_corpus_tool.py`, a fake search and an in-memory Qdrant.
+
+### Agentic RAG: the agent decides when to search
+
+In stage 2 every question goes through the search before the answer. In stage 3 the search is a tool, and the model decides whether to call it, with what query, and whether to call it again (`prompts/agent_v2.md`, `tools/search_corpus.yaml` v2):
+
+- **When to search.** The farmer asks what the law or a court says, or the answer rests on a norm. Not for the terms of the farmer's contract (those come from the `contracts` server), a calculation or a greeting.
+- **When to search again.** Nothing found, or nothing that answers the question: a query in other words, the legal term instead of the everyday one («проценти річних», not «штраф за затримку грошей»), at most two more searches; then the agent says the documents do not say it.
+- **Citations Python can check.** The model copies a hit's `citation` as it is, one per pair of brackets, and cites nothing a search did not return. Every task checks it with no judge: a `[…]` in the answer that no `search_corpus` call of the request returned fails the task (`src/agents/tasks.py`). Citations are compared up to case, apostrophes and spaces. Brackets found as they are in a tool's text, such as a contract's mask `[ПІБ]` in a quoted clause, are data, not a citation. A task may also require citations (`citations`, whole words: «ст. 20» does not find «ст. 201») and a number of searches (`calls_at_least`: each with a result and its own query).
+
+Three tasks check it: `t07_law_penalty_cap` (the cap on a penalty, cited by art. 3 of the late payment law), `t21_no_search` (force majeure in a contract: the contract answers, no search) and `t22_search_again` (two norms in one question: in a probe of the real search no single query returned both art. 625 of the Civil Code and art. 201 of the Tax Code, so a second search is needed).
 
 ### Faults and retries
 
@@ -372,33 +382,37 @@ Tests: `tests/test_agent_confirm.py` (no yes → no write, no → no write, the 
 
 ### The agent's task set
 
-`configs/agent_tasks.yaml` holds 20 questions of a farmer and what a good run of each looks like. `make agent` runs them on the real model with every tool real and checks each run in plain Python, with no LLM judge (`src/agents/tasks.py`, `src/agents/runner.py`, `scripts/run_agent_tasks.py`).
+`configs/agent_tasks.yaml` holds 22 questions of a farmer and what a good run of each looks like. `make agent` runs them on the real model with every tool real and checks each run in plain Python, with no LLM judge (`src/agents/tasks.py`, `src/agents/runner.py`, `scripts/run_agent_tasks.py`).
 
 ```bash
-make agent                                                # all 20 tasks, paid: about $0.06 on Haiku 5.5
+make agent                                                # all 22 tasks, paid: about $0.06 on Haiku 5.5
 make agent IDS=t01_contracts,t12_other_farmers_contract   # a few
 ```
 
 It needs Docker (Qdrant, as in stage 2) and the farmers' contracts. `make farmers` (a part of `make agent`) copies the PDFs that `data/farmers.csv` lists to `data/raw/farmers/<farmer_id>/` (not in git): own_001–003 are farmer_a's, own_004 is farmer_b's, the target of the 403 task. The PDF is copied with the masking lists of its folder, not linked: the server denies a symlink out of the farmer's folder.
 
-- **What a task checks.** The stop reason; the tools that must and must not be called; phrases the answer must and must not have; a number the answer must give exactly as a calculator returned it, never rounded; the error a task must meet (403, 404, a tool unavailable, an answer off its schema); the attempts of a retried call; the reminders it writes. Every task fails on an action without the farmer's yes: a call of a tool with a side effect that ran although the farmer approved no such call.
-- **What the set covers.** Answers from the contracts, the calculators and the law; questions that need no tool; questions the tools cannot answer; another farmer's contract (403, no workaround); one task per fault (a timeout then a retry, 503 on every attempt, a drifted schema); a duplicate reminder, a reminder without a date, a yes and a no; a token budget that runs out. A test checks that the set has at least 15 tasks and every kind, and that each task names real tools, the right farmer's contracts and dates ahead.
+- **What a task checks.** The stop reason; the tools that must and must not be called; phrases the answer must and must not have; a number the answer must give exactly as a calculator returned it, never rounded; the error a task must meet (403, 404, a tool unavailable, an answer off its schema); the attempts of a retried call; the reminders it writes; the citations the answer must copy from a search and the number of searches. Every task fails on an action without the farmer's yes: a call of a tool with a side effect that ran although the farmer approved no such call. It also fails on a citation no search of the request returned.
+- **What the set covers.** Answers from the contracts, the calculators and the law; questions that need no tool; questions the tools cannot answer; a legal-sounding question the contract answers (no search) and one that needs a second search; another farmer's contract (403, no workaround); one task per fault (a timeout then a retry, 503 on every attempt, a drifted schema); a duplicate reminder, a reminder without a date, a yes and a no; a token budget that runs out. A test checks that the set has at least 15 tasks and every kind, and that each task names real tools, the right farmer's contracts and dates ahead.
 - **The farmer's answer.** When the agent asks about an action, the runner answers with the task's `confirm`. A question the task does not expect is answered no and fails the task.
 - **Each task alone.** A task gets its own agent, with its faults and its tightened limits, and its own outbox, so a reminder of one task is never found by the next. `save_reminder` judges a date by the set's `today`, so the dates stay ahead.
 - **A run is never overwritten.** It is written to `results/stage3/tasks/<start>.partial/` (`results.jsonl`, a line per task; `traces.jsonl`; `outbox/`), then `summary.md`, then the folder is renamed to `<start>/`. A run that crashes stays `.partial`; a folder of the same start stops a run before any paid call. Steps and cost come from the last trace line of each task.
 
-The run of 22.11.2026 (`results/stage3/tasks/2026-11-22T23-27-00/`, Haiku 5.5, prompt `agent_v1`):
+The run of 25.11.2026 (`results/stage3/tasks/2026-11-25T11-22-18/`, Haiku 5.5, prompt `agent_v2`):
 
 | Metric | Value |
 | --- | --- |
-| Passed | 20 of 20 |
+| Passed | 22 of 22 |
 | Required tools called | 100% of tasks |
 | Actions without the farmer's yes | 0 |
-| Steps per task | 2.6 on average, at most 5 |
+| Steps per task | 2.4 on average, at most 4 |
 | Cost | $0.059 in all, $0.003 a task |
-| Latency | p50 3.9 s, p95 9.7 s |
+| Latency | p50 4.1 s, p95 10.6 s |
 
-The trial run before it is kept (`2026-11-22T23-25-49/`, 3 tasks): its `t18_reminder_yes` failed on a check of the task set, not on the agent. The phrase «збереж» does not find «зберіг»; it became «збер», with «не збер» forbidden, before the full run.
+The earlier runs are kept:
+
+- `2026-11-22T23-27-00/`, prompt `agent_v1`, 20 tasks: 20 of 20. Re-checked offline with the checks of 25.11 it fails three: «близько» before an exact number in t05 and t06, and a law named in t07's prose with no citation. These are the reasons for `agent_v2`.
+- `2026-11-22T23-25-49/`, a trial of 3 tasks before it: its `t18_reminder_yes` failed on a check of the task set, not on the agent. The phrase «збереж» does not find «зберіг»; it became «збер», with «не збер» forbidden.
+- `2026-11-25T11-08-58/` and `2026-11-25T11-11-33/`, trials on a draft of `agent_v2`. In the first, `t22_search_again` ran out of its token budget: its first wording («на цю поставку») sent the agent through every contract. In the second, the agent merged two citations into one, «[ПКУ, ст. 201, п. 201.1 і п. 201.10; …]», which no search returned. The question became one of the law only, and the prompt now says one citation per pair of brackets.
 
 Tests run offline with a scripted model: `tests/test_agent_tasks.py` (the schema, every check, the repo's set), `tests/test_agent_runner.py` (the farmer's answers, an outbox per task, faults and limits per task, `.partial`, no overwrite, the metrics), `tests/test_run_agent_tasks.py`, `tests/test_setup_farmers.py`.
 
@@ -445,7 +459,7 @@ configs/
   rates.yaml               stage 3 calculators, the same for every farmer: NBU discount rate, NBU exchange rates, VAT; each number with its date
   playbooks/               one farmer's numbers for the calculators: warehouse, freight with dates, cost of money (farmer_a.yaml is synthetic)
   agent.yaml               the stage 3 agent: the model, the limits of a request, the retries of safe tools
-  agent_tasks.yaml         the stage 3 task set: 20 questions and the checks of each run
+  agent_tasks.yaml         the stage 3 task set: 22 questions and the checks of each run
 data/
   texts/                   the 48 texts the models get
   synthetic/               golden Deal and "dirtiness" parameters of each synthetic text
@@ -465,7 +479,8 @@ prompts/
   extract_v2.md            prompt with per-field rules; {today} becomes the run date
   answer_v1.md … answer_v3.md  stage 2 answer prompts; v3 is in configs/answer.yaml
   judge_correct_v1.md, judge_faithful_v1.md, judge_faithful_v2.md  the prompts of the stage 2 judge; faithful v2 is in configs/judge.yaml
-  agent_v1.md              the stage 3 agent's system prompt; the MCP servers' instructions are added to it
+  agent_v1.md              the stage 3 agent's first system prompt (the run of 22.11)
+  agent_v2.md              the stage 3 agent's system prompt: when to search, dated citations; the MCP servers' instructions are added to it
   CHANGELOG.md             what changed between versions and why
 tools/                     stage 3 tool descriptions the model reads: <name>.yaml with a version + CHANGELOG.md
 src/schemas/

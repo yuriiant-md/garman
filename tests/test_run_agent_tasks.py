@@ -52,7 +52,7 @@ def test_the_run_takes_the_model_prompt_and_prices_of_the_config(tmp_path: Path)
 
     assert run.config.model == "haiku-5.5"
     assert run.model.model == "claude-haiku-5-5"
-    assert run.prompt.version == "v1"
+    assert run.prompt.version == "v2"
     assert run.prices == (0.1, 0.5)
     assert [t.id for t in run.tasks] == ["t02"]
     assert run.today == date(2026, 11, 25)

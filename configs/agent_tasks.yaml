@@ -9,6 +9,11 @@
 # checks that the answer gives the number the calculator returned, exactly, never rounded.
 # answer_has: a list of groups; the answer must have at least one phrase of every group.
 # Phrases are compared without case, so "подвійн" finds «подвійної» and «Подвійну».
+# citations: groups as in answer_has, but a phrase counts only inside a "[…]" citation that some
+# search_corpus call of the request returned, and as whole words: "ст. 20" does not find "ст. 201".
+# Any "[…]" no search returned fails every task, unless it is quoted from a tool's text ([ПІБ]).
+# calls_at_least: [{tool, calls}], the tool called that many times, each with a result and its
+# own arguments (search_again: a second search, not the same query again).
 # confirm: how the farmer answers the agent's question about an action; null: none may be asked.
 
 today: 2026-11-25  # save_reminder judges a date by this day, so the dates below stay ahead
@@ -61,6 +66,7 @@ tasks:
       tools_required: [effective_price]
       tools_forbidden: [save_reminder]
       numbers_from: [{tool: effective_price, field: uah_per_t}]
+      answer_lacks: ["близько", "приблизно", "орієнтовно"]  # the number is exact (agent_v2)
 
   - id: t06_penalty_risk
     kind: answer
@@ -72,6 +78,7 @@ tasks:
       tools_forbidden: [save_reminder]
       contract_ids_only: [own_001]
       numbers_from: [{tool: penalty_risk, field: uah}]
+      answer_lacks: ["близько", "приблизно", "орієнтовно"]
 
   - id: t07_law_penalty_cap
     kind: answer
@@ -82,6 +89,7 @@ tasks:
       tools_required: [search_corpus]
       tools_forbidden: [save_reminder]
       answer_has: [["подвійн"], ["закон"]]
+      citations: [["зобов'язань, ст. 3"]]  # the cap: art. 3 of the late payment law
 
   # --- no tool needed
 
@@ -211,3 +219,31 @@ tasks:
       stop: budget
       tools_forbidden: [save_reminder]
       answer_has: [["бюджет"]]
+
+  # --- the corpus search is the agent's choice (agentic RAG): when not to search, when to again
+
+  - id: t21_no_search
+    kind: no_search
+    # "форс-мажор" sounds like the law on chambers of commerce, but the question is the contract's
+    question: "У який строк за договором own_002 я маю повідомити трейдера про форс-мажор?"
+    checks:
+      tools_required: [get_clause]
+      tools_forbidden: [search_corpus, save_reminder]
+      contract_ids_only: [own_002]
+      answer_has: [["8.2"], ["1-го дня", "1 дня", "одного дня", "1 день", "першого дня"]]
+
+  - id: t22_search_again
+    kind: search_again
+    # two norms no single query finds together: in a probe of the real search (25.11) no combined
+    # query returned both art. 625 of the Civil Code and art. 201 of the Tax Code
+    # a question of the law only: "this delivery" of the first wording (trial 25.11) sent the
+    # agent through every contract's outline and spent the token budget
+    question: >-
+      Що каже закон: що продавець може стягнути з покупця, який прострочив оплату, крім пені?
+      І в який строк продавець має зареєструвати податкову накладну?
+    checks:
+      tools_required: [search_corpus]
+      tools_forbidden: [save_reminder]
+      calls_at_least: [{tool: search_corpus, calls: 2}]
+      answer_has: [["річних"], ["інфляц"], ["податков"]]
+      citations: [["ЦК, ст. 625"], ["ПКУ, ст. 201"]]

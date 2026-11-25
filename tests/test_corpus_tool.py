@@ -2,6 +2,7 @@ import json
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import date
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
@@ -11,15 +12,18 @@ from src.agents.corpus_tool import (
     CorpusHit,
     CorpusHits,
     corpus_hit,
+    dated_citation,
     search_corpus,
     search_corpus_tool,
 )
 from src.agents.graph import Agent
 from src.agents.limits import Limits
+from src.agents.tasks import CITATION
 from src.agents.tools import InvalidArguments
 from src.rag.answer import citation, warning
 from src.rag.chunking import Chunk
 from src.rag.context import BLOCK_SEPARATOR, ContextSettings, document_block, estimate_tokens
+from src.rag.documents import read_jsonl
 from src.rag.embedding import Progress, Vector
 from src.rag.index import build_index, index_stamp
 from src.rag.search import Hit, Searcher, SearchFilter, SearchMode
@@ -169,10 +173,11 @@ def test_the_token_budget_of_the_settings_limits_the_hits() -> None:
 # --- what a hit says
 
 
-def test_a_hit_carries_the_stage_2_citation_source_and_date() -> None:
+def test_a_law_is_cited_as_in_stage_2_with_the_day_its_text_was_taken() -> None:
     [hit] = search_corpus(FakeSearch({DocType.LAW: hits(CIVIL_CODE)}), SETTINGS, "пеня").hits
 
-    assert hit.citation == citation(CIVIL_CODE) == "[ЦК, ст. 625]"
+    assert citation(CIVIL_CODE) == "[ЦК, ст. 625]"
+    assert hit.citation == "[ЦК, ст. 625; текст станом на 01.10.2025]"
     assert hit.title == "Цивільний кодекс України"
     assert hit.doc_type is DocType.LAW
     assert hit.source_url == CIVIL_CODE.source_url
@@ -194,6 +199,36 @@ def test_a_repealed_law_and_practice_under_it_carry_the_stage_2_warning() -> Non
     assert decision.warning == warning(DECISION_1)
     assert decision.version_date == date(2023, 1, 10)
     assert decision.pages == (4, 5)
+
+
+def test_a_decision_is_cited_with_its_date() -> None:
+    assert corpus_hit(DECISION_1).citation == "[court_922_1467_19; від 10.01.2023]"
+
+
+@pytest.mark.parametrize(
+    "undated",
+    [
+        COMMERCIAL_CODE,
+        DECISION_2,
+        # each kind has its own date: a law's version_date or a decision's retrieved_on is not it
+        chunk("law_x#001", DocType.LAW, ref="ст. 1", version_date=date(2024, 1, 1)),
+        chunk("court_x#001", DocType.COURT_DECISION, retrieved_on=date(2025, 1, 1)),
+    ],
+    ids=lambda c: c.chunk_id,
+)
+def test_a_chunk_with_no_date_of_its_kind_is_cited_as_in_stage_2(undated: Chunk) -> None:
+    assert corpus_hit(undated).citation == citation(undated)
+
+
+def test_every_law_and_decision_of_the_corpus_is_cited_dated_and_whole() -> None:
+    chunks = read_jsonl(Path("data/rag/chunks.jsonl"), Chunk)
+
+    cited = [dated_citation(c) for c in chunks if c.doc_type is not DocType.CONTRACT]
+
+    assert cited
+    assert all("; текст станом на " in text or "; від " in text for text in cited)
+    # no bracket inside a citation, so the task checks find each one whole
+    assert [text for text in cited if not CITATION.fullmatch(text)] == []
 
 
 # --- the tool
@@ -262,16 +297,17 @@ def test_the_query_is_searched_without_surrounding_spaces() -> None:
     assert {query for query, *_ in search.calls} == {"пеня"}
 
 
-def test_the_tool_is_described_by_its_yaml_as_a_safe_v1_with_one_argument() -> None:
+def test_the_tool_is_described_by_its_yaml_as_a_safe_v2_with_one_argument() -> None:
     tool = search_corpus_tool(fake_search(), SETTINGS)
 
-    assert (tool.name, tool.version) == ("search_corpus", "v1")
+    assert (tool.name, tool.version) == ("search_corpus", "v2")
     assert tool.description.side_effect is False
     schema = tool.spec["input_schema"]
     assert list(schema["properties"]) == ["query"]
     assert schema["required"] == ["query"]
     text = tool.description.description
-    for must in ("Коли викликати", "Коли не викликати", "get_clause", "warning"):
+    musts = ("Коли викликати", "Коли не викликати", "get_clause", "warning", "іншими словами")
+    for must in (*musts, "дослівно", "текст станом на"):
         assert must in text
 
 
@@ -279,7 +315,8 @@ def test_the_tool_is_described_by_its_yaml_as_a_safe_v1_with_one_argument() -> N
 
 
 def test_the_agent_gets_the_hits_and_records_the_tool_version() -> None:
-    model = FakeModel(turn("", ask(query="проценти річних")), turn("ЦК ст. 625 [ЦК, ст. 625]."))
+    cited = "[ЦК, ст. 625; текст станом на 01.10.2025]"
+    model = FakeModel(turn("", ask(query="проценти річних")), turn(f"3% річних {cited}."))
     agent = Agent(
         model=model,
         tools=(search_corpus_tool(fake_search(), SETTINGS),),
@@ -294,9 +331,9 @@ def test_the_agent_gets_the_hits_and_records_the_tool_version() -> None:
     trace = agent.run("Скільки процентів річних за прострочення?")
 
     [result] = tool_results(model, 1)
-    assert "[ЦК, ст. 625]" in str(result["content"])
+    assert cited in str(result["content"])
     [call] = trace.steps[0].tool_calls
-    assert (call.name, call.tool_version, call.error) == ("search_corpus", "v1", None)
+    assert (call.name, call.tool_version, call.error) == ("search_corpus", "v2", None)
 
 
 # --- over a real (in-memory) Qdrant index

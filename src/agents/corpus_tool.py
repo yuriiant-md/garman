@@ -9,9 +9,11 @@ would bypass the 403 of the MCP server contracts; the agent reads a contract onl
 server. The filter is set in code, not by the model, and a contract chunk the search returns
 anyway is dropped before the answer.
 
-Each hit carries its citation and warning made by Python as in stage 2 (answer.citation,
-answer.warning), so the model cites «[ЦК, ст. 625]» and cannot lose the warning that the
-Commercial Code has been repealed.
+Each hit carries its citation and warning made by Python (answer.citation, answer.warning), so the
+model cannot lose the warning that the Commercial Code has been repealed. The citation is the
+stage 2 one with the date of the text quoted, «[ЦК, ст. 625; текст станом на 04.11.2026]»: a law
+is the version downloaded that day, a decision is dated. The model copies it as it is, and the
+task checks (tasks.py) fail an answer citing anything no search returned.
 """
 
 from datetime import date
@@ -50,7 +52,7 @@ class CorpusHit(BaseModel):
     chunk_id: str
     doc_type: DocType
     title: str
-    citation: str  # «[ЦК, ст. 625]»: made by Python, the only way the model may cite
+    citation: str  # by Python (dated_citation): the only way the model may cite
     source_url: str | None = None
     version_date: date | None = None  # of a decision
     retrieved_on: date | None = None  # a law: the day its text was downloaded
@@ -89,7 +91,7 @@ def corpus_hit(chunk: Chunk) -> CorpusHit:
         chunk_id=chunk.chunk_id,
         doc_type=chunk.doc_type,
         title=chunk.title,
-        citation=citation(chunk),
+        citation=dated_citation(chunk),
         source_url=chunk.source_url,
         version_date=chunk.version_date,
         retrieved_on=chunk.retrieved_on,
@@ -98,6 +100,18 @@ def corpus_hit(chunk: Chunk) -> CorpusHit:
         pages=chunk.pages,
         text=chunk.text,
     )
+
+
+def dated_citation(chunk: Chunk) -> str:
+    """The stage 2 citation with the date of its text: a law's download day, a decision's date.
+    A chunk with no date keeps the stage 2 citation; stage 2 answers are not changed."""
+    if chunk.doc_type is DocType.LAW and chunk.retrieved_on is not None:
+        dated = f"текст станом на {chunk.retrieved_on:%d.%m.%Y}"
+    elif chunk.doc_type is DocType.COURT_DECISION and chunk.version_date is not None:
+        dated = f"від {chunk.version_date:%d.%m.%Y}"
+    else:
+        return citation(chunk)
+    return f"{citation(chunk).removesuffix(']')}; {dated}]"  # citation() ends in "]"
 
 
 def search_corpus_tool(

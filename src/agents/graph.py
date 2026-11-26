@@ -16,6 +16,11 @@ The run waits in a checkpoint (in memory: a restart forgets the question), and t
 to decide counts neither against request_timeout_s nor in the latency. LangGraph runs `confirm`
 again from its start on resume, so before interrupt() it only checks and changes nothing.
 
+Memory comes from outside the graph (conversation.py): the dialogue so far (its summary, then
+its last turns) goes before the question, the farmer's profile after the system prompt. The
+state keeps the system prompt so built, so a resume reads what the run read, even if the profile
+changed in between. The graph itself remembers nothing from one request to the next.
+
 `check` runs before every model call and stops the run on the first limit reached (limits.py).
 The step limit is our own, not LangGraph's recursion_limit: that one raises and loses the state,
 while a stop here keeps it and turns it into a partial answer. recursion_limit stays as a guard
@@ -80,11 +85,18 @@ from src.agents.model import (
     MalformedReply,
     ModelTurn,
     ToolRequest,
+    is_transient,
     tool_results_message,
 )
 from src.agents.tools import AgentTool, InvalidArguments, SchemaMismatch, ToolRefused
-from src.agents.trace import PendingAction, ToolCall, Trace, TraceStep, append_trace
-from src.extraction.retry import is_retryable
+from src.agents.trace import (
+    PendingAction,
+    SummaryCall,
+    ToolCall,
+    Trace,
+    TraceStep,
+    append_trace,
+)
 
 USABLE_FINISHES = frozenset({"end_turn", "tool_use"})  # any other stop cannot be acted on
 NODES_PER_STEP = 4  # check, model, confirm, tools
@@ -105,7 +117,15 @@ DECLINED = (
     "попросить."
 )
 # the types the state and the question hold: a checkpoint loads only these, any other is refused
-CHECKPOINT_TYPES = (Usage, StopReason, ToolRequest, TraceStep, ToolCall, PendingAction)
+CHECKPOINT_TYPES = (
+    Usage,
+    StopReason,
+    ToolRequest,
+    TraceStep,
+    ToolCall,
+    PendingAction,
+    SummaryCall,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -121,7 +141,9 @@ class AgentState(TypedDict):
     started_s: float  # the agent's clock at the start of the request
     paused_s: float  # the farmer deciding, left out of the request's time
     question: str
-    messages: list[MessageParam]
+    # the agent's prompt and this request's context: kept, so a resume reads what the run read
+    system: str
+    messages: list[MessageParam]  # the dialogue so far (memory.py), then this question
     # tuples here come back from a checkpoint as lists; the trace makes them tuples again
     steps: tuple[TraceStep, ...]
     usage: Usage
@@ -131,6 +153,7 @@ class AgentState(TypedDict):
     stop_reason: StopReason | None
     answer: str | None
     error: str | None
+    summary: SummaryCall | None  # made before the request; on every line of its thread
 
 
 def new_checkpointer() -> InMemorySaver:
@@ -166,9 +189,23 @@ class Agent:
         if duplicates:
             raise ValueError(f"duplicate tool names: {', '.join(duplicates)}")
 
-    def run(self, question: str, trace_file: Path | None = None) -> Trace:
-        """Answer one question, or stop to ask the farmer (then resume); append the trace."""
-        return self._invoke(uuid4().hex, self._initial_state(question), trace_file)
+    def run(
+        self,
+        question: str,
+        trace_file: Path | None = None,
+        *,
+        history: Sequence[MessageParam] = (),
+        context: str | None = None,
+        summary: SummaryCall | None = None,
+    ) -> Trace:
+        """Answer one question, or stop to ask the farmer (then resume); append the trace.
+
+        A conversation (conversation.py) gives the dialogue so far as `history`, the farmer's
+        profile as `context` after the system prompt, and the summary call made before this
+        request; a single question gives none of them.
+        """
+        state = self._initial_state(question, history, context, summary)
+        return self._invoke(uuid4().hex, state, trace_file)
 
     def resume(self, thread_id: str, *, approved: bool, trace_file: Path | None = None) -> Trace:
         """Go on with a run that waits for the farmer; `approved` is the farmer's own answer."""
@@ -210,6 +247,7 @@ class Agent:
             awaiting=awaiting,
             paused_s=state["paused_s"],
             latency_s=self.clock() - state["started_s"] - state["paused_s"],
+            summary=state["summary"],
         )
         if not awaiting:  # nothing more to resume: the checkpoint would only keep memory
             self.checkpointer.delete_thread(thread_id)
@@ -221,12 +259,19 @@ class Agent:
         recursion_limit = self.limits.max_steps * NODES_PER_STEP + RECURSION_MARGIN
         return {"configurable": {"thread_id": thread_id}, "recursion_limit": recursion_limit}
 
-    def _initial_state(self, question: str) -> AgentState:
+    def _initial_state(
+        self,
+        question: str,
+        history: Sequence[MessageParam],
+        context: str | None,
+        summary: SummaryCall | None,
+    ) -> AgentState:
         return {
             "started_s": self.clock(),
             "paused_s": 0.0,
             "question": question,
-            "messages": [{"role": "user", "content": question}],
+            "system": self.system if context is None else f"{self.system}\n\n{context}",
+            "messages": [*history, {"role": "user", "content": question}],
             "steps": (),
             "usage": Usage(),
             "pending": (),
@@ -235,6 +280,7 @@ class Agent:
             "stop_reason": None,
             "answer": None,
             "error": None,
+            "summary": summary,
         }
 
     def _graph(self) -> CompiledStateGraph:
@@ -262,14 +308,12 @@ class Agent:
     def _call_model(self, state: AgentState) -> Update:
         try:
             turn = self.model.call(
-                system=self.system,
+                system=state["system"],
                 messages=state["messages"],
                 tools=[tool.spec for tool in self.tools],
             )
-        except (anthropic.APITimeoutError, anthropic.APIConnectionError, MalformedReply) as error:
-            return {"stop_reason": StopReason.ERROR, "error": f"{type(error).__name__}: {error}"}
-        except anthropic.APIStatusError as error:
-            if not is_retryable(error.status_code):
+        except (anthropic.APIError, MalformedReply) as error:
+            if not is_transient(error):
                 raise  # the request itself is wrong: a bug to fix, not a farmer's problem
             return {"stop_reason": StopReason.ERROR, "error": f"{type(error).__name__}: {error}"}
         return self._after_turn(state, turn)

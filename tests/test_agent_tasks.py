@@ -25,13 +25,16 @@ from src.agents.tasks import (
     load_tasks,
     numbers_in,
 )
-from src.agents.trace import PendingAction, ToolCall, Trace, TraceStep
+from src.agents.trace import PendingAction, SummaryCall, ToolCall, Trace, TraceStep
+from tests.agent_fixtures import MEMORY
 
 STARTED = datetime(2026, 11, 22, 12, 0).astimezone()
 LIMITS = Limits(
     max_steps=8, max_tokens=50_000, max_cost_usd=0.01, tool_timeout_s=20, request_timeout_s=120
 )
-CONFIG = AgentConfig(model="haiku-5.5", limits=LIMITS, retries=RetryPolicy(backoff_s=0.5))
+CONFIG = AgentConfig(
+    model="haiku-5.5", limits=LIMITS, memory=MEMORY, retries=RetryPolicy(backoff_s=0.5)
+)
 SIDE_EFFECTS = frozenset({"save_reminder"})
 NET_PRICE = ToolNumber(tool="effective_price", field="net.per_t")
 
@@ -220,6 +223,15 @@ def test_a_run_that_meets_every_check_passes_with_its_steps_and_cost() -> None:
     assert result.required_tools_called
     assert (result.steps, result.cost_usd, result.unconfirmed_actions) == (2, 0.002, 0)
     assert result.tools_called == ("get_clause",)
+
+
+def test_the_cost_of_a_task_counts_the_summary_made_before_its_request() -> None:
+    summary = SummaryCall(prompt_version="v1", folded_turns=2, cost_usd=0.0005)
+    done = trace().model_copy(update={"summary": summary})
+
+    result = check_task(task(), run(done))
+
+    assert result.cost_usd == pytest.approx(0.0025)
 
 
 def test_every_failed_check_is_named_not_only_the_first() -> None:

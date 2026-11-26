@@ -7,9 +7,11 @@ import pytest
 
 from src.agents.faults import RetryPolicy
 from src.agents.limits import AgentConfig, Limits, StopReason
+from src.agents.profile import FactKey, ProfileStore
 from src.agents.reminders import REMINDERS_FILE, Reminder, ReminderKind
 from src.agents.runner import (
     OUTBOX_NAME,
+    PROFILE_NAME,
     RESULTS_NAME,
     SUMMARY_NAME,
     TRACES_NAME,
@@ -22,7 +24,7 @@ from src.agents.tasks import Checks, SeedReminder, Task, TaskKind, TaskResult
 from src.agents.tools import AgentTool
 from src.agents.trace import Trace
 from src.rag.documents import read_jsonl
-from tests.agent_fixtures import Clock, FakeModel, ask, turn
+from tests.agent_fixtures import MEMORY, Clock, FakeModel, ask, turn
 from tests.test_agent_graph import PRICES, NoArgs, found, tool
 
 TODAY = date(2026, 11, 25)
@@ -33,6 +35,7 @@ CONFIG = AgentConfig(
     limits=Limits(
         max_steps=5, max_tokens=10_000, max_cost_usd=1.0, tool_timeout_s=5, request_timeout_s=60
     ),
+    memory=MEMORY,
     retries=RetryPolicy(max_attempts=3, backoff_s=0.25),  # not the default: the config is used
 )
 REMIND = {"contract_id": "own_001", "kind": "payment", "due_date": "2026-12-15", "note": "оплата"}
@@ -127,7 +130,7 @@ def test_a_task_runs_the_agent_on_its_question_and_checks_the_run(
     assert traces[0].prompt_version == "v1"
 
 
-def test_the_tools_are_those_of_the_tasks_farmer_plus_save_reminder(
+def test_the_tools_are_those_of_the_tasks_farmer_plus_the_local_ones(
     setup: Setup, tmp_path: Path
 ) -> None:
     model = FakeModel(turn("Добрий день!"))
@@ -136,7 +139,28 @@ def test_the_tools_are_those_of_the_tasks_farmer_plus_save_reminder(
 
     assert setup.farmers == ["farmer_b"]
     names = [spec["name"] for spec in model.requests[0]["tools"]]  # type: ignore[attr-defined]
-    assert names == ["list_contracts", "save_reminder"]
+    assert names == ["list_contracts", "save_reminder", "remember_fact", "forget_fact"]
+
+
+def test_a_fact_remembered_in_a_task_stays_in_that_tasks_own_profile(
+    setup: Setup, tmp_path: Path
+) -> None:
+    remember = ask("remember_fact", "m1", key="region", value="Одеська область")
+    model = FakeModel(turn("", remember), turn("Запам'ятав."), turn("Добрий день!"))
+    outbox = tmp_path / "ob"
+
+    result = run_task(task(confirm=True), setup(model), outbox, None)
+    run_task(task(id="t02"), setup(model), outbox, None)
+
+    assert result.passed, result.failures
+    ttl = CONFIG.memory.fact_ttl_days
+    first = ProfileStore(outbox / "t01" / PROFILE_NAME, "farmer_a", ttl)
+    second = ProfileStore(outbox / "t02" / PROFILE_NAME, "farmer_a", ttl)
+    now = datetime.now().astimezone()
+    assert [(f.key, f.value) for f in first.facts(now=now)] == [
+        (FactKey.REGION, "Одеська область")
+    ]
+    assert second.facts(now=now) == ()  # a task never finds the fact of another one
 
 
 def test_a_yes_of_the_task_lets_the_reminder_be_written_once(

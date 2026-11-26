@@ -1,18 +1,21 @@
 """Runs the agent's task set (tasks.py) and keeps each run in a folder of its own.
 
 Each task gets an agent of its own: its faults (faults.FaultPlan) and its tightened limits, the
-read-only tools of its farmer (setup.tools_for: the MCP servers and the corpus search) and a
-save_reminder writing to an outbox of the task alone, so a reminder of one task is never found
-by the next one and the duplicate task finds only the reminder it was seeded with. save_reminder
-judges a date by the task set's day, so the tasks' dates stay in the future.
+read-only tools of its farmer (setup.tools_for: the MCP servers and the corpus search), and the
+local tools with a side effect, writing to a folder of the task alone in the outbox:
+save_reminder, so a reminder of one task is never found by the next one and the duplicate task
+finds only the reminder it was seeded with; remember_fact and forget_fact over a profile of the
+task alone, so no task starts with a fact another one left. save_reminder judges a date by the
+task set's day, so the tasks' dates stay in the future.
 
 When the agent asks the farmer about an action, the runner answers with the task's `confirm`.
 A question the task does not expect is answered no, and check_task fails the task for it.
 
 A run is written to results/stage3/tasks/<start>.partial/: results.jsonl gets a line as each task
-ends, traces.jsonl every trace line, outbox/ the reminders. summary.md is written last, then the
-folder is renamed to <start>/. A run that crashes stays .partial, for a look at what it did;
-a folder of the same start, finished or not, is never overwritten.
+ends, traces.jsonl every trace line, outbox/ the reminders and the profile of each task.
+summary.md is written last, then the folder is renamed to <start>/. A run that crashes stays
+.partial, for a look at what it did; a folder of the same start, finished or not, is never
+overwritten.
 """
 
 import time
@@ -27,6 +30,8 @@ from src.agents.faults import FaultPlan, Sleep
 from src.agents.graph import Agent
 from src.agents.limits import AgentConfig
 from src.agents.model import ChatModel
+from src.agents.profile import ProfileStore
+from src.agents.profile_tool import profile_tools
 from src.agents.reminder_tool import save_reminder_tool
 from src.agents.reminders import ReminderStore
 from src.agents.tasks import SeedReminder, Task, TaskResult, TaskRun, check_task
@@ -41,6 +46,7 @@ RESULTS_NAME = "results.jsonl"
 SUMMARY_NAME = "summary.md"
 TRACES_NAME = "traces.jsonl"
 OUTBOX_NAME = "outbox"
+PROFILE_NAME = "profile.sqlite"  # in the task's own folder of the outbox
 
 
 @dataclass(frozen=True)
@@ -81,7 +87,10 @@ def run_task(task: Task, setup: RunnerSetup, outbox: Path, trace_file: Path | No
     before = len(store.all())
     shelf = ContractShelf(setup.contracts_root, task.farmer)
     reminder = save_reminder_tool(store, shelf, today=lambda: setup.today)
-    tools = (*setup.tools_for(task.farmer), reminder)
+    profile = ProfileStore(
+        outbox / task.id / PROFILE_NAME, task.farmer, setup.config.memory.fact_ttl_days
+    )
+    tools = (*setup.tools_for(task.farmer), reminder, *profile_tools(profile))
     agent = Agent(
         model=setup.model,
         tools=tools,

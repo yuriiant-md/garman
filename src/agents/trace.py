@@ -70,6 +70,23 @@ class PendingAction(BaseModel):
     arguments: dict[str, JsonValue]  # checked: the call would go through as it is
 
 
+class SummaryCall(BaseModel):
+    """The model call that folded the oldest turns of the dialogue into a summary (memory.py).
+
+    Made before the request, outside its limits; the request costs usage plus this.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    prompt_version: str  # of prompts/summary_v*.md
+    folded_turns: int = Field(ge=0)
+    input_tokens: int = Field(default=0, ge=0)
+    output_tokens: int = Field(default=0, ge=0)
+    cost_usd: float = Field(default=0.0, ge=0)
+    latency_s: float = Field(default=0.0, ge=0)
+    error: str | None = None  # the summary was not used: the dialogue stayed as it was
+
+
 class Trace(BaseModel):
     """One request from the question to the stop, or to a question to the farmer."""
 
@@ -90,6 +107,12 @@ class Trace(BaseModel):
     awaiting: tuple[PendingAction, ...] = ()  # when stopped for a confirmation: what is asked
     paused_s: float = Field(default=0, ge=0)  # the farmer deciding; not in latency_s nor limits
     latency_s: float = Field(ge=0)  # the whole request so far, the pauses left out
+    summary: SummaryCall | None = None  # the dialogue's summary made before this request
+
+    @property
+    def cost_usd(self) -> float:
+        """What the request cost: its model calls, and the summary made before it."""
+        return self.usage.cost_usd + (self.summary.cost_usd if self.summary else 0.0)
 
     @model_validator(mode="after")
     def _awaiting_only_when_stopped_for_it(self) -> "Trace":

@@ -13,9 +13,10 @@ from pathlib import Path
 from typing import Self
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PositiveInt, ValidationError, model_validator
 
 from src.agents.faults import RetryPolicy
+from src.agents.profile import FactKey
 from src.extraction.metrics import cost_usd as tokens_cost_usd
 from src.extraction.run import MODELS
 
@@ -46,11 +47,42 @@ class Limits(BaseModel):
     request_timeout_s: float = Field(gt=0)  # the whole request
 
 
+class MemoryConfig(BaseModel):
+    """What the agent remembers: the dialogue of a conversation and the farmer's profile."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    # the dialogue sent again with each question; over it the oldest turns become a summary
+    history_max_tokens: int = Field(gt=0)
+    # of the cap, kept for the summary: the turns kept word for word get the rest, and a longer
+    # summary is cut at a sentence, so a summarized dialogue always fits the cap (memory.py)
+    summary_max_tokens: int = Field(gt=0)
+    keep_turns: int = Field(gt=0)  # the last turns kept word for word when the rest is summarized
+    fact_ttl_days: dict[FactKey, PositiveInt]  # days a fact of the profile lives (profile.py)
+
+    @model_validator(mode="after")
+    def _every_fact_has_a_ttl(self) -> Self:
+        missing = [key.value for key in FactKey if key not in self.fact_ttl_days]
+        if missing:
+            raise ValueError(f"fact_ttl_days has no ttl for: {', '.join(missing)}")
+        return self
+
+    @model_validator(mode="after")
+    def _the_summary_leaves_room_for_turns(self) -> Self:
+        if self.summary_max_tokens >= self.history_max_tokens:
+            raise ValueError(
+                f"summary_max_tokens {self.summary_max_tokens} leaves no room in "
+                f"history_max_tokens {self.history_max_tokens} for the last turns"
+            )
+        return self
+
+
 class AgentConfig(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     model: str  # a section of configs/models.yaml
     limits: Limits
+    memory: MemoryConfig
     retries: RetryPolicy = RetryPolicy()
 
     @model_validator(mode="after")

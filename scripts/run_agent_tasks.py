@@ -5,8 +5,9 @@
 
 The agent gets what the bot will give it: the MCP servers `contracts` and `calculators` started
 for the task's farmer (data/raw/farmers/, laid out by scripts/setup_farmers.py), search_corpus
-over the stage 2 index, and save_reminder (runner.py). The model, the limits and the retries are
-those of configs/agent.yaml; the prompt is prompts/agent_v2.md with the servers' instructions.
+over the stage 2 index, save_reminder and the profile tools (runner.py). The model, the limits
+and the retries are those of configs/agent.yaml; the prompt is prompts/agent_v3.md with the
+servers' instructions.
 The run goes to results/stage3/tasks/<start>/ (runner.py); about $0.003 a task on Haiku 5.5.
 """
 
@@ -43,7 +44,7 @@ from src.rag.search import Searcher, bge_reranker
 from src.servers.contracts_server import CONTRACTS_DIR_ENV, DEFAULT_CONTRACTS_DIR
 
 API_KEY = "ANTHROPIC_API_KEY"
-AGENT_PROMPT_PATH = Path("prompts/agent_v2.md")
+AGENT_PROMPT_PATH = Path("prompts/agent_v3.md")
 SETUP_ERRORS = (OSError, ValueError, KeyError, TypeError, yaml.YAMLError)
 
 

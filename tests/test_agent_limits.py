@@ -10,6 +10,7 @@ from src.agents.limits import (
     load_agent_config,
     stop_reason,
 )
+from src.agents.profile import FactKey
 from src.extraction.run import MODELS
 
 LIMITS = Limits(
@@ -29,6 +30,19 @@ limits:
   max_cost_usd: 0.01
   tool_timeout_s: 20
   request_timeout_s: 120
+memory:
+  history_max_tokens: 2000
+  summary_max_tokens: 400
+  keep_turns: 2
+  fact_ttl_days:
+    region: 730
+    crops: 365
+    area_ha: 365
+    warehouse: 730
+    vat_payer: 365
+    basis: 180
+    preferred_port: 180
+    note: 180
 """
 
 
@@ -54,10 +68,23 @@ def test_the_config_names_the_model_and_every_limit(tmp_path: Path) -> None:
     )
 
 
+def test_the_config_names_the_memory_and_a_ttl_of_every_fact(tmp_path: Path) -> None:
+    memory = load_agent_config(write(tmp_path, VALID)).memory
+
+    assert (memory.history_max_tokens, memory.summary_max_tokens, memory.keep_turns) == (
+        2000,
+        400,
+        2,
+    )
+    assert memory.fact_ttl_days[FactKey.BASIS] == 180
+    assert set(memory.fact_ttl_days) == set(FactKey)
+
+
 def test_the_repository_config_loads_and_names_a_section_of_models_yaml() -> None:
     config = load_agent_config(AGENT_CONFIG_PATH)
 
     assert config.model in MODELS
+    assert set(config.memory.fact_ttl_days) == set(FactKey)
 
 
 @pytest.mark.parametrize(
@@ -66,7 +93,16 @@ def test_the_repository_config_loads_and_names_a_section_of_models_yaml() -> Non
         VALID.replace("max_steps: 8", "max_steps: 0"),  # a limit must be above zero
         VALID.replace("max_cost_usd: 0.01", "max_cost_usd: -1"),
         VALID.replace("  max_steps: 8\n", ""),  # every limit is required
-        VALID + "  max_retries: 3\n",  # a typo in a key is not silently ignored
+        VALID.replace("  request_timeout_s: 120\n", "  request_timeout_s: 120\n  max_retries: 3\n"),
+        VALID.replace("history_max_tokens: 2000", "history_max_tokens: 0"),
+        VALID.replace("keep_turns: 2", "keep_turns: 0"),
+        VALID.replace("summary_max_tokens: 400", "summary_max_tokens: 0"),
+        # the summary must leave room in the cap for the turns kept word for word
+        VALID.replace("summary_max_tokens: 400", "summary_max_tokens: 2000"),
+        VALID.replace("    basis: 180", "    basis: 0"),  # a fact lives at least a day
+        VALID.replace("    note: 180\n", ""),  # every key of the profile needs its ttl
+        VALID + "    favourite_colour: 30\n",  # a key the profile does not have
+        VALID.split("memory:")[0],  # the memory section is required
     ],
 )
 def test_a_broken_config_is_an_error_that_names_the_file(tmp_path: Path, broken: str) -> None:

@@ -6,7 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from src.agents.limits import StopReason, Usage
-from src.agents.trace import ToolCall, Trace, TraceStep, append_trace, trace_path
+from src.agents.trace import SummaryCall, ToolCall, Trace, TraceStep, append_trace, trace_path
 from src.rag.documents import read_jsonl
 
 STARTED = datetime(2026, 11, 17, 14, 5, 9, tzinfo=timezone(timedelta(hours=2)))
@@ -131,3 +131,31 @@ def test_a_trace_line_shows_the_stop_reason_the_usage_and_every_tool_argument(
         "contract_id": "own_003",
     }
     assert "строк оплати" in path.read_text(encoding="utf-8")  # Ukrainian stays readable
+
+
+def test_a_request_costs_its_model_calls_and_the_summary_made_before_it() -> None:
+    trace = make_trace(StopReason.ANSWERED)
+    summary = SummaryCall(prompt_version="v1", folded_turns=3, cost_usd=0.0004)
+
+    with_summary = trace.model_copy(update={"summary": summary})
+
+    assert trace.cost_usd == trace.usage.cost_usd  # no summary: the model calls alone
+    assert with_summary.cost_usd == pytest.approx(trace.usage.cost_usd + 0.0004)
+
+
+def test_a_trace_with_its_summary_reads_back_and_an_older_line_without_one_too(
+    tmp_path: Path,
+) -> None:
+    summary = SummaryCall(prompt_version="v1", folded_turns=3, error="empty summary")
+    trace = make_trace(StopReason.ANSWERED).model_copy(update={"summary": summary})
+    path = tmp_path / "traces.jsonl"
+    append_trace(trace, path)
+    older = json.loads(make_trace(StopReason.ANSWERED).model_dump_json())
+    del older["summary"]  # lines of 25.11 have no summary field
+    with path.open("a", encoding="utf-8") as file:
+        file.write(json.dumps(older) + "\n")
+
+    first, second = read_jsonl(path, Trace)
+
+    assert first.summary == summary
+    assert second.summary is None

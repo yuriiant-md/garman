@@ -13,18 +13,36 @@ left after them is not caught here: the graph stops the run with `error` and kee
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Protocol, cast
+from typing import Protocol, TypedDict, cast
 
 import anthropic
-from anthropic.types import ContentBlockParam, MessageParam, ToolParam, ToolResultBlockParam
+from anthropic.types import (
+    ContentBlockParam,
+    MessageParam,
+    ToolChoiceAutoParam,
+    ToolParam,
+    ToolResultBlockParam,
+)
 from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
 
 from src.agents.trace import ToolCall
 from src.extraction.anthropic_extractor import AnthropicConfig, OutputArgs
+from src.extraction.retry import is_retryable
 
 
 class MalformedReply(Exception):
     """The model's reply cannot be acted on, e.g. a tool input that is not a JSON object."""
+
+
+def is_transient(error: BaseException) -> bool:
+    """A model failure the farmer can be told about: the API busy or out of reach, a broken reply.
+
+    Any other one means the request itself is wrong (a bad key, a bad request): a bug to raise,
+    as in stages 1 and 2. The agent (graph.py) and the summary (memory.py) share this rule.
+    """
+    if isinstance(error, anthropic.APIStatusError):
+        return is_retryable(error.status_code)
+    return isinstance(error, anthropic.APIConnectionError | MalformedReply)  # timeouts included
 
 
 class ToolRequest(BaseModel):
@@ -52,6 +70,13 @@ class ModelTurn:
     assistant_message: MessageParam
 
 
+class ToolingArgs(TypedDict, total=False):
+    """tools and tool_choice go into the request only with a tool: the API refuses one alone."""
+
+    tools: Sequence[ToolParam]
+    tool_choice: ToolChoiceAutoParam
+
+
 class ChatModel(Protocol):
     def call(
         self, *, system: str, messages: Sequence[MessageParam], tools: Sequence[ToolParam]
@@ -71,14 +96,17 @@ class AnthropicChatModel:
         effort: OutputArgs = (
             {"output_config": {"effort": self.config.effort}} if self.config.effort else {}
         )
+        # with no tools (the dialogue's summary) the call only writes text
+        tooling: ToolingArgs = {}
+        if tools:
+            tooling = {"tools": tools, "tool_choice": {"type": "auto"}}
         started = time.perf_counter()
         response = self._client.messages.create(
             model=self.config.model,
             max_tokens=self.config.max_tokens,
             system=system,
             messages=messages,
-            tools=tools,
-            tool_choice={"type": "auto"},
+            **tooling,
             **effort,
         )
         return ModelTurn(

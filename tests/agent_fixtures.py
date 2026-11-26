@@ -5,7 +5,17 @@ from collections.abc import Sequence
 from anthropic.types import MessageParam, ToolParam
 from pydantic import JsonValue
 
+from src.agents.limits import MemoryConfig
 from src.agents.model import ModelTurn, ToolRequest
+from src.agents.profile import FactKey
+
+# configs/agent.yaml `memory`, for the tests that build an AgentConfig by hand
+MEMORY = MemoryConfig(
+    history_max_tokens=2000,
+    summary_max_tokens=400,
+    keep_turns=2,
+    fact_ttl_days={key: 365 for key in FactKey},
+)
 
 
 class Clock:

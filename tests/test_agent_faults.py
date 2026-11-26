@@ -24,7 +24,7 @@ from src.agents.faults import (
 from src.agents.graph import Agent
 from src.agents.limits import AgentConfig, Limits, StopReason
 from src.agents.tools import InvalidArguments, SchemaMismatch, Tool, ToolArgs, ToolDescription
-from tests.agent_fixtures import Clock, FakeModel, ask, tool_results, turn
+from tests.agent_fixtures import MEMORY, Clock, FakeModel, ask, tool_results, turn
 
 LIMITS = Limits(
     max_steps=5, max_tokens=10_000, max_cost_usd=1.0, tool_timeout_s=5, request_timeout_s=60
@@ -369,6 +369,7 @@ def test_the_retry_policy_must_fit_in_the_tool_timeout() -> None:
     data = {
         "model": "haiku-5.5",
         "limits": LIMITS.model_copy(update={"tool_timeout_s": 1.0}).model_dump(),
+        "memory": MEMORY.model_dump(),
         "retries": {"max_attempts": 3, "backoff_s": 0.5},  # waits 0.5 + 1.0 s
     }
 

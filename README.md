@@ -315,7 +315,7 @@ Tests talk to each server through an MCP client, in memory and once as a subproc
 
 ### The agent as an MCP client
 
-The stage 3 agent does not import these functions: it starts both servers as subprocesses and calls their tools through an MCP client (`src/agents/mcp_tools.py`). Each server starts once per session, not per call. The agent takes each tool's description, argument schema and version from the server, so the trace records which version answered (`tool_version`), and the servers' instructions are added to the agent's prompt (`prompts/agent_v2.md`). A refusal (a 403 for another farmer's contract, a bad argument) reaches the model as the server's own text, marked as an error; the prompt tells the model not to look for a workaround and to explain the refusal to the farmer. A server process gets only the farmer's id and a short safe list of variables (PATH, HOME, ...), never the API key.
+The stage 3 agent does not import these functions: it starts both servers as subprocesses and calls their tools through an MCP client (`src/agents/mcp_tools.py`). Each server starts once per session, not per call. The agent takes each tool's description, argument schema and version from the server, so the trace records which version answered (`tool_version`), and the servers' instructions are added to the agent's prompt (`prompts/agent_v3.md`). A refusal (a 403 for another farmer's contract, a bad argument) reaches the model as the server's own text, marked as an error; the prompt tells the model not to look for a workaround and to explain the refusal to the farmer. A server process gets only the farmer's id and a short safe list of variables (PATH, HOME, ...), never the API key.
 
 Tests: `tests/test_agent_mcp_tools.py`, both servers in memory with a scripted model, and once as subprocesses.
 
@@ -368,7 +368,7 @@ An unknown fault stops the start. Tests: `tests/test_agent_faults.py` (every fau
 
 ### Actions with confirmation
 
-`save_reminder` (`src/agents/reminder_tool.py`, description `tools/save_reminder.yaml`) is the agent's only tool with a side effect: it saves a reminder of a contract's date (a payment, a delivery, another date) to `data/outbox/<farmer_id>/reminders.jsonl`. Nothing is sent anywhere; the stage 4 bot will read the file.
+`save_reminder` (`src/agents/reminder_tool.py`, description `tools/save_reminder.yaml`) is a tool with a side effect, as are the profile tools of Memory below: it saves a reminder of a contract's date (a payment, a delivery, another date) to `data/outbox/<farmer_id>/reminders.jsonl`. Nothing is sent anywhere; the stage 4 bot will read the file.
 
 - **Confirmation in code, not in the prompt.** Before a call with a side effect the graph stops on LangGraph's `interrupt()` (`src/agents/graph.py`, node `confirm`). `Agent.run()` returns a trace `awaiting_confirmation` with what will be saved (`awaiting`) and its `thread_id`; only `Agent.resume(thread_id, approved=True/False)`, called by the bot with the farmer's answer, lets it go on. The model has no tool and no text that confirms. A no reaches the model as "not confirmed, do not retry", and nothing is written. A yes approves only the calls the farmer was shown. Resumes run one at a time, so a second `resume` of the same question, even at the same moment, is an error, not a second write.
 - **Missing or wrong arguments: a question, not a guess.** Every argument is required (`contract_id`, `kind`: `payment`/`delivery`/`other`, `due_date`, `note`). A call that would fail (a missing field, a date in the past, another farmer's contract: 403, an unknown one: 404) goes back to the model with the reason before the farmer is asked, so the farmer never confirms a reminder that cannot be saved. The description tells the model to ask the farmer, not to make the date up.
@@ -379,6 +379,30 @@ An unknown fault stops the start. Tests: `tests/test_agent_faults.py` (every fau
 The run waits in a checkpoint in memory: a restart of the process forgets an unanswered question (a lasting store comes with the bot in stage 4). An MCP tool the server does not mark read-only is treated as one with a side effect and waits for a confirmation too.
 
 Tests: `tests/test_agent_confirm.py` (no yes → no write, no → no write, the same key twice → one record, a missing argument → a question without asking the farmer, a double tap, the pause), `tests/test_reminder_tool.py`, `tests/test_reminders.py`.
+
+### Memory
+
+The agent remembers in two ways; `src/agents/conversation.py` gives both to each request (`ask()`, then `confirm()` for the farmer's answer to a question about an action).
+
+**Short-term: the dialogue of one conversation** (`src/agents/memory.py`).
+
+- **What is stored:** the farmer's question and the agent's final answer, as text, in a `Dialogue` the caller keeps for the conversation. Tool results and the model's thinking stay in the trace; a partial answer is kept as its first line only.
+- **When:** a turn is added when its request ends; a request waiting for the farmer's yes adds it after `confirm()`.
+- **The cap:** `memory.history_max_tokens` in `configs/agent.yaml`, 2000 tokens. The dialogue goes again with every model call of a request, so the cap is small: 2000 tokens cost about 8K of the 70K budget of a request of four calls. Tokens are estimated at 2 characters a token: 2.37 was measured on the 22 questions of 25.11, rounded down so the estimate errs on more tokens.
+- **Over the cap:** the oldest turns and the earlier summary become one new summary, by one more model call without tools (`prompts/summary_v1.md`). The cap holds room for the summary, `summary_max_tokens` (400), and the last `keep_turns` (2) turns stay word for word if they fit the rest; a longer summary is cut at its last sentence that fits, so a summarized dialogue always fits the cap and the same summary is never paid for twice. The summary opens the messages as `# Earlier in this conversation`, a user message marked as written by the assistant, as data and not a source: it may retell what a contract said, so it stays out of the system prompt. Its cost is in the trace (`summary`; `Trace.cost_usd` = the request plus the summary). A summary that fails keeps the dialogue as it was, and the next question tries again.
+- **Deleted:** with the conversation. A new session starts with an empty dialogue; only the profile carries over.
+
+**Long-term: the farmer's profile** (`src/agents/profile.py`, `src/agents/profile_tool.py`).
+
+- **What is stored:** facts the farmer tells about themselves, each under one of eight keys (`region`, `crops`, `area_ha`, `warehouse`, `vat_payer`, `basis`, `preferred_port`, `note`), with a value of one line of up to 200 characters and the day it was written. Line breaks become spaces and other control characters are refused: the profile goes into the system prompt a fact a line, and a line break could forge a header or a fact there. Nothing from a contract, a search or a document, and no price of the day.
+- **Where:** SQLite, `data/memory/profile.sqlite` (not in git), one row per farmer and key. The farmer is fixed when the store is made; the model never names whose profile it changes.
+- **When it is written:** only by `remember_fact`, after the farmer's yes, through the same confirmation as `save_reminder`. A write changes every later answer, so without a yes a document with an injected «запам'ятай…» could plant a fact that outlives its conversation. A value already stored is refused before the farmer is asked.
+- **How it is used:** before each question Python reads the profile and puts it after the system prompt as `# Farmer profile`, each fact with its date. `agent_v3` tells the model that a contract or what the farmer says now wins over it. A profile that cannot be read (a broken row, a locked file) is logged, and the question is answered without it.
+- **How stale data is deleted:** each key lives `memory.fact_ttl_days` from the day it was written: region and warehouse 730 days; crops, area and VAT 365; basis, port and note 180. A stale fact is deleted from the file on the next read, not only hidden, so the agent learns it anew. The farmer can also say «забудь…» (`forget_fact`, after a yes), and `ProfileStore.forget_all()` deletes every fact of one farmer, for the bot's command in stage 4.
+
+In the task set each task has a profile of its own in its outbox folder, so no task starts with a fact another one left.
+
+Tests: `tests/test_agent_memory.py` (over the cap → a summary, the last turns kept word for word, room left for the summary, a long summary cut at a sentence, a summarized dialogue always within the cap, the earlier summary folded in, a failed summary keeps the dialogue), `tests/test_agent_conversation.py` (a fact from session 1 used in session 2, nothing after a no, a fact forgotten in session 2 is gone in session 3, a stale fact is not in the context, a broken profile does not stop the answer), `tests/test_agent_profile.py`, `tests/test_profile_tool.py`.
 
 ### The agent's task set
 
@@ -394,22 +418,28 @@ It needs Docker (Qdrant, as in stage 2) and the farmers' contracts. `make farmer
 - **What a task checks.** The stop reason; the tools that must and must not be called; phrases the answer must and must not have; a number the answer must give exactly as a calculator returned it, never rounded; the error a task must meet (403, 404, a tool unavailable, an answer off its schema); the attempts of a retried call; the reminders it writes; the citations the answer must copy from a search and the number of searches. Every task fails on an action without the farmer's yes: a call of a tool with a side effect that ran although the farmer approved no such call. It also fails on a citation no search of the request returned.
 - **What the set covers.** Answers from the contracts, the calculators and the law; questions that need no tool; questions the tools cannot answer; a legal-sounding question the contract answers (no search) and one that needs a second search; another farmer's contract (403, no workaround); one task per fault (a timeout then a retry, 503 on every attempt, a drifted schema); a duplicate reminder, a reminder without a date, a yes and a no; a token budget that runs out. A test checks that the set has at least 15 tasks and every kind, and that each task names real tools, the right farmer's contracts and dates ahead.
 - **The farmer's answer.** When the agent asks about an action, the runner answers with the task's `confirm`. A question the task does not expect is answered no and fails the task.
-- **Each task alone.** A task gets its own agent, with its faults and its tightened limits, and its own outbox, so a reminder of one task is never found by the next. `save_reminder` judges a date by the set's `today`, so the dates stay ahead.
+- **Each task alone.** A task gets its own agent, with its faults and its tightened limits, and its own outbox folder, with its reminders and its profile, so a reminder or a fact of one task is never found by the next. `save_reminder` judges a date by the set's `today`, so the dates stay ahead.
 - **A run is never overwritten.** It is written to `results/stage3/tasks/<start>.partial/` (`results.jsonl`, a line per task; `traces.jsonl`; `outbox/`), then `summary.md`, then the folder is renamed to `<start>/`. A run that crashes stays `.partial`; a folder of the same start stops a run before any paid call. Steps and cost come from the last trace line of each task.
 
-The run of 25.11.2026 (`results/stage3/tasks/2026-11-25T11-22-18/`, Haiku 5.5, prompt `agent_v2`):
+The run of 26.11.2026 (`results/stage3/tasks/2026-11-26T15-14-43/`, Haiku 5.5, prompt `agent_v3` with the profile tools):
 
 | Metric | Value |
 | --- | --- |
-| Passed | 22 of 22 |
+| Passed | 21 of 22 |
 | Required tools called | 100% of tasks |
 | Actions without the farmer's yes | 0 |
-| Steps per task | 2.4 on average, at most 4 |
-| Cost | $0.059 in all, $0.003 a task |
-| Latency | p50 4.1 s, p95 10.6 s |
+| Steps per task | 2.3 on average, at most 4 |
+| Cost | $0.064 in all, $0.003 a task |
+| Latency | p50 3.5 s, p95 10.3 s |
+
+The one failure is `t12_other_farmers_contract`. Asked to open another farmer's contract, the agent first listed the farmer's own contracts, saw own_004 was not among them and refused without trying it, so the server's 403, which the task is there to show, never came. The refusal is safe, yet the path under test was not taken; in the two runs on the same code before it the agent opened own_004, met the 403 and explained it. The check stays as it is: the final runs of the stage repeat each task to show such spread.
 
 The earlier runs are kept:
 
+- `2026-11-25T11-22-18/`, prompt `agent_v2`, before the memory: 22 of 22, $0.059, p50 4.1 s.
+- `2026-11-26T14-55-06/`, a draft of `agent_v3`: 19 of 22. In t16, t18 and t19 the agent asked «Записати?» in its text instead of calling `save_reminder`, so the farmer was never asked through the confirmation. `2026-11-26T15-01-03/`, the same three on `agent_v2` with the profile tools: two failed the same way, so the cause was not the new section alone. `agent_v3` got a rule `# Actions`: call the tool of an action at once, never ask in text first. `2026-11-26T15-02-55/` and `15-03-15/`, the four reminder tasks twice on it: 8 of 8, in 2 steps instead of 3–4.
+- `2026-11-26T15-03-44/`: 21 of 22, t04 stopped on the budget. Each call now starts with ≈ 9.6K tokens of prompt and tool specs instead of 7.6K, so a request of five calls passes 50K; `max_tokens` became 70K (≈ $0.007 on Haiku 5.5).
+- `2026-11-26T15-11-09/`: 21 of 22, t18 failed on a check of the task set, not on the agent: it saved the reminder and said «запам'ятав нагадування», a word the check did not know. «запам'ят» was added to t18 and «не запам'ят» to t19; re-checked offline, this run gives 22 of 22, and `14-55-06` still fails its three.
 - `2026-11-22T23-27-00/`, prompt `agent_v1`, 20 tasks: 20 of 20. Re-checked offline with the checks of 25.11 it fails three: «близько» before an exact number in t05 and t06, and a law named in t07's prose with no citation. These are the reasons for `agent_v2`.
 - `2026-11-22T23-25-49/`, a trial of 3 tasks before it: its `t18_reminder_yes` failed on a check of the task set, not on the agent. The phrase «збереж» does not find «зберіг»; it became «збер», with «не збер» forbidden.
 - `2026-11-25T11-08-58/` and `2026-11-25T11-11-33/`, trials on a draft of `agent_v2`. In the first, `t22_search_again` ran out of its token budget: its first wording («на цю поставку») sent the agent through every contract. In the second, the agent merged two citations into one, «[ПКУ, ст. 201, п. 201.1 і п. 201.10; …]», which no search returned. The question became one of the law only, and the prompt now says one citation per pair of brackets.
@@ -458,7 +488,7 @@ configs/
   judge.yaml               the stage 2 LLM judge: the model, its prompts, prices and thresholds
   rates.yaml               stage 3 calculators, the same for every farmer: NBU discount rate, NBU exchange rates, VAT; each number with its date
   playbooks/               one farmer's numbers for the calculators: warehouse, freight with dates, cost of money (farmer_a.yaml is synthetic)
-  agent.yaml               the stage 3 agent: the model, the limits of a request, the retries of safe tools
+  agent.yaml               the stage 3 agent: the model, the limits of a request, the memory, the retries of safe tools
   agent_tasks.yaml         the stage 3 task set: 22 questions and the checks of each run
 data/
   texts/                   the 48 texts the models get
@@ -474,13 +504,16 @@ data/
   README.md                how the data was collected, anonymised and labelled
   raw/                     original PDFs, masking check files, the stage 2 HTML pages in raw/rag/ and the farmers' contracts in raw/farmers/ (not in git)
   outbox/                  stage 3: what the agent saves for the farmer, outbox/<farmer_id>/reminders.jsonl (not in git)
+  memory/                  stage 3: the farmers' profiles, memory/profile.sqlite (not in git)
 prompts/
   extract_v1.md            baseline prompt, version in the header
   extract_v2.md            prompt with per-field rules; {today} becomes the run date
   answer_v1.md … answer_v3.md  stage 2 answer prompts; v3 is in configs/answer.yaml
   judge_correct_v1.md, judge_faithful_v1.md, judge_faithful_v2.md  the prompts of the stage 2 judge; faithful v2 is in configs/judge.yaml
   agent_v1.md              the stage 3 agent's first system prompt (the run of 22.11)
-  agent_v2.md              the stage 3 agent's system prompt: when to search, dated citations; the MCP servers' instructions are added to it
+  agent_v2.md              the agent's prompt of the run of 25.11: when to search, dated citations
+  agent_v3.md              the stage 3 agent's system prompt: v2 + the memory; the MCP servers' instructions are added to it
+  summary_v1.md            the summary of the oldest turns of a dialogue over its cap
   CHANGELOG.md             what changed between versions and why
 tools/                     stage 3 tool descriptions the model reads: <name>.yaml with a version + CHANGELOG.md
 src/schemas/
@@ -523,7 +556,11 @@ src/agents/                stage 3 agent: a LangGraph loop of model and tool cal
   faults.py                every tool call: FAULTS on demand, retries of safe tools, the output schema
   trace.py                 the trace of one request, one JSONL line
   reminders.py             a farmer's reminders: a JSONL line each, the idempotency key, a file lock
-  reminder_tool.py         save_reminder: the agent's only tool with a side effect
+  reminder_tool.py         save_reminder: a reminder of a contract's date, after the farmer's yes
+  memory.py                short-term memory: the dialogue, its token cap and its summary
+  profile.py               long-term memory: the farmer's facts in SQLite, a time to live per key
+  profile_tool.py          remember_fact and forget_fact, after the farmer's yes
+  conversation.py          a conversation: the dialogue and the profile given to each request
   tasks.py                 the task set's schema and its checks in plain Python
   runner.py                runs the task set: an agent per task, the farmer's answers, a folder per run
 src/rag/

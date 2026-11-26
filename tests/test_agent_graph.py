@@ -13,7 +13,7 @@ from src.agents.graph import Agent
 from src.agents.limits import Limits, StopReason
 from src.agents.model import MalformedReply
 from src.agents.tools import Tool, ToolArgs, ToolDescription
-from src.agents.trace import Trace
+from src.agents.trace import SummaryCall, Trace
 from src.rag.documents import read_jsonl
 from tests.agent_fixtures import Clock, FakeModel, ask, tool_results, turn
 
@@ -106,6 +106,52 @@ def test_the_model_gets_the_system_prompt_the_question_and_the_tool_specs() -> N
     assert request["system"] == "Ти помічник фермера."
     assert request["messages"] == [{"role": "user", "content": "Коли мені заплатять?"}]
     assert request["tools"] == [SEARCH.spec]
+
+
+# --- memory: the dialogue so far, the profile and the summary (conversation.py)
+
+
+def test_the_dialogue_so_far_goes_before_the_question() -> None:
+    model = FakeModel(turn("Так, до 15 грудня."))
+    history = (
+        {"role": "user", "content": "Коли мені заплатять за own_001?"},
+        {"role": "assistant", "content": "Протягом 5 днів після поставки, п. 5.2."},
+    )
+
+    trace = make_agent(model).run("А якщо поставка 10 грудня?", history=history)
+
+    assert model.requests[0]["messages"] == [
+        *history,
+        {"role": "user", "content": "А якщо поставка 10 грудня?"},
+    ]
+    assert trace.question == "А якщо поставка 10 грудня?"  # the trace keeps this question only
+
+
+def test_the_context_follows_the_system_prompt() -> None:
+    model = FakeModel(turn("ok"))
+    context = "# Farmer profile\n- region: Одеська область"
+
+    make_agent(model).run("?", context=context)
+
+    assert model.requests[0]["system"] == f"Ти помічник фермера.\n\n{context}"
+
+
+def test_the_summary_made_before_the_request_lands_in_the_trace() -> None:
+    summary = SummaryCall(prompt_version="v1", folded_turns=2, cost_usd=0.0003)
+
+    trace = make_agent(FakeModel(turn("ok"))).run("?", summary=summary)
+
+    assert trace.summary == summary
+    assert trace.cost_usd == pytest.approx(trace.usage.cost_usd + 0.0003)
+
+
+def test_a_request_without_memory_is_the_same_as_before() -> None:
+    model = FakeModel(turn("ok"))
+
+    trace = make_agent(model).run("?")
+
+    assert model.requests[0]["system"] == "Ти помічник фермера."
+    assert trace.summary is None
 
 
 def test_a_tool_result_goes_back_to_the_model_and_lands_in_the_trace() -> None:

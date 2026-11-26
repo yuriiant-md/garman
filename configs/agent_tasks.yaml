@@ -196,9 +196,10 @@ tasks:
     checks:
       tools_required: [save_reminder]
       reminders_written: 1
-      # "збер": зберіг, збережено, збережу; "не зберіг" is no success
-      answer_has: [["збер", "нагадаю", "додав", "створ", "записав"]]
-      answer_lacks: ["не збер"]
+      # "збер": зберіг, збережено, збережу; "не зберіг" is no success. "запам'ят": with
+      # agent_v3 the model says «запам'ятав нагадування» (run of 26.11, 15-11-09)
+      answer_has: [["збер", "нагадаю", "додав", "створ", "записав", "запам'ят"]]
+      answer_lacks: ["не збер", "не запам'ят"]
 
   - id: t19_reminder_no
     kind: confirm
@@ -207,7 +208,8 @@ tasks:
     checks:
       tools_required: [save_reminder]
       reminders_written: 0
-      answer_has: [["не збер", "скасов", "не буду", "не створ", "не додав", "не записав"]]
+      answer_has:
+        [["не збер", "скасов", "не буду", "не створ", "не додав", "не записав", "не запам'ят"]]
 
   # --- the budget: tokens run out before the agent has read every contract
 

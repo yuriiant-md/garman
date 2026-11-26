@@ -517,7 +517,7 @@ def test_the_system_prompt_adds_each_servers_instructions_under_its_name() -> No
     assert "calculators" not in system  # a server without instructions adds nothing
 
 
-@pytest.mark.parametrize("version", ["v1", "v2"])
+@pytest.mark.parametrize("version", ["v1", "v2", "v3"])
 def test_the_agent_prompt_has_a_version_and_the_rule_for_a_refused_contract(version: str) -> None:
     prompt = load_prompt(PROMPTS / f"agent_{version}.md")
 
@@ -525,12 +525,22 @@ def test_the_agent_prompt_has_a_version_and_the_rule_for_a_refused_contract(vers
     assert "403" in prompt.text
 
 
-def test_the_agent_prompt_v2_says_when_to_search_how_to_cite_and_not_to_round() -> None:
-    text = load_prompt(PROMPTS / "agent_v2.md").text
+@pytest.mark.parametrize("version", ["v2", "v3"])
+def test_the_agent_prompt_says_when_to_search_how_to_cite_and_not_to_round(version: str) -> None:
+    text = load_prompt(PROMPTS / f"agent_{version}.md").text
 
     musts = ("search_corpus", "search again", "citation", "square brackets", "never merged")
     for must in (*musts, "близько"):
         assert must in text
+
+
+def test_the_agent_prompt_v3_keeps_every_rule_of_v2_and_adds_the_memory() -> None:
+    v2 = load_prompt(PROMPTS / "agent_v2.md").text
+    v3 = load_prompt(PROMPTS / "agent_v3.md").text
+
+    assert v3.startswith(v2.rstrip())  # v3 = v2 + a section: no rule of v2 changed
+    for must in ("# Farmer profile", "remember_fact", "forget_fact", "search for it again"):
+        assert must in v3
 
 
 # --- a server that lists its tools in pages

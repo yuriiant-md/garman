@@ -253,7 +253,7 @@ def check_task(task: Task, run: TaskRun) -> TaskResult:
         tools_called=called,
         stop_reason=last.stop_reason,
         steps=last.usage.steps,
-        cost_usd=last.usage.cost_usd,
+        cost_usd=last.cost_usd,  # the model calls and the dialogue's summary, if any
         latency_s=last.latency_s,
         answer=last.answer,
         thread_id=last.thread_id,

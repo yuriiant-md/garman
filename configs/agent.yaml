@@ -5,12 +5,37 @@
 model: haiku-5.5
 limits:
   max_steps: 8            # model calls per request; a farmer's question needs 2-4
-  max_tokens: 50000       # input + output summed over every call: the tokens paid for
-  # On Haiku 5.5 (0.1 / 0.5 USD per 1M) 50K tokens cost ≈ 0.005 USD, so max_tokens stops first.
-  # max_cost_usd guards a dearer model: on gpt-4o the same tokens would cost ≈ 0.13 USD.
+  max_tokens: 70000       # input + output summed over every call: the tokens paid for
+  # Each call starts with ≈ 9.6K tokens of prompt and tool specs (agent_v3 and the profile
+  # tools added ≈ 2K to the 7.6K of 25.11), so an honest request of 5 calls takes ≈ 55-60K;
+  # 50K stopped t04 on 26.11. On Haiku 5.5 (0.1 / 0.5 USD per 1M) 70K tokens cost ≈ 0.007 USD,
+  # so max_tokens stops first. max_cost_usd guards a dearer model: on gpt-4o the same tokens
+  # would cost ≈ 0.18 USD.
   max_cost_usd: 0.01
   tool_timeout_s: 20      # the calls of one turn, run in parallel; a reranked search takes ≈ 2 s
   request_timeout_s: 120  # the whole request; one model call may take up to 60 s (models.yaml)
+# What the agent remembers (src/agents/memory.py, src/agents/profile.py).
+memory:
+  # The dialogue of one conversation goes again with each question, and with every model call
+  # of it: 2000 tokens of history cost ≈ 8K of the 70K max_tokens in a request of 4 calls.
+  # Over the cap the oldest turns become a summary, made by one more model call.
+  history_max_tokens: 2000
+  # Of the cap, the room of the summary: ≈ 800 characters, the 120 words prompts/summary_v1.md
+  # asks for. A longer summary is cut at a sentence, so the dialogue always fits the cap.
+  summary_max_tokens: 400
+  keep_turns: 2           # the last question-and-answer pairs kept word for word
+  # Days a fact of the farmer's profile lives from the day it was written; a stale one is
+  # deleted when read, so the agent learns it anew. A farm's place changes seldom, its crops
+  # each season.
+  fact_ttl_days:
+    region: 730
+    crops: 365
+    area_ha: 365
+    warehouse: 730
+    vat_payer: 365
+    basis: 180
+    preferred_port: 180
+    note: 180
 # A tool without a side effect is tried again on a timeout, 429, 5xx or a lost connection
 # (src/agents/faults.py); a tool with one never is. The pauses (0.5 + 1 s) must fit in
 # tool_timeout_s, or the turn would abandon the call mid-retry.

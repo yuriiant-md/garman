@@ -12,6 +12,7 @@ from src.agents.model import (
     MalformedReply,
     ModelTurn,
     ToolRequest,
+    is_transient,
     tool_results_message,
 )
 from src.agents.trace import ToolCall
@@ -59,13 +60,15 @@ class FakeClient:
         return self._outcome
 
 
-def call(outcome: object, config: AnthropicConfig = CONFIG) -> tuple[ModelTurn, FakeClient]:
+def call(
+    outcome: object, config: AnthropicConfig = CONFIG, tools: tuple[object, ...] = (SEARCH_TOOL,)
+) -> tuple[ModelTurn, FakeClient]:
     client = FakeClient(outcome)
     model = AnthropicChatModel(config, client=client)  # type: ignore[arg-type]
     turn = model.call(
         system="Ти помічник фермера.",
         messages=QUESTION,  # type: ignore[arg-type]
-        tools=[SEARCH_TOOL],  # type: ignore[list-item]
+        tools=list(tools),  # type: ignore[arg-type]
     )
     return turn, client
 
@@ -90,6 +93,15 @@ def test_without_an_effort_the_request_sends_no_output_config() -> None:
     _, client = call(reply(SAY), config=replace(CONFIG, effort=None))
 
     assert "output_config" not in client.calls[0]
+
+
+def test_without_tools_the_request_sends_neither_tools_nor_a_tool_choice() -> None:
+    # a call that only writes text (the dialogue's summary); the API refuses tool_choice alone
+    turn, client = call(reply(SAY), tools=())
+
+    assert "tools" not in client.calls[0]
+    assert "tool_choice" not in client.calls[0]
+    assert turn.tool_requests == ()
 
 
 # --- the turn
@@ -169,6 +181,36 @@ def test_a_missing_stop_reason_is_named_unknown_not_none() -> None:
 def test_an_error_left_after_the_sdk_retries_reaches_the_caller(error: Exception) -> None:
     with pytest.raises(type(error)):
         call(error)
+
+
+def status_error(cls: type[anthropic.APIStatusError], code: int) -> anthropic.APIStatusError:
+    return cls("no", response=httpx2.Response(code, request=REQUEST), body=None)
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        anthropic.APITimeoutError(request=REQUEST),
+        anthropic.APIConnectionError(request=REQUEST),
+        status_error(anthropic.RateLimitError, 429),
+        status_error(anthropic.InternalServerError, 529),
+        MalformedReply("tool input is not JSON"),
+    ],
+)
+def test_a_busy_or_unreachable_model_is_a_transient_failure(error: Exception) -> None:
+    assert is_transient(error) is True
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        status_error(anthropic.AuthenticationError, 401),
+        status_error(anthropic.BadRequestError, 400),
+        ValueError("a bug of ours"),
+    ],
+)
+def test_a_wrong_request_or_a_bug_is_not_transient(error: Exception) -> None:
+    assert is_transient(error) is False
 
 
 # --- tool results

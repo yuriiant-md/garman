@@ -15,6 +15,7 @@ CLAUDE.md
 data/raw/
 # reminders the agent saves for a farmer (stage 3): a farmer's own data
 data/outbox/
+data/memory/
 
 # The author's local work plan (PLAN, PLAN_SHORT, PROJECT_MAP, retro): kept out of the public repo
 docs/

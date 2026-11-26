@@ -14,7 +14,7 @@ from src.agents.limits import Limits, StopReason
 from src.agents.reminder_tool import save_reminder_tool
 from src.agents.reminders import ReminderStore
 from src.agents.tools import AgentTool, Tool, ToolDescription, ToolRefused
-from src.agents.trace import PendingAction, Trace
+from src.agents.trace import PendingAction, SummaryCall, Trace
 from src.rag.documents import read_jsonl
 from src.servers.contract_access import ContractShelf
 from tests.agent_fixtures import Clock, FakeModel, ask, tool_results, turn
@@ -112,6 +112,29 @@ def test_yes_runs_the_call_once_and_the_model_reads_its_result(
     [call] = trace.steps[0].tool_calls
     assert (call.name, call.attempts, call.error) == ("save_reminder", 1, None)
     assert json.loads(str(call.result))["key"] == reminder.key
+
+
+def test_after_the_yes_the_model_reads_the_same_context_and_the_summary_stays(
+    reminder_tool: AgentTool,
+) -> None:
+    model = asks_to_remind(remind())
+    agent = make_agent(model, reminder_tool)
+    summary = SummaryCall(prompt_version="v1", folded_turns=2, cost_usd=0.0003)
+    history = ({"role": "user", "content": "Яка пеня?"}, {"role": "assistant", "content": "0,1 %"})
+    waiting = agent.run(
+        "Нагадай про оплату 15 грудня",
+        history=history,
+        context="# Farmer profile\n- region: Одеська область",
+        summary=summary,
+    )
+
+    trace = agent.resume(waiting.thread_id, approved=True)
+
+    # the request goes on where it stopped: the context is the run's, not built again
+    assert model.requests[1]["system"] == model.requests[0]["system"]
+    assert "Одеська область" in str(model.requests[1]["system"])
+    assert model.requests[1]["messages"][:2] == list(history)  # type: ignore[index]
+    assert waiting.summary == trace.summary == summary  # each line of the thread is the request
 
 
 def test_no_writes_nothing_and_tells_the_model_not_to_retry(
